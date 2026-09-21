@@ -21,7 +21,7 @@ difference is only `(url, model, key)`:
 - `Scripts/bundle.sh` — builds `build/Cue.app` (ad-hoc signed, LSUIElement background app, ships `laya_server.py` in Resources)
 - `Scripts/eval_systemone.py <base>...` — accuracy/latency table for one or more endpoints
 - `open build/Cue.app` — run it
-- `tccutil reset Accessibility com.local.cue` — required after rebuilds that invalidate the TCC grant
+- `tccutil reset Accessibility com.local.cue` — clears the grant (cert-signed builds keep it across rebuilds; only needed after ad-hoc rebuilds or to re-test onboarding)
 
 ## Layout
 

@@ -1,7 +1,9 @@
 #!/bin/bash
 # Builds Cue.app into ./build/.
-# Ad-hoc signed with a stable bundle identifier so TCC (Accessibility)
-# attributes permission to com.local.cue across rebuilds.
+# Signed with a real identity when available: TCC keys ad-hoc apps by
+# cdhash, which changes every rebuild — granted Accessibility toggles
+# silently go stale. A cert signature keeps com.local.cue's requirement
+# stable, so the grant persists across rebuilds.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -39,9 +41,14 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-codesign --force --sign - --identifier com.local.cue "$APP" 2>/dev/null || true
+IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development|Mac Developer/{print $2; exit}')"
+if [ -n "$IDENTITY" ]; then
+    codesign --force --sign "$IDENTITY" --identifier com.local.cue "$APP"
+else
+    codesign --force --sign - --identifier com.local.cue "$APP" 2>/dev/null || true
+fi
 
 echo "Built $APP"
 echo "Run it:  open $APP"
-echo "Note:    after rebuilding, if the app loses Accessibility permission run"
-echo "         tccutil reset Accessibility com.local.cue && open $APP"
+echo "Note:    cert-signed builds keep the Accessibility grant across rebuilds;"
+echo "         if it was ad-hoc signed and stuck, reset once: tccutil reset Accessibility com.local.cue"
