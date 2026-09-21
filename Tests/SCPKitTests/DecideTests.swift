@@ -60,13 +60,36 @@ struct HeuristicRankerTests {
 
 // MARK: - Engine
 
+/// Shared record of what the provider was asked (JSONValue is Equatable).
+final class CallBox: @unchecked Sendable {
+    var states: [JSONValue] = []
+    var questions: [[String: Question]] = []
+    var calls = 0
+}
+
 /// Stub provider returning canned Jev answers.
 struct StubProvider: DecisionProvider {
     var response: JevResponse
     var error: Error?
+    var isRemote = true
+    var box = CallBox()
     func evaluate(state: JSONValue, questions: [String: Question]) async throws -> JevResponse {
+        box.calls += 1
+        box.states.append(state)
+        box.questions.append(questions)
         if let error { throw error }
         return response
+    }
+}
+
+/// Replaces every string with a fixed placeholder and records what it saw.
+final class StubRedactor: Redacting, @unchecked Sendable {
+    var seen: [String] = []
+    var error: Error?
+    func redact(_ text: String) async throws -> String {
+        if let error { throw error }
+        seen.append(text)
+        return "[PII]"
     }
 }
 
@@ -202,6 +225,50 @@ struct DecisionEngineTests {
         let ranked = DecisionEngine.ranked(from: resp, candidates: clips)
         #expect(ranked.count == 1)
         #expect(ranked.first?.clip.text == "me@example.com")
+    }
+
+    @Test func remoteProviderGetsRedactedText() async {
+        let redactor = StubRedactor()
+        let provider = StubProvider(response: response(pick: "c2", conf: 0.95))
+        var engine = DecisionEngine(provider: provider, redactor: redactor)
+        engine.confidenceThreshold = 0.7
+        _ = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+
+        // The pick criteria must carry placeholders, never the raw clip text.
+        guard let pick = provider.box.questions.first?["pick"]?.jsonValue["criteria"],
+              case .object(let criteria) = pick else {
+            Issue.record("no pick criteria captured"); return
+        }
+        #expect(criteria["c2"]?.string?.contains("[PII]") == true)
+        #expect(criteria["c2"]?.string?.contains("me@example.com") == false)
+        // The raw text stayed on-device — only the local redactor saw it.
+        #expect(redactor.seen.contains("me@example.com"))
+    }
+
+    @Test func loopbackProviderSkipsRedaction() async {
+        // kev/laya run on-device — scrubbing adds latency for zero privacy gain.
+        let redactor = StubRedactor()
+        var endpoint = StubProvider(response: response(pick: "c2", conf: 0.95))
+        endpoint.isRemote = false
+        var engine = DecisionEngine(provider: endpoint, redactor: redactor)
+        engine.confidenceThreshold = 0.7
+        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        guard case .paste = outcome else { Issue.record("expected paste, got \(outcome)"); return }
+        #expect(redactor.seen.isEmpty)
+    }
+
+    @Test func redactionFailureNeverLeaksToProvider() async {
+        struct Fail: Error {}
+        let redactor = StubRedactor()
+        redactor.error = Fail()
+        let provider = StubProvider(response: response(pick: "c2", conf: 0.95))
+        var engine = DecisionEngine(provider: provider, redactor: redactor)
+        engine.confidenceThreshold = 0.7
+        let outcome = await engine.decide(context: makeContext(label: "Email"), candidates: clips, mode: .hotkey)
+        #expect(provider.box.calls == 0) // nothing was sent
+        guard case .paste(let d) = outcome, d.source == .heuristic else {
+            Issue.record("expected heuristic paste, got \(outcome)"); return
+        }
     }
 
     @Test func emptyCandidatesPastesLatest() async {

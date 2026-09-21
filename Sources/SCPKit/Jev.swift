@@ -105,6 +105,29 @@ public struct JevEndpoint: Sendable {
     public static func gateway(model: String) -> JevEndpoint {
         JevEndpoint(url: URL(string: "https://ai-gateway.vercel.sh/typesafe/v1/systemone")!, model: model)
     }
+
+    /// Any server speaking the System One contract — kev.serve, the laya shim,
+    /// or a self-hosted deployment. Accepts `host:port`, `scheme://host:port`,
+    /// or a full `…/v1/systemone` URL; normalizes to the POST URL.
+    /// Returns nil for empty/garbage input.
+    public static func custom(base: String, model: String) -> JevEndpoint? {
+        var s = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return nil }
+        if !s.contains("://") { s = "http://" + s }
+        guard var c = URLComponents(string: s), c.host != nil else { return nil }
+        let path = c.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if !path.hasSuffix("v1/systemone") {
+            c.path = path.isEmpty ? "/v1/systemone" : "/\(path)/v1/systemone"
+        }
+        guard let url = c.url else { return nil }
+        return JevEndpoint(url: url, model: model)
+    }
+
+    /// Loopback endpoints keep payloads on-device — PII redaction is a no-op.
+    public var isRemote: Bool {
+        guard let h = url.host?.lowercased() else { return true }
+        return !(h == "localhost" || h == "::1" || h.hasPrefix("127.") || h.hasSuffix(".local"))
+    }
 }
 
 public enum JevError: Error, Equatable {
@@ -116,7 +139,14 @@ public enum JevError: Error, Equatable {
 /// The seam between the decision engine and whatever answers questions —
 /// JevClient in production, a stub in tests.
 public protocol DecisionProvider: Sendable {
+    /// False when the endpoint is loopback — payloads stay on the device,
+    /// so PII redaction is skipped. Defaults true; safe side is remote.
+    var isRemote: Bool { get }
     func evaluate(state: JSONValue, questions: [String: Question]) async throws -> JevResponse
+}
+
+extension DecisionProvider {
+    public var isRemote: Bool { true }
 }
 
 public struct JevClient: DecisionProvider {
@@ -124,7 +154,9 @@ public struct JevClient: DecisionProvider {
     private let apiKey: String
     private let session: URLSession
 
-    public init(endpoint: JevEndpoint, apiKey: String, session: URLSession = .shared) {
+    public var isRemote: Bool { endpoint.isRemote }
+
+    public init(endpoint: JevEndpoint, apiKey: String = "", session: URLSession = .shared) {
         self.endpoint = endpoint
         self.apiKey = apiKey
         self.session = session
@@ -134,7 +166,9 @@ public struct JevClient: DecisionProvider {
         var req = URLRequest(url: endpoint.url)
         req.httpMethod = "POST"
         req.timeoutInterval = 10
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !apiKey.isEmpty {
+            req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: JSONValue.object([
             "model": .string(endpoint.model),

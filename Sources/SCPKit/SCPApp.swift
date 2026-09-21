@@ -13,6 +13,7 @@ public final class AppModel {
     public let executor: PasteExecutor
     public let feedback: FeedbackTracker
     public let hud: HUDController
+    public let redactor: PIIRedactor
     public let controller: SmartPasteController
 
     public var selfCheckResult: String?
@@ -27,10 +28,11 @@ public final class AppModel {
         executor = PasteExecutor(monitor: monitor, hotkeys: hotkeys)
         feedback = FeedbackTracker()
         hud = HUDController()
+        redactor = PIIRedactor()
         controller = SmartPasteController(
             store: store, settings: settings,
-            executor: executor, feedback: feedback, hud: hud
-        ) { [settings] in settings.jevProvider() }
+            executor: executor, feedback: feedback, hud: hud, redactor: redactor
+        ) { [settings] in settings.providerClient() }
 
         hotkeys.interceptCmdV = settings.triggerMode == .intercept
         hotkeys.reregister()
@@ -41,18 +43,24 @@ public final class AppModel {
         hotkeys.on(.settings) { [weak self] in self?.open(id: "settings") }
 
         monitor.start()
+        // Warm the redaction model in the background so the first paste
+        // doesn't pay the download latency.
+        if settings.piiRedaction { Task { await redactor.prepare() } }
         if !settings.onboardingDone {
             Task { @MainActor in self.open(id: "onboarding") }
         }
     }
 
     public func makeProvider() -> (any DecisionProvider)? {
-        settings.jevProvider()
+        settings.providerClient()
     }
 
     /// Round-trips a trivial question so Settings/onboarding can verify keys.
     public func testProvider() async -> String {
-        guard let provider = settings.jevProvider() else { return "No API key set" }
+        guard let provider = settings.providerClient() else {
+            return settings.provider == .none ? "No provider selected"
+                : settings.provider.needsAPIKey ? "No API key set" : "Check the endpoint URL"
+        }
         do {
             let resp = try await provider.evaluate(
                 state: .string("The user clicked test."),
@@ -66,6 +74,33 @@ public final class AppModel {
 
     public func close(id: String) {
         windows[id]?.close()
+    }
+
+    /// History action: close our window, let focus return to the previous
+    /// app, then paste the chosen clip into it.
+    public func pasteIntoFrontApp(_ clip: Clip) {
+        close(id: "history")
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            controller.pasteClip(clip)
+        }
+    }
+
+    /// Cheap endpoint reachability check for the endpoint-field status dot.
+    /// A refused connection means nothing is listening; any HTTP response
+    /// (even 404) counts as up.
+    public func endpointReachable(_ base: String) async -> Bool {
+        guard var comps = URLComponents(string: base.contains("://") ? base : "http://" + base),
+              let url = comps.url else { return false }
+        comps.path = "/"
+        var req = URLRequest(url: comps.url ?? url)
+        req.timeoutInterval = 1.5
+        do {
+            _ = try await URLSession.shared.data(for: req)
+            return true
+        } catch {
+            return false
+        }
     }
 
     public func toggleQueue() {
@@ -100,7 +135,7 @@ public final class AppModel {
         let size: NSSize = switch id {
         case "history": NSSize(width: 480, height: 420)
         case "settings": NSSize(width: 480, height: 560)
-        default: NSSize(width: 460, height: 380)
+        default: NSSize(width: 480, height: 560)
         }
         win.setContentSize(size)
         return win

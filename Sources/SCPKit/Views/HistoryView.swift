@@ -62,6 +62,7 @@ public struct HistoryView: View {
                         .help(clip.pinned ? "Unpin" : "Pin")
                     }
                     .contextMenu {
+                        Button("Paste into current app") { model.pasteIntoFrontApp(clip) }
                         Button("Copy again") { copyAgain(clip) }
                         Button(clip.pinned ? "Unpin" : "Pin") { model.store.togglePin(clip) }
                         Divider()

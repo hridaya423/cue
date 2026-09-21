@@ -67,6 +67,41 @@ struct JevTests {
             == "https://ai-gateway.vercel.sh/typesafe/v1/systemone")
     }
 
+    @Test func customEndpointNormalizes() {
+        // bare host:port → scheme + path appended
+        #expect(JevEndpoint.custom(base: "127.0.0.1:8009", model: "kev-latest")?.url.absoluteString
+            == "http://127.0.0.1:8009/v1/systemone")
+        // already full path → unchanged
+        #expect(JevEndpoint.custom(base: "http://127.0.0.1:8009/v1/systemone", model: "x")?.url.absoluteString
+            == "http://127.0.0.1:8009/v1/systemone")
+        // extra path prefix (reverse proxy) is preserved
+        #expect(JevEndpoint.custom(base: "https://models.example.com/s1", model: "x")?.url.absoluteString
+            == "https://models.example.com/s1/v1/systemone")
+        // trailing slashes tolerated
+        #expect(JevEndpoint.custom(base: "http://localhost:8765/", model: "x")?.url.absoluteString
+            == "http://localhost:8765/v1/systemone")
+        #expect(JevEndpoint.custom(base: "   ", model: "x") == nil)
+        #expect(JevEndpoint.custom(base: "", model: "x") == nil)
+    }
+
+    @Test func isRemoteClassifiesEndpoints() {
+        #expect(JevEndpoint.direct(model: "m").isRemote)
+        #expect(JevEndpoint.gateway(model: "m").isRemote)
+        #expect(JevEndpoint.custom(base: "127.0.0.1:8009", model: "m")?.isRemote == false)
+        #expect(JevEndpoint.custom(base: "localhost:8765", model: "m")?.isRemote == false)
+        #expect(JevEndpoint.custom(base: "10.0.0.5:8009", model: "m")?.isRemote == true)
+        #expect(JevEndpoint.custom(base: "https://relay.example.com", model: "m")?.isRemote == true)
+    }
+
+    @Test func providerMigrationFromDisplayStrings() {
+        // First-version settings stored the display string — map them forward.
+        #expect(AppSettings.Provider(stored: "TypeSafe direct") == .jevDirect)
+        #expect(AppSettings.Provider(stored: "AI Gateway") == .jevGateway)
+        #expect(AppSettings.Provider(stored: "None (offline)") == .none)
+        #expect(AppSettings.Provider(stored: "kev") == .kev)
+        #expect(AppSettings.Provider(stored: "garbage") == .none)
+    }
+
     @Test func malformedAnswerThrows() throws {
         let root = JSONValue(any: ["answers": ["x": ["type": "mystery"]]])!
         #expect(throws: JevError.self) { try JevClient.parse(root) }

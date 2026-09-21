@@ -8,6 +8,11 @@ public struct MenuBarView: View {
             .foregroundStyle(.secondary)
         Divider()
 
+        ForEach(model.store.clips.prefix(3)) { clip in
+            Button(clip.preview) { model.pasteIntoFrontApp(clip) }
+        }
+        if !model.store.clips.isEmpty { Divider() }
+
         Toggle("Queue mode", isOn: queueBinding)
         if model.settings.queueMode {
             Text("\(model.store.queue.count) in queue")
@@ -33,9 +38,15 @@ public struct MenuBarView: View {
     private var statusLine: String {
         var parts = [model.trusted ? "ready" : "needs Accessibility"]
         switch model.settings.provider {
-        case .direct: parts.append("jev direct")
-        case .gateway: parts.append("jev via gateway")
+        case .jevDirect: parts.append("jev direct")
+        case .jevGateway: parts.append("jev via gateway")
+        case .kev: parts.append("kev local")
+        case .laya: parts.append("laya local")
+        case .custom: parts.append("custom endpoint")
         case .none: parts.append("heuristic mode")
+        }
+        if model.settings.piiRedaction, model.settings.provider.mayBeRemote {
+            parts.append("pii scrubbed")
         }
         parts.append("\(model.store.clips.count) clips")
         return parts.joined(separator: " · ")

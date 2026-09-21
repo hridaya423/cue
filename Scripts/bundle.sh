@@ -11,8 +11,12 @@ APP="build/SmartCopyPaste.app"
 swift build -c "$CONFIG"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp ".build/$CONFIG/SmartCopyPaste" "$APP/Contents/MacOS/"
+
+# SPM resource bundles (e.g. the Redact tokenizer vectors) — Bundle.module
+# resolves them from Contents/Resources inside a .app.
+find ".build/$CONFIG" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

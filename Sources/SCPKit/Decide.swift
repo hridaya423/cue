@@ -160,9 +160,13 @@ public struct DecisionEngine: Sendable {
     public var provider: (any DecisionProvider)?
     public var confidenceThreshold = 0.7
     public var lowConfidenceMode: AppSettings.LowConfidenceMode = .top3
+    /// When set and the provider is remote, clip/context text is scrubbed of
+    /// PII before it goes on the wire. Loopback endpoints skip it entirely.
+    public var redactor: (any Redacting)?
 
-    public init(provider: (any DecisionProvider)? = nil) {
+    public init(provider: (any DecisionProvider)? = nil, redactor: (any Redacting)? = nil) {
         self.provider = provider
+        self.redactor = redactor
     }
 
     /// `feedback` maps clip.id → probability multiplier from past outcomes.
@@ -181,9 +185,12 @@ public struct DecisionEngine: Sendable {
 
         if let provider {
             do {
+                // Redaction failure throws → heuristic path → nothing leaves
+                // the device. Never send raw text after a failed scrub.
+                let scrub = provider.isRemote ? redactor : nil
                 let resp = try await provider.evaluate(
-                    state: Self.stateJSON(context: context, mode: mode),
-                    questions: Self.questions(candidates: candidates, mode: mode)
+                    state: try await Self.stateJSON(context: context, mode: mode, redactor: scrub),
+                    questions: try await Self.questions(candidates: candidates, mode: mode, redactor: scrub)
                 )
                 ranked = Self.ranked(from: resp, candidates: candidates)
 
@@ -258,25 +265,32 @@ public struct DecisionEngine: Sendable {
 
     // MARK: - Request construction
 
-    static func stateJSON(context: ContextSnapshot, mode: Mode) -> JSONValue {
-        .object([
+    static func stateJSON(context: ContextSnapshot, mode: Mode,
+                          redactor: (any Redacting)? = nil) async throws -> JSONValue {
+        let r = try await scrubbed(
+            [context.windowTitle, context.field.label,
+             context.field.placeholder, context.field.value],
+            redactor: redactor)
+        return .object([
             "task": .string(mode == .formFill ? "form-fill" : "smart-paste"),
             "app": .string(context.appName),
-            "window": .string(context.windowTitle),
+            "window": .string(r[0]),
             "field": .object([
                 "role": .string(context.field.role),
-                "label": .string(context.field.label),
-                "placeholder": .string(context.field.placeholder),
-                "current_value": .string(context.field.value),
+                "label": .string(r[1]),
+                "placeholder": .string(r[2]),
+                "current_value": .string(r[3]),
             ]),
         ])
     }
 
-    static func questions(candidates: [Clip], mode: Mode) -> [String: Question] {
+    static func questions(candidates: [Clip], mode: Mode,
+                          redactor: (any Redacting)? = nil) async throws -> [String: Question] {
+        let previews = try await scrubbed(candidates.map(\.preview), redactor: redactor)
         var criteria: [String: String] = [:]
         for (i, clip) in candidates.enumerated() {
             let app = clip.sourceApp.isEmpty ? "unknown app" : clip.sourceApp
-            criteria["c\(i + 1)"] = "\(clip.kind.rawValue) · \"\(clip.preview)\" · copied from \(app) · \(clip.copiedAt.relativeAge)"
+            criteria["c\(i + 1)"] = "\(clip.kind.rawValue) · \"\(previews[i])\" · copied from \(app) · \(clip.copiedAt.relativeAge)"
         }
         var q: [String: Question] = [
             "pick": .choice(
@@ -303,6 +317,20 @@ public struct DecisionEngine: Sendable {
             )
         }
         return q
+    }
+
+    /// Redacts every string in parallel (the on-device model is fast but 40
+    /// sequential calls would still show up in paste latency).
+    private static func scrubbed(_ texts: [String], redactor: (any Redacting)?) async throws -> [String] {
+        guard let redactor else { return texts }
+        return try await withThrowingTaskGroup(of: (Int, String).self) { group in
+            for (i, t) in texts.enumerated() {
+                group.addTask { (i, try await redactor.redact(t)) }
+            }
+            var out = [String](repeating: "", count: texts.count)
+            for try await (i, s) in group { out[i] = s }
+            return out
+        }
     }
 
     static func ranked(from resp: JevResponse, candidates: [Clip]) -> [ScoredCandidate] {

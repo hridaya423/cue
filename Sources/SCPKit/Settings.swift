@@ -6,10 +6,56 @@ import Security
 public final class AppSettings {
     public static let shared = AppSettings()
 
+    /// Every provider speaks the same System One contract — the difference is
+    /// only where the POST goes and which key signs it.
     public enum Provider: String, CaseIterable, Codable, Sendable {
-        case direct = "TypeSafe direct"
-        case gateway = "AI Gateway"
-        case none = "None (offline)"
+        case jevDirect = "jev-direct"
+        case jevGateway = "jev-gateway"
+        case kev          // local kev.serve instance
+        case laya         // local laya shim (Scripts/laya_server.py)
+        case custom       // any /v1/systemone endpoint
+        case none
+
+        public var title: String {
+            switch self {
+            case .jevDirect: "Jev · TypeSafe"
+            case .jevGateway: "Jev · AI Gateway"
+            case .kev: "Kev · local"
+            case .laya: "Laya · local"
+            case .custom: "Custom endpoint"
+            case .none: "None · offline"
+            }
+        }
+
+        public var blurb: String {
+            switch self {
+            case .jevDirect: "TypeSafe's hosted model. Best quality, ~100ms, needs an API key."
+            case .jevGateway: "Jev through Vercel's AI Gateway — same model, your own gateway account."
+            case .kev: "jaredpalmer/kev — open Jev-like weights on your Mac via kev.serve. Data never leaves the device."
+            case .laya: "convaiinnovations/laya — open-weight System 1 model via a local shim. Data never leaves the device."
+            case .custom: "Any server that answers POST {base}/v1/systemone with the System One contract."
+            case .none: "No model calls. Local heuristics pick clips; the app still works end-to-end."
+            }
+        }
+
+        public var needsAPIKey: Bool { self == .jevDirect || self == .jevGateway }
+        /// Endpoint-based providers get URL + model fields.
+        public var isEndpointBased: Bool {
+            self == .kev || self == .laya || self == .custom
+        }
+        /// True when the payload can leave the machine (custom depends on the URL).
+        public var mayBeRemote: Bool { isEndpointBased ? self == .custom : needsAPIKey }
+
+        /// Decodes both current raw values and the original display-string
+        /// values so existing installs keep their setting.
+        init(stored: String) {
+            switch stored {
+            case "TypeSafe direct": self = .jevDirect
+            case "AI Gateway": self = .jevGateway
+            case "None (offline)": self = .none
+            default: self = Provider(rawValue: stored) ?? .none
+            }
+        }
     }
 
     public enum LowConfidenceMode: String, CaseIterable, Codable, Sendable {
@@ -55,15 +101,31 @@ public final class AppSettings {
     }
 
     public var provider: Provider {
-        get { get("provider", .none) }
-        set { set("provider", newValue) }
+        get { Provider(stored: get("provider", "")) }
+        set { set("provider", newValue.rawValue) }
     }
 
-    /// Model strings are per-provider: the direct API uses `jev-latest`,
-    /// AI Gateway uses `typesafe-ai/jev`. Both user-editable.
+    /// Model strings are per-provider. Cloud defaults: `jev-latest` direct,
+    /// `typesafe-ai/jev` on the gateway. Endpoint providers carry their own.
     public var model: String {
-        get { provider == .gateway ? gatewayModel : directModel }
-        set { if provider == .gateway { gatewayModel = newValue } else { directModel = newValue } }
+        get {
+            switch provider {
+            case .jevGateway: gatewayModel
+            case .kev: kevModel
+            case .laya: layaModel
+            case .custom: customModel
+            default: directModel
+            }
+        }
+        set {
+            switch provider {
+            case .jevGateway: gatewayModel = newValue
+            case .kev: kevModel = newValue
+            case .laya: layaModel = newValue
+            case .custom: customModel = newValue
+            default: directModel = newValue
+            }
+        }
     }
     public var directModel: String {
         get { load("model.direct") ?? "jev-latest" }
@@ -72,6 +134,40 @@ public final class AppSettings {
     public var gatewayModel: String {
         get { load("model.gateway") ?? "typesafe-ai/jev" }
         set { store(newValue, forKey: "model.gateway") }
+    }
+    public var kevModel: String {
+        get { load("model.kev") ?? "kev-latest" }
+        set { store(newValue, forKey: "model.kev") }
+    }
+    public var layaModel: String {
+        get { load("model.laya") ?? "laya" }
+        set { store(newValue, forKey: "model.laya") }
+    }
+    public var customModel: String {
+        get { load("model.custom") ?? "jev-latest" }
+        set { store(newValue, forKey: "model.custom") }
+    }
+
+    /// Base URLs for endpoint providers — bare host, host:port, or full
+    /// /v1/systemone URL all work (normalized in JevEndpoint.custom).
+    public var kevURL: String {
+        get { load("url.kev") ?? "http://127.0.0.1:8009" }
+        set { store(newValue, forKey: "url.kev") }
+    }
+    public var layaURL: String {
+        get { load("url.laya") ?? "http://127.0.0.1:8765" }
+        set { store(newValue, forKey: "url.laya") }
+    }
+    public var customURL: String {
+        get { load("url.custom") ?? "" }
+        set { store(newValue, forKey: "url.custom") }
+    }
+
+    /// Redact PII from clips/context before they reach a remote provider.
+    /// Loopback endpoints skip redaction — the data never leaves the device.
+    public var piiRedaction: Bool {
+        get { load("piiRedaction") ?? true }
+        set { store(newValue, forKey: "piiRedaction") }
     }
 
     public var triggerMode: TriggerMode {
@@ -150,16 +246,28 @@ public final class AppSettings {
         set { revision += 1; Keychain.set("gatewayKey", newValue) }
     }
 
-    /// The configured Jev client, or nil when offline/none-selected.
-    /// Direct and AI Gateway are the same client with different (url, model, key).
-    public func jevProvider() -> (any DecisionProvider)? {
+    public var customKey: String? {
+        get { _ = revision; return Keychain.get("customKey") }
+        set { revision += 1; Keychain.set("customKey", newValue) }
+    }
+
+    /// The configured decision provider, or nil when offline/none-selected.
+    /// Every provider is the same client — only (url, model, key) differ.
+    public func providerClient() -> (any DecisionProvider)? {
         switch provider {
-        case .direct:
+        case .jevDirect:
             guard let key = apiKey, !key.isEmpty else { return nil }
             return JevClient(endpoint: .direct(model: directModel), apiKey: key)
-        case .gateway:
+        case .jevGateway:
             guard let key = gatewayKey, !key.isEmpty else { return nil }
             return JevClient(endpoint: .gateway(model: gatewayModel), apiKey: key)
+        case .kev:
+            return JevEndpoint.custom(base: kevURL, model: kevModel).map { JevClient(endpoint: $0) }
+        case .laya:
+            return JevEndpoint.custom(base: layaURL, model: layaModel).map { JevClient(endpoint: $0) }
+        case .custom:
+            guard let ep = JevEndpoint.custom(base: customURL, model: customModel) else { return nil }
+            return JevClient(endpoint: ep, apiKey: customKey ?? "")
         case .none:
             return nil
         }

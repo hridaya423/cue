@@ -1,10 +1,14 @@
 # SmartCopyPaste
 
 What if copy/paste was smart? A local macOS app that keeps your clipboard
-history and — on a hotkey, or every ⌘V if you enable interception — asks
-TypeSafe AI's **Jev** model which clip fits the field you're pasting into.
-Context-aware picks, calibrated confidence, no hallucinated text: Jev only
-ever *chooses* among your real clips.
+history and — on a hotkey, or every ⌘V if you enable interception — asks a
+typed decision model which clip fits the field you're pasting into.
+Context-aware picks, calibrated confidence, no hallucinated text: the model
+only ever *chooses* among your real clips.
+
+Runs against TypeSafe's hosted **Jev**, Jev via **AI Gateway**, fully local
+open-weight models (**Kev**, **Laya**), or **any self-hosted endpoint** that
+speaks the System One contract — or no model at all (local heuristics).
 
 Inspired by [@marcus_lowe's demo](https://x.com/marcus_lowe/status/2101476399488160013), rebuilt as a real background app.
 
@@ -15,10 +19,11 @@ Scripts/bundle.sh        # → build/SmartCopyPaste.app
 open build/SmartCopyPaste.app
 ```
 
-Requires macOS 15+, Xcode 26. No dependencies — SwiftPM + system frameworks only.
-Grant **Accessibility** when prompted (needed to read the focused field and
-post the paste keystroke). After rebuilding, if the permission grant sticks to
-the old binary: `tccutil reset Accessibility com.local.smartcopypaste`.
+Requires macOS 15+, Xcode 26. One dependency: `desert-ant-core` (on-device
+PII redaction). Grant **Accessibility** when prompted (needed to read the
+focused field and post the paste keystroke). After rebuilding, if the
+permission grant sticks to the old binary:
+`tccutil reset Accessibility com.local.smartcopypaste`.
 
 ## How it works
 
@@ -33,11 +38,28 @@ the old binary: `tccutil reset Accessibility com.local.smartcopypaste`.
 4. Confidence ≥ threshold → paste directly. Below → your chosen fallback
    (top-3 toast / full picker / paste best / paste latest).
 
-Both Jev routes work with one client — pick in Settings:
-- **TypeSafe direct**: `api.typesafe.ai` + `TYPESAFE_API_KEY`, model `jev-latest`
-- **AI Gateway**: `ai-gateway.vercel.sh/typesafe` + `AI_GATEWAY_API_KEY`, model `typesafe-ai/jev`
-- **None**: local heuristic ranking (shape-matching against the field label)
-  covers the same UX offline; Jev drops in whenever you add a key.
+Every provider is the same client with a different `(url, model, key)` —
+pick in Settings or onboarding:
+
+- **Jev · TypeSafe direct**: `api.typesafe.ai` + `TYPESAFE_API_KEY`, model `jev-latest`
+- **Jev · AI Gateway**: `ai-gateway.vercel.sh/typesafe` + `AI_GATEWAY_API_KEY`, model `typesafe-ai/jev`
+- **Kev · local**: [jaredpalmer/kev](https://github.com/jaredpalmer/kev) — open
+  weights serving the same contract. `uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b --port 8009`
+- **Laya · local**: [convaiinnovations/laya](https://github.com/convaiinnovations/laya) —
+  open-weight System 1 model. `pip install laya`, then `python3 Scripts/laya_server.py`
+- **Custom endpoint**: anything answering `POST {base}/v1/systemone`; the URL
+  field takes `host:port`, `scheme://host`, or a full `…/v1/systemone` URL
+- **None · offline**: local heuristic ranking (shape-matching against the
+  field label) covers the same UX; a provider drops in whenever you add one.
+
+### Privacy
+
+Optional on-device PII redaction (desert-ant `redact`, ~12 MB Core ML,
+downloads on first use) masks names, emails, phones, cards and IDs in clip
+text before it reaches a remote provider. Fail-closed: if the model isn't
+usable, the engine falls back to local heuristics instead of sending raw
+text. Loopback providers (Kev, Laya, localhost custom) skip it entirely —
+that data never leaves the device anyway.
 
 ## Features
 
@@ -45,6 +67,8 @@ Both Jev routes work with one client — pick in Settings:
 - Auto form-fill: paste → Tab → next field → repeat until the form is done
 - Queue mode: copies enqueue, pastes pop in FIFO order
 - Top-3 toast, filterable picker, per-app raw-paste hotkey (`⌃⌥⇧V`)
+- Menu bar shows recent clips for one-click re-paste; history window can paste into the previous app
+- On-device PII redaction before any cloud call (opt-out, off for local providers)
 - Learns from undos: ⌘Z right after a pick demotes it for that context
 - Password fields are never analyzed and never sent anywhere
 - Keys in Keychain; history is plain JSON in `~/Library/Application Support/SmartCopyPaste/`
@@ -52,7 +76,7 @@ Both Jev routes work with one client — pick in Settings:
 ## Development
 
 ```sh
-swift test   # 26 tests: store, Jev contract, transforms, heuristic, engine
+swift test   # 39 tests: store, Jev contract, transforms, heuristic, engine, redaction gating
 ```
 
 `Sources/SCPKit/` is the whole app; `Sources/SmartCopyPaste/main.swift` is a

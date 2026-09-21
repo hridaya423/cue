@@ -68,18 +68,42 @@ public struct SettingsView: View {
     @State private var testResult: String?
     @State private var testing = false
     @State private var loginError: String?
+    @State private var endpointUp: Bool?
 
     public var body: some View {
         @Bindable var settings = model.settings
 
         Form {
             Section("Provider") {
-                Picker("Jev via", selection: $settings.provider) {
-                    ForEach(AppSettings.Provider.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                Picker("Decision model", selection: $settings.provider) {
+                    ForEach(AppSettings.Provider.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
-                if settings.provider != .none {
+                if settings.provider.needsAPIKey {
                     SecureField("API key", text: apiKeyBinding)
                         .textFieldStyle(.roundedBorder)
+                }
+                if settings.provider.isEndpointBased {
+                    LabeledContent("Endpoint") {
+                        HStack(spacing: 6) {
+                            TextField("http://127.0.0.1:8009", text: endpointBinding)
+                                .textFieldStyle(.roundedBorder)
+                            Circle()
+                                .fill(endpointUp == true ? Color.green
+                                    : endpointUp == false ? Color.red
+                                    : Color.secondary.opacity(0.3))
+                                .frame(width: 7, height: 7)
+                                .help(endpointUp == true ? "reachable" : "not responding")
+                        }
+                    }
+                    .task(id: currentEndpoint) {
+                        endpointUp = await model.endpointReachable(currentEndpoint)
+                    }
+                    if settings.provider == .custom {
+                        SecureField("Bearer key (optional)", text: customKeyBinding)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+                if settings.provider != .none {
                     LabeledContent("Model") {
                         TextField("model", text: modelBinding)
                             .textFieldStyle(.roundedBorder)
@@ -93,10 +117,18 @@ public struct SettingsView: View {
                         }
                     }
                 } else {
-                    Text("No provider — smart paste uses local heuristics until a key is set.")
+                    Text("No provider — smart paste uses local heuristics until a key or endpoint is set.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            Section("Privacy") {
+                Toggle("Redact PII before cloud calls", isOn: $settings.piiRedaction)
+                redactorStatus
+                Text("Names, emails, phones, cards and IDs are masked on-device before clip text reaches a remote model. Loopback endpoints (Kev, Laya, localhost) skip redaction — that data stays on the device anyway.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
             }
 
             Section("Trigger") {
@@ -156,17 +188,61 @@ public struct SettingsView: View {
         .frame(width: 480)
     }
 
+    @ViewBuilder
+    private var redactorStatus: some View {
+        switch model.redactor.status {
+        case .idle:
+            if model.settings.piiRedaction && model.redactor.needsDownload {
+                Button("Download redaction model (~12 MB)") {
+                    Task { await model.redactor.prepare() }
+                }
+            }
+        case .downloading(let f):
+            LabeledContent("Redaction model") {
+                ProgressView(value: f).frame(width: 140)
+            }
+        case .ready:
+            LabeledContent("Redaction model") {
+                Text("downloaded").foregroundStyle(.secondary)
+            }
+        case .failed(let msg):
+            LabeledContent("Redaction model") {
+                Text("failed — \(msg)").foregroundStyle(.red).lineLimit(1)
+            }
+        }
+    }
+
     private var apiKeyBinding: Binding<String> {
         Binding(
-            get: { model.settings.provider == .gateway
+            get: { model.settings.provider == .jevGateway
                 ? model.settings.gatewayKey ?? ""
                 : model.settings.apiKey ?? "" },
-            set: { if model.settings.provider == .gateway {
+            set: { if model.settings.provider == .jevGateway {
                 model.settings.gatewayKey = $0.isEmpty ? nil : $0
             } else {
                 model.settings.apiKey = $0.isEmpty ? nil : $0
             } }
         )
+    }
+    private var customKeyBinding: Binding<String> {
+        Binding(get: { model.settings.customKey ?? "" },
+                set: { model.settings.customKey = $0.isEmpty ? nil : $0 })
+    }
+    private var currentEndpoint: String {
+        switch model.settings.provider {
+        case .kev: model.settings.kevURL
+        case .laya: model.settings.layaURL
+        default: model.settings.customURL
+        }
+    }
+    private var endpointBinding: Binding<String> {
+        Binding(get: { currentEndpoint }, set: {
+            switch model.settings.provider {
+            case .kev: model.settings.kevURL = $0
+            case .laya: model.settings.layaURL = $0
+            default: model.settings.customURL = $0
+            }
+        })
     }
     private var modelBinding: Binding<String> {
         Binding(get: { model.settings.model }, set: { model.settings.model = $0 })

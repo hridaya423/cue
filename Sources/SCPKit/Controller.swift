@@ -106,17 +106,20 @@ public final class SmartPasteController {
     private let executor: PasteExecutor
     private let feedback: FeedbackTracker
     private let hud: HUDController
+    private let redactor: (any Redacting)?
     private let makeProvider: () -> (any DecisionProvider)?
     private var formFiller: FormFiller?
 
     public init(store: ClipStore, settings: AppSettings,
                 executor: PasteExecutor, feedback: FeedbackTracker, hud: HUDController,
+                redactor: (any Redacting)?,
                 makeProvider: @escaping () -> (any DecisionProvider)?) {
         self.store = store
         self.settings = settings
         self.executor = executor
         self.feedback = feedback
         self.hud = hud
+        self.redactor = redactor
         self.makeProvider = makeProvider
         // Assigned last: the closure weak-captures self, legal once every
         // stored property above is initialized.
@@ -183,6 +186,12 @@ public final class SmartPasteController {
         executor.pasteCurrent()
     }
 
+    /// History-window/menu action: paste a specific clip into whatever app
+    /// had focus. The caller is responsible for restoring focus first.
+    public func pasteClip(_ clip: Clip) {
+        paste(clip.text, clip: clip, ctx: nil)
+    }
+
     /// Manual picker hotkey — always shows the picker, no model call.
     public func showPicker() {
         let candidates = store.candidates().map {
@@ -199,7 +208,8 @@ public final class SmartPasteController {
     private func handle(_ outcome: PasteOutcome, ctx: ContextSnapshot) async {
         switch outcome {
         case .paste(let d):
-            paste(d.text, clip: d.clip, ctx: ctx)
+            let note = d.transform == .asIs ? nil : d.transform.rawValue.replacing("_", with: " ")
+            paste(d.text, clip: d.clip, ctx: ctx, note: note)
             if d.isForm { await formFiller?.run() }
         case .top3(let cands):
             hud.showTop3(candidates: cands, near: ctx.fieldRect) { [weak self] pick in
@@ -234,17 +244,20 @@ public final class SmartPasteController {
         return d
     }
 
-    private func paste(_ text: String, clip: Clip, ctx: ContextSnapshot?) {
+    private func paste(_ text: String, clip: Clip, ctx: ContextSnapshot?, note: String? = nil) {
         executor.paste(text)
         store.markPasted(clip)
         if let ctx { feedback.expectOutcome(clipID: clip.id, context: ctx) }
         if settings.showStatusToast {
-            hud.showStatus("Pasted “\(clip.preview)”")
+            hud.showStatus("Pasted “\(clip.preview)”" + (note.map { " · \($0)" } ?? ""))
         }
     }
 
     private func makeEngine() -> DecisionEngine {
-        var engine = DecisionEngine(provider: makeProvider())
+        var engine = DecisionEngine(
+            provider: makeProvider(),
+            redactor: settings.piiRedaction ? redactor : nil
+        )
         engine.confidenceThreshold = settings.confidenceThreshold
         engine.lowConfidenceMode = settings.lowConfidenceMode
         return engine

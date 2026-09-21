@@ -1,9 +1,19 @@
 # SmartCopyPaste
 
 Smart clipboard for macOS. Watches the pasteboard (text + URLs), and on a
-hotkey — or every ⌘V if intercept mode is on — asks TypeSafe AI's **Jev**
+hotkey — or every ⌘V if intercept mode is on — asks a System One decision
 model which clip fits the focused field, then pastes it. Falls back to local
-heuristics when no API key is configured or the call fails.
+heuristics when no provider is configured or the call fails.
+
+Providers all speak the same `POST {base}/v1/systemone` contract — the
+difference is only `(url, model, key)`:
+
+- `jevDirect` — TypeSafe hosted Jev (`api.typesafe.ai`, `jev-latest`)
+- `jevGateway` — Jev via Vercel AI Gateway (`ai-gateway.vercel.sh/typesafe`, `typesafe-ai/jev`)
+- `kev` — local `kev.serve` (jaredpalmer/kev), default `http://127.0.0.1:8009`
+- `laya` — local shim `Scripts/laya_server.py` (convaiinnovations/laya), default `http://127.0.0.1:8765`
+- `custom` — any System One endpoint; bare host, `host:port`, or full URL
+- `none` — offline, `HeuristicRanker` only
 
 ## Commands
 
@@ -21,8 +31,10 @@ in `Sources/SCPKit`:
 - `ClipboardMonitor.swift` — polls `NSPasteboard.changeCount`
 - `Context.swift` — `ContextCaptor`: frontmost app + focused AX element (role/label/placeholder/value/rect). Secure fields are flagged, never read.
 - `Hotkeys.swift` — Carbon `RegisterEventHotKey`; `isSynthesizing` guards our own ⌘V. All bindings rebindable in Settings.
-- `Jev.swift` — `JSONValue`, `Question`/`Answer` contract, `JevClient` (one POST `{base}/v1/systemone`). Direct and AI Gateway are the same client with different `(url, model, key)`.
+- `Jev.swift` — `JSONValue`, `Question`/`Answer` contract, `JevClient` (one POST `{base}/v1/systemone`), `JevEndpoint.custom` URL normalization + `isRemote` loopback check.
+- `Redaction.swift` — `Redacting` protocol + `PIIRedactor` wrapping the desert-ant `redact` CoreML model (downloads on demand, ~12 MB).
 - `Decide.swift` — `DecisionEngine.decide(context:candidates:mode:feedback:) -> PasteOutcome`. The only thing the controller branches on. `HeuristicRanker` is the offline path behind the same outcome type.
+- `Scripts/laya_server.py` — stdlib-only local server that adapts laya's Python API to `/v1/systemone`.
 - `Paste.swift` — `PasteExecutor` (pasteboard write + synthesized ⌘V/Tab) and `FormFiller` (paste→Tab→decide loop, max 20 steps, Esc aborts).
 - `Controller.swift` — `SmartPasteController` orchestrates; `FeedbackTracker` learns from ⌘Z-within-2.5s.
 - `HUD.swift` — non-activating panels near the caret: top-3, full picker, status toast.
@@ -31,9 +43,10 @@ in `Sources/SCPKit`:
 
 ## Invariants — don't break these
 
-- **Secure fields**: `AXSecureTextField` → plain paste of latest, Jev is never called, value is never read.
+- **Secure fields**: `AXSecureTextField` → plain paste of latest, no provider call, value is never read.
 - **Never no-op a paste**: every failure path ends in `.pasteLatest`, not silence.
-- **Jev chooses, we execute**: transforms are deterministic local functions; the model only picks (it can't generate strings).
-- **No new dependencies.** SPM stdlib + AppKit + Carbon + SwiftUI only.
+- **Model chooses, we execute**: transforms are deterministic local functions; the model only picks (it can't generate strings).
+- **Fail-closed redaction**: when `piiRedaction` is on and the provider `isRemote`, clip text is scrubbed first — if scrubbing throws, the engine falls back to heuristics rather than send raw text. Loopback endpoints skip redaction by definition.
+- **One dependency**: `desert-ant-core` (the Redact PII model). Otherwise SPM stdlib + AppKit + Carbon + SwiftUI only — add nothing else without need.
 - Keys live in Keychain only; history is plain JSON — never log clip contents.
-- One Jev call per decision; all questions batch into it (they run parallel, share state cost).
+- One provider call per decision; all questions batch into it (they run parallel, share state cost).
