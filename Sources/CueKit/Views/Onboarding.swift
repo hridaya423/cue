@@ -13,7 +13,7 @@ public struct OnboardingView: View {
         VStack(spacing: 0) {
             // Header
             VStack(spacing: 6) {
-                Text("SmartCopyPaste")
+                Text("Cue")
                     .font(.system(size: 20, weight: .semibold))
                 Text(subtitle)
                     .font(.system(size: 12))
@@ -96,7 +96,7 @@ public struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Accessibility access", systemImage: trusted ? "checkmark.circle.fill" : "exclamationmark.circle")
                 .foregroundStyle(trusted ? .green : .orange)
-            Text("SmartCopyPaste reads the focused field's label and posts the paste keystroke into the app you're in. macOS requires Accessibility permission for both.")
+            Text("Cue reads the focused field's label and posts the paste keystroke into the app you're in. macOS requires Accessibility permission for both.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

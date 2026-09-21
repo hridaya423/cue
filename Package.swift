@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "SmartCopyPaste",
+    name: "Cue",
     platforms: [.macOS(.v15)],
     dependencies: [
         // On-device PII redaction (11.6 MB Core ML model, downloads on demand).
@@ -12,19 +12,19 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "SCPKit",
+            name: "CueKit",
             dependencies: [.product(name: "Redact", package: "desert-ant-core")],
-            path: "Sources/SCPKit"
+            path: "Sources/CueKit"
         ),
         .executableTarget(
-            name: "SmartCopyPaste",
-            dependencies: ["SCPKit"],
-            path: "Sources/SmartCopyPaste"
+            name: "Cue",
+            dependencies: ["CueKit"],
+            path: "Sources/Cue"
         ),
         .testTarget(
-            name: "SCPKitTests",
-            dependencies: ["SCPKit"],
-            path: "Tests/SCPKitTests"
+            name: "CueKitTests",
+            dependencies: ["CueKit"],
+            path: "Tests/CueKitTests"
         ),
     ]
 )

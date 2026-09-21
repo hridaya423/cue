@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Laya behind TypeSafe's System One contract, for SmartCopyPaste.
+"""Laya behind TypeSafe's System One contract, for Cue.
 
     pip install laya
     python3 Scripts/laya_server.py          # POST http://127.0.0.1:8765/v1/systemone

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import SCPKit
+@testable import CueKit
 
 struct FieldTests {
     private func field(role: String, secure: Bool = false) -> ContextSnapshot.Field {

@@ -276,7 +276,7 @@ public final class AppSettings {
 
 /// Thin Keychain wrapper — one service, per-item accounts.
 enum Keychain {
-    private static let service = "com.local.smartcopypaste"
+    private static let service = "com.local.cue"
 
     static func get(_ account: String) -> String? {
         let query: [String: Any] = [

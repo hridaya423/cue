@@ -1,0 +1,3 @@
+import CueKit
+
+CueApp.main()

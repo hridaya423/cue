@@ -1,3 +1,0 @@
-import SCPKit
-
-SCPApp.main()

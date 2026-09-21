@@ -1,4 +1,4 @@
-# SmartCopyPaste
+# Cue
 
 Smart clipboard for macOS. Watches the pasteboard (text + URLs), and on a
 hotkey — or every ⌘V if intercept mode is on — asks a System One decision
@@ -17,17 +17,17 @@ difference is only `(url, model, key)`:
 
 ## Commands
 
-- `swift build` / `swift test` — compile and run the test suite (all logic tests live in `Tests/SCPKitTests`)
-- `Scripts/bundle.sh` — builds `build/SmartCopyPaste.app` (ad-hoc signed, LSUIElement background app)
-- `open build/SmartCopyPaste.app` — run it
-- `tccutil reset Accessibility com.local.smartcopypaste` — required after rebuilds that invalidate the TCC grant
+- `swift build` / `swift test` — compile and run the test suite (all logic tests live in `Tests/CueKitTests`)
+- `Scripts/bundle.sh` — builds `build/Cue.app` (ad-hoc signed, LSUIElement background app)
+- `open build/Cue.app` — run it
+- `tccutil reset Accessibility com.local.cue` — required after rebuilds that invalidate the TCC grant
 
 ## Layout
 
-`Sources/SmartCopyPaste/main.swift` is a one-line trampoline; everything lives
-in `Sources/SCPKit`:
+`Sources/Cue/main.swift` is a one-line trampoline; everything lives
+in `Sources/CueKit`:
 
-- `Clip.swift`, `ClipStore.swift` — model + JSON history at `~/Library/Application Support/SmartCopyPaste/history.json` (cap from settings, pins exempt)
+- `Clip.swift`, `ClipStore.swift` — model + JSON history at `~/Library/Application Support/Cue/history.json` (cap from settings, pins exempt)
 - `ClipboardMonitor.swift` — polls `NSPasteboard.changeCount`
 - `Context.swift` — `ContextCaptor`: frontmost app + focused AX element (role/label/placeholder/value/rect). Secure fields are flagged, never read.
 - `Hotkeys.swift` — Carbon `RegisterEventHotKey`; `isSynthesizing` guards our own ⌘V. All bindings rebindable in Settings.

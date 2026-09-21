@@ -148,11 +148,11 @@ public final class AppModel {
 }
 
 @MainActor
-public struct SCPApp: App {
+public struct CueApp: App {
     public init() {}
 
     public var body: some Scene {
-        MenuBarExtra("SmartCopyPaste", systemImage: "doc.on.clipboard") {
+        MenuBarExtra("Cue", systemImage: "paperclip") {
             // First access happens inside body evaluation (MainActor),
             // which is where AppModel builds the whole object graph.
             MenuBarView(model: AppModel.shared)

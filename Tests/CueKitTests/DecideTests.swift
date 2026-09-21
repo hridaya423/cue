@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import SCPKit
+@testable import CueKit
 
 struct TransformsTests {
     @Test func all() {

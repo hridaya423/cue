@@ -17,9 +17,16 @@ public final class ClipStore {
     }
 
     public static var defaultFileURL: URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("SmartCopyPaste", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fm = FileManager.default
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = support.appendingPathComponent("Cue", isDirectory: true)
+        // One-time rename from the SmartCopyPaste build: history + feedback
+        // ride along so the rebrand doesn't wipe them.
+        let old = support.appendingPathComponent("SmartCopyPaste", isDirectory: true)
+        if !fm.fileExists(atPath: dir.path), fm.fileExists(atPath: old.path) {
+            try? fm.moveItem(at: old, to: dir)
+        }
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("history.json")
     }
 
@@ -101,7 +108,7 @@ public final class ClipStore {
             let data = try JSONEncoder.clips.encode(clips)
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            NSLog("SmartCopyPaste: failed to save history: \(error)")
+            NSLog("Cue: failed to save history: \(error)")
         }
     }
 

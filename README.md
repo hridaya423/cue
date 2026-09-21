@@ -1,10 +1,10 @@
-# SmartCopyPaste
+# Cue
 
-What if copy/paste was smart? A local macOS app that keeps your clipboard
-history and — on a hotkey, or every ⌘V if you enable interception — asks a
-typed decision model which clip fits the field you're pasting into.
-Context-aware picks, calibrated confidence, no hallucinated text: the model
-only ever *chooses* among your real clips.
+Your clipboard is a queue; Cue sends the right clip on stage. A local macOS
+app that keeps your clipboard history and — on a hotkey, or every ⌘V if you
+enable interception — asks a typed decision model which clip fits the field
+you're pasting into. Context-aware picks, calibrated confidence, no
+hallucinated text: the model only ever *chooses* among your real clips.
 
 Runs against TypeSafe's hosted **Jev**, Jev via **AI Gateway**, fully local
 open-weight models (**Kev**, **Laya**), or **any self-hosted endpoint** that
@@ -15,15 +15,15 @@ Inspired by [@marcus_lowe's demo](https://x.com/marcus_lowe/status/2101476399488
 ## Build & run
 
 ```sh
-Scripts/bundle.sh        # → build/SmartCopyPaste.app
-open build/SmartCopyPaste.app
+Scripts/bundle.sh        # → build/Cue.app
+open build/Cue.app
 ```
 
 Requires macOS 15+, Xcode 26. One dependency: `desert-ant-core` (on-device
 PII redaction). Grant **Accessibility** when prompted (needed to read the
 focused field and post the paste keystroke). After rebuilding, if the
 permission grant sticks to the old binary:
-`tccutil reset Accessibility com.local.smartcopypaste`.
+`tccutil reset Accessibility com.local.cue`.
 
 ## How it works
 
@@ -71,7 +71,7 @@ that data never leaves the device anyway.
 - On-device PII redaction before any cloud call (opt-out, off for local providers)
 - Learns from undos: ⌘Z right after a pick demotes it for that context
 - Password fields are never analyzed and never sent anywhere
-- Keys in Keychain; history is plain JSON in `~/Library/Application Support/SmartCopyPaste/`
+- Keys in Keychain; history is plain JSON in `~/Library/Application Support/Cue/`
 
 ## Development
 
@@ -79,6 +79,6 @@ that data never leaves the device anyway.
 swift test   # 39 tests: store, Jev contract, transforms, heuristic, engine, redaction gating
 ```
 
-`Sources/SCPKit/` is the whole app; `Sources/SmartCopyPaste/main.swift` is a
+`Sources/CueKit/` is the whole app; `Sources/Cue/main.swift` is a
 trampoline. Menu bar → "Run self-check" drives a real end-to-end paste into a
 live text field and asserts the result. See `AGENTS.md` for invariants.
