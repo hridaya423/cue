@@ -6,6 +6,14 @@ public struct MenuBarView: View {
     public var body: some View {
         Text(statusLine)
             .foregroundStyle(.secondary)
+        if let action = model.controller.lastAction {
+            Text("last: \(action)")
+                .foregroundStyle(.secondary)
+        }
+        if model.settings.triggerMode == .intercept, !model.trusted {
+            Text("⌘V interception paused — needs Accessibility")
+                .foregroundStyle(.orange)
+        }
         Divider()
 
         ForEach(model.store.clips.prefix(3)) { clip in

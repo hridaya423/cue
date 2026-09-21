@@ -9,15 +9,21 @@ public struct WeightSpec: Sendable, Equatable, Identifiable {
     public var diskLabel: String     // "~9 GB"
     public var ramLabel: String      // "~10 GB"
     public var recommended = false
+    /// Meter bars in the picker, 0…1. Editorial estimates — replace with
+    /// eval_systemone.py numbers when we have real benchmark data.
+    public var accuracy: Double
+    public var speed: Double
     /// The `model` field sent in requests (e.g. kev-latest, multilingual).
     public var serveModel: String
     /// Hub repo or checkpoint id, substituted for {weights} in serve argv.
     public var hfRepo: String
 
     public init(id: String, paramsLabel: String, diskLabel: String, ramLabel: String,
-                recommended: Bool = false, serveModel: String, hfRepo: String) {
+                recommended: Bool = false, accuracy: Double = 0.5, speed: Double = 0.5,
+                serveModel: String, hfRepo: String) {
         self.id = id; self.paramsLabel = paramsLabel; self.diskLabel = diskLabel
         self.ramLabel = ramLabel; self.recommended = recommended
+        self.accuracy = accuracy; self.speed = speed
         self.serveModel = serveModel; self.hfRepo = hfRepo
     }
 }
@@ -28,6 +34,9 @@ public struct ModelSpec: Sendable, Identifiable {
     public var title: String
     /// Lower = better; Others list and recommendations sort on this.
     public var rank: Int
+    /// The plain-language pitch shown as the card's badge — users don't know
+    /// what kev/laya/von are; "Best balance" is what they can choose on.
+    public var reason: String
     public var defaultPort: Int
     public var blurb: String
     public var kind: Kind
@@ -95,7 +104,7 @@ public enum ModelCatalog {
     // MARK: Entries
 
     public static let kev = ModelSpec(
-        id: "kev", title: "Kev", rank: 2, defaultPort: 8009,
+        id: "kev", title: "Kev", rank: 2, reason: "Best local accuracy", defaultPort: 8009,
         blurb: "Jared Palmer's Jev-style family — LoRA adapters on Qwen3.5. Real LLM reasoning, bigger downloads.",
         kind: .repo(url: "https://github.com/jaredpalmer/kev.git",
                     syncExtras: ["serve"], installArgv: [],
@@ -104,42 +113,50 @@ public enum ModelCatalog {
         support: .supported,
         variants: [
             WeightSpec(id: "kev-0.8b", paramsLabel: "0.8B", diskLabel: "~2 GB", ramLabel: "~4 GB",
-                       recommended: true, serveModel: "kev-latest", hfRepo: "jaredpalmer/kev-0.8b"),
+                       recommended: true, accuracy: 0.6, speed: 0.8,
+                       serveModel: "kev-latest", hfRepo: "jaredpalmer/kev-0.8b"),
             WeightSpec(id: "kev-4b", paramsLabel: "4B", diskLabel: "~9 GB", ramLabel: "~10 GB",
+                       accuracy: 0.75, speed: 0.55,
                        serveModel: "kev-latest", hfRepo: "jaredpalmer/kev-4b"),
             WeightSpec(id: "kev-8b", paramsLabel: "8B", diskLabel: "~17 GB", ramLabel: "~18 GB",
+                       accuracy: 0.85, speed: 0.35,
                        serveModel: "kev-latest", hfRepo: "jaredpalmer/kev-8b"),
             WeightSpec(id: "kev-9b", paramsLabel: "9B", diskLabel: "~19 GB", ramLabel: "~20 GB",
+                       accuracy: 0.9, speed: 0.3,
                        serveModel: "kev-latest", hfRepo: "jaredpalmer/kev-9b"),
         ])
 
     public static let laya = ModelSpec(
-        id: "laya", title: "Laya", rank: 3, defaultPort: 8765,
+        id: "laya", title: "Laya", rank: 3, reason: "Fastest", defaultPort: 8765,
         blurb: "421M encoder, ~33ms, single forward pass. Smallest + fastest option; pip-installable.",
         kind: .shim(packages: ["laya"]),
         support: .supported,
         variants: [
             WeightSpec(id: "laya-en", paramsLabel: "421M", diskLabel: "~900 MB", ramLabel: "~1 GB",
-                       recommended: true, serveModel: "laya", hfRepo: "convaiinnovations/laya"),
+                       recommended: true, accuracy: 0.7, speed: 0.95,
+                       serveModel: "laya", hfRepo: "convaiinnovations/laya"),
             WeightSpec(id: "laya-multi", paramsLabel: "322M", diskLabel: "~700 MB", ramLabel: "~1 GB",
+                       accuracy: 0.6, speed: 0.95,
                        serveModel: "multilingual", hfRepo: "convaiinnovations/laya-multilingual"),
             WeightSpec(id: "laya-typed", paramsLabel: "421M", diskLabel: "~900 MB", ramLabel: "~1 GB",
+                       accuracy: 0.7, speed: 0.9,
                        serveModel: "typed-decisions", hfRepo: "convaiinnovations/laya-typed-decisions"),
         ])
 
     public static let von = ModelSpec(
-        id: "von", title: "Von", rank: 1, defaultPort: 8766,
+        id: "von", title: "Von", rank: 1, reason: "Best balance", defaultPort: 8766,
         blurb: "Best open local decision model — 395M encoder, ~18ms on Apple Silicon, leads the 49-task suite.",
         kind: .venv(packages: ["von-sdk"],
                     serveArgv: ["von", "serve", "--host", "127.0.0.1", "--port", "{port}"]),
         support: .supported,
         variants: [
             WeightSpec(id: "von-1.0", paramsLabel: "395M", diskLabel: "~1.5 GB", ramLabel: "~2 GB",
-                       recommended: true, serveModel: "von-1.0", hfRepo: "wfzyx/von-1.0"),
+                       recommended: true, accuracy: 0.85, speed: 0.9,
+                       serveModel: "von-1.0", hfRepo: "wfzyx/von-1.0"),
         ])
 
     public static let jevons = ModelSpec(
-        id: "jevons", title: "Jevons", rank: 4, defaultPort: 8767,
+        id: "jevons", title: "Jevons", rank: 4, reason: "Apple Silicon native", defaultPort: 8767,
         blurb: "1.2B LFM2.5 seed LoRA via MLX — native Apple Silicon. Smallest LLM-style option.",
         kind: .repo(url: "https://github.com/gopalanj/jevons.git",
                     syncExtras: ["mlx"],
@@ -154,11 +171,12 @@ public enum ModelCatalog {
         support: .experimental("MLX build; adapter quality still improving"),
         variants: [
             WeightSpec(id: "jevons-1.2b", paramsLabel: "1.2B", diskLabel: "~1.5 GB", ramLabel: "~2 GB",
-                       recommended: true, serveModel: "jevons", hfRepo: "gopalanj/jevons-lfm25-1.2b-systemone"),
+                       recommended: true, accuracy: 0.6, speed: 0.7,
+                       serveModel: "jevons", hfRepo: "gopalanj/jevons-lfm25-1.2b-systemone"),
         ])
 
     public static let jevlite = ModelSpec(
-        id: "jevlite", title: "jev-lite", rank: 5, defaultPort: 8768,
+        id: "jevlite", title: "jev-lite", rank: 5, reason: "Logits decision head", defaultPort: 8768,
         blurb: "QLoRA on Gemma E4B — logits-read decision head, 4-bit base.",
         kind: .repo(url: "https://github.com/vagmi/jevlite.git",
                     syncExtras: [], installArgv: [],
@@ -167,19 +185,21 @@ public enum ModelCatalog {
         support: .experimental("bitsandbytes 4-bit is fragile on macOS"),
         variants: [
             WeightSpec(id: "jev-lite-e4b", paramsLabel: "4B", diskLabel: "~4 GB", ramLabel: "~6 GB",
-                       recommended: true, serveModel: "jev-lite", hfRepo: "vagmi/jev-lite"),
+                       recommended: true, accuracy: 0.7, speed: 0.5,
+                       serveModel: "jev-lite", hfRepo: "vagmi/jev-lite"),
         ])
 
     /// flash-linear-attention is a hard dep and Triton has no macOS wheels —
     /// listed so the catalog is complete, but not installable here.
     public static let decider = ModelSpec(
-        id: "decider", title: "Decider", rank: 6, defaultPort: 8769,
+        id: "decider", title: "Decider", rank: 6, reason: "Largest local", defaultPort: 8769,
         blurb: "1.9B Qwen3.5 full fine-tune, one-pass typed decisions.",
         kind: .venv(packages: ["decider @ git+https://github.com/Mapika/decider"],
                     serveArgv: ["python", "-m", "decider.serve", "--port", "{port}"]),
         support: .unsupported("needs NVIDIA/Triton kernels"),
         variants: [
             WeightSpec(id: "decider-2b", paramsLabel: "1.9B", diskLabel: "~4 GB", ramLabel: "~5 GB",
+                       accuracy: 0.8, speed: 0.4,
                        serveModel: "decider-2b", hfRepo: "Mapika/decider-2b"),
         ])
 }

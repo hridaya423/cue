@@ -31,11 +31,11 @@ in `Sources/CueKit`:
 - `Clip.swift`, `ClipStore.swift` — model + JSON history at `~/Library/Application Support/Cue/history.json` (cap from settings, pins exempt)
 - `ClipboardMonitor.swift` — polls `NSPasteboard.changeCount`; `PasteboardGate` — image/file pasteboards pass through before any model call
 - `Context.swift` — `ContextCaptor`: frontmost app + focused AX element (role/label/placeholder/value/rect). Secure fields are flagged, never read.
-- `Hotkeys.swift` — Carbon `RegisterEventHotKey`; `isSynthesizing` guards our own ⌘V. All bindings rebindable in Settings.
+- `Hotkeys.swift` — Carbon `RegisterEventHotKey`; `isSynthesizing` guards our own ⌘V. ⌘V interception only registers while Accessibility-trusted (a swallowed keystroke we can't repost is worse than none) — a 1s poll re-registers on grant. All bindings rebindable in Settings.
 - `Jev.swift` — `JSONValue`, `Question`/`Answer` contract, `JevClient` (one POST `{base}/v1/systemone`), `JevEndpoint.custom` URL normalization + `isRemote` loopback check, `StatusTrackingProvider`/`ProviderStatus` for reachability UI.
 - `Models.swift` — `ModelCatalog` (benchmark-ranked local model specs: variants, disk/RAM, support tier) + `ModelManager` (uv bootstrap, install via venv/repo/shim, start/stop, health). Absolute tool paths; pipes drained.
 - `Redaction.swift` — `Redacting` protocol + `PIIRedactor` wrapping the desert-ant `redact` CoreML model (downloads on demand, ~12 MB).
-- `Decide.swift` — `DecisionEngine.decide(context:candidates:mode:feedback:) -> PasteOutcome`. The only thing the controller branches on.
+- `Decide.swift` — `DecisionEngine.decide(context:candidates:mode:feedback:) -> PasteOutcome`. The only thing the controller branches on. A pick is decisive when confidence OR the probability leader clears the threshold — small local models report conservative confidence on correct picks. `SpanExtractor` detects email/phone/URL spans (advertised in pick criteria past the 80-char preview) for the extract transforms.
 - `Scripts/laya_server.py` — stdlib-only local server that adapts laya's Python API to `/v1/systemone`.
 - `Paste.swift` — `PasteExecutor` (pasteboard write + synthesized ⌘V/Tab) and `FormFiller` (paste→Tab→decide loop, max 20 steps, Esc aborts).
 - `Controller.swift` — `SmartPasteController` orchestrates; `FeedbackTracker` learns from ⌘Z-within-2.5s.

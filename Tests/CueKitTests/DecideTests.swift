@@ -11,6 +11,42 @@ struct TransformsTests {
             "https://x.com/p?utm_source=twitter&a=1&fbclid=abc") == "https://x.com/p?a=1")
         #expect(Transform.asIs.apply("  keep  ") == "  keep  ")
     }
+
+    @Test func extractEmail() {
+        // The contact-card case: name + email copied together, only the
+        // address belongs in a To: field.
+        #expect(Transform.extractEmail.apply("hridya agrawal hridayahoney@gmail.com")
+            == "hridayahoney@gmail.com")
+        #expect(Transform.extractEmail.apply("Jane Doe <jane@example.com>") == "jane@example.com")
+        // No match → unchanged; extraction never produces nothing.
+        #expect(Transform.extractEmail.apply("no email here") == "no email here")
+    }
+
+    @Test func extractPhoneAndURL() {
+        #expect(Transform.extractPhone.apply("call Jane +1 (415) 555-0132 tomorrow")
+            == "+1 (415) 555-0132")
+        #expect(Transform.extractURL.apply("see https://example.com/a?b=1 for details")
+            == "https://example.com/a?b=1")
+    }
+}
+
+struct SpanExtractorTests {
+    @Test func emails() {
+        #expect(SpanExtractor.emails(in: "a b x@y.co c") == ["x@y.co"])
+        #expect(SpanExtractor.emails(in: "none") == [])
+        // Multiple addresses all surface.
+        #expect(SpanExtractor.emails(in: "a@b.co then c@d.io").count == 2)
+    }
+
+    @Test func urlsSkipMailto() {
+        let spans = SpanExtractor.urls(in: "mail me@x.com or visit https://example.com")
+        #expect(spans == ["https://example.com"])
+    }
+
+    @Test func spansDedup() {
+        let spans = SpanExtractor.spans(in: "jane@x.com jane@x.com +1 415 555 0132")
+        #expect(spans.filter { $0 == "jane@x.com" }.count == 1)
+    }
 }
 
 // MARK: - Engine
@@ -85,12 +121,34 @@ struct DecisionEngineTests {
     }
 
     @Test func lowConfidenceShowsTop3() async {
-        var engine = DecisionEngine(provider: StubProvider(response: response(pick: "c2", conf: 0.5)))
+        // Neither confidence nor the probability leader is decisive → HUD.
+        var engine = DecisionEngine(provider: StubProvider(response: response(
+            pick: "c2", conf: 0.5, probs: ["c1": 0.45, "c2": 0.55])))
         engine.confidenceThreshold = 0.7
         engine.lowConfidenceMode = .top3
         let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
         guard case .top3(let cands) = outcome else { Issue.record("expected top3, got \(outcome)"); return }
         #expect(cands.count == 2)
+    }
+
+    @Test func decisiveLeaderPastesDespiteLowConfidence() async {
+        // The Von regression: conf 0.526 < 0.7 but a 76%/24% probability
+        // leader is decisive — paste it rather than popping a HUD.
+        var engine = DecisionEngine(provider: StubProvider(response: response(
+            pick: "c1", conf: 0.526, probs: ["c1": 0.7627, "c2": 0.2372])))
+        engine.confidenceThreshold = 0.7
+        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
+        #expect(d.clip.text == "latest clip")
+    }
+
+    @Test func interceptDecisiveLeaderStillPastes() async {
+        var engine = DecisionEngine(provider: StubProvider(response: response(
+            pick: "c1", conf: 0.526, useLatest: 0.2, probs: ["c1": 0.7627, "c2": 0.2372])))
+        engine.confidenceThreshold = 0.7
+        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .intercept)
+        guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
+        #expect(d.clip.text == "latest clip")
     }
 
     @Test func interceptModeRespectsUseLatest() async {
@@ -129,10 +187,13 @@ struct DecisionEngineTests {
     }
 
     @Test func formFillModeNeverShowsHUD() async {
-        var engine = DecisionEngine(provider: StubProvider(response: response(pick: "c2", conf: 0.3)))
+        // 3-way split: no probability leader can reach 0.5 → stop the form.
+        let three = clips + [Clip(text: "third", kind: .text)]
+        var engine = DecisionEngine(provider: StubProvider(response: response(
+            pick: "c2", conf: 0.3, probs: ["c1": 0.4, "c2": 0.35, "c3": 0.25])))
         engine.confidenceThreshold = 0.7
         engine.lowConfidenceMode = .top3 // must be ignored in formFill
-        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .formFill)
+        let outcome = await engine.decide(context: makeContext(), candidates: three, mode: .formFill)
         guard case .pasteLatest = outcome else {
             Issue.record("low confidence mid-form should stop, got \(outcome)"); return
         }
@@ -157,8 +218,10 @@ struct DecisionEngineTests {
 
     @Test func interceptLowConfidenceIsPlainPaste() async {
         // A hesitant smart-paste on an intercepted ⌘V must degrade to normal
-        // paste — popping a HUD on every ⌘V would be unusable.
-        var engine = DecisionEngine(provider: StubProvider(response: response(pick: "c2", conf: 0.4)))
+        // paste — popping a HUD on every ⌘V would be unusable. Neither the
+        // confidence nor the probability split is decisive here.
+        var engine = DecisionEngine(provider: StubProvider(response: response(
+            pick: "c2", conf: 0.4, probs: ["c1": 0.4, "c2": 0.6])))
         engine.confidenceThreshold = 0.7
         engine.lowConfidenceMode = .top3
         let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .intercept)
@@ -197,8 +260,9 @@ struct DecisionEngineTests {
         }
         #expect(criteria["c2"]?.string?.contains("[PII]") == true)
         #expect(criteria["c2"]?.string?.contains("me@example.com") == false)
-        // The raw text stayed on-device — only the local redactor saw it.
-        #expect(redactor.seen.contains("me@example.com"))
+        // The raw text stayed on-device — only the local redactor saw it
+        // (whole criteria lines are scrubbed, so it arrives as a substring).
+        #expect(redactor.seen.contains { $0.contains("me@example.com") })
     }
 
     @Test func loopbackProviderSkipsRedaction() async {
@@ -244,6 +308,49 @@ struct DecisionEngineTests {
         let engine = DecisionEngine(provider: StubProvider(response: response(pick: "c1", conf: 1)))
         let outcome = await engine.decide(context: makeContext(), candidates: [], mode: .hotkey)
         guard case .pasteLatest = outcome else { Issue.record("expected pasteLatest"); return }
+    }
+
+    @Test func extractTransformPastesOnlyTheSpan() async {
+        // Contact-card clip picked for a To: field + extract_email → the
+        // field gets just the address, not "name address".
+        let card = [Clip(text: "hridya agrawal hridayahoney@gmail.com", kind: .text),
+                    Clip(text: "unrelated", kind: .text)]
+        var engine = DecisionEngine(provider: StubProvider(response: response(
+            pick: "c1", conf: 0.95, transform: "extract_email")))
+        engine.confidenceThreshold = 0.7
+        let outcome = await engine.decide(context: makeContext(label: "To:"), candidates: card, mode: .hotkey)
+        guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
+        #expect(d.text == "hridayahoney@gmail.com")
+    }
+
+    @Test func spanHintsReachTheModelPastPreviewTruncation() async {
+        // Preview truncates at 80 chars — an email at char 100 must still be
+        // advertised to the model via the "contains:" criteria hint.
+        let long = Clip(text: String(repeating: "lorem ipsum dolor sit amet ", count: 4)
+                        + "buried@example.com", kind: .text)
+        let provider = StubProvider(response: response(pick: "c1", conf: 0.9))
+        var engine = DecisionEngine(provider: provider)
+        engine.confidenceThreshold = 0.7
+        _ = await engine.decide(context: makeContext(), candidates: [long, clips[0]], mode: .hotkey)
+
+        guard let pick = provider.box.questions.first?["pick"]?.jsonValue["criteria"],
+              case .object(let criteria) = pick,
+              case .string(let c1) = criteria["c1"] else {
+            Issue.record("no pick criteria captured"); return
+        }
+        #expect(!long.preview.contains("buried@example.com")) // premise: it IS truncated
+        #expect(c1.contains("buried@example.com"))
+        #expect(c1.contains("contains:"))
+    }
+
+    @Test func pasteLatestCarriesReason() async {
+        // Menu bar breadcrumb: every plain-paste outcome says why.
+        let engine = DecisionEngine(provider: nil)
+        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        guard case .pasteLatest(let reason) = outcome, reason == .noProvider else {
+            Issue.record("expected pasteLatest(.noProvider), got \(outcome)"); return
+        }
+        #expect(!reason.label.isEmpty)
     }
 }
 

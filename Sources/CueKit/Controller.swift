@@ -100,6 +100,9 @@ public final class FeedbackTracker {
 @MainActor @Observable
 public final class SmartPasteController {
     public private(set) var busy = false
+    /// One-line record of the most recent outcome — the menu bar shows it so
+    /// a silent fallback is never mysterious ("plain paste · model unreachable").
+    public private(set) var lastAction: String?
 
     private let store: ClipStore
     private let settings: AppSettings
@@ -131,33 +134,54 @@ public final class SmartPasteController {
 
     /// Entry point for the smart-paste hotkey (and ⌘V when intercepting).
     public func smartPaste() {
-        // A HUD is already up — ⌘V/⌃⌥V here means "interact with the panel",
-        // not another decision.
-        guard !busy, !hud.isShowing else { return }
+        let intercepted = settings.triggerMode == .intercept
+        // Intercept contract: the real keystroke was already eaten — every
+        // exit must produce a paste. Hotkey mode ate nothing, so a bail just
+        // informs instead.
+        func bail(_ action: String, toast: String? = nil) {
+            lastAction = action
+            if let toast { hud.showStatus(toast) }
+            if intercepted { pasteLatest() }
+        }
+
+        if busy || hud.isShowing {
+            // HUD up → this press belongs to it; treat as "none of these".
+            if hud.isShowing { hud.dismiss() }
+            bail("plain paste · busy", toast: intercepted ? nil : "Still deciding…")
+            return
+        }
         guard ContextCaptor.isTrusted else {
             ContextCaptor.requestTrust()
-            hud.showStatus("Accessibility permission needed — check System Settings")
+            // Untrusted shouldn't intercept at all (the hotkey isn't
+            // registered) — a race can still land here; repost is a no-op
+            // if CGEvent is also untrusted, so the toast carries the info.
+            bail("plain paste · needs Accessibility",
+                 toast: "Accessibility permission needed — check System Settings")
             return
         }
         let ctx = ContextCaptor.capture()
 
         // Image/file on the pasteboard → the user wants that, not a text pick.
         if PasteboardGate.shouldPassThrough() {
+            lastAction = "plain paste · image/file on clipboard"
             pasteLatest()
             return
         }
         // Never think about password fields: plain paste, no API call.
         if ctx.field.isSecure {
+            lastAction = "plain paste · secure field"
             pasteLatest()
             return
         }
         // Queue mode: deterministic FIFO, no model call.
         if settings.queueMode, let clip = store.popQueue() {
+            lastAction = "queued paste · \"\(clip.preview)\""
             paste(clip.text, clip: clip, ctx: ctx)
             return
         }
         guard !store.clips.isEmpty else {
-            hud.showStatus("Clipboard history is empty")
+            bail("plain paste · history empty",
+                 toast: intercepted ? nil : "Clipboard history is empty")
             return
         }
 
@@ -214,22 +238,28 @@ public final class SmartPasteController {
         switch outcome {
         case .paste(let d):
             let note = d.transform == .asIs ? nil : d.transform.rawValue.replacing("_", with: " ")
+            lastAction = "pasted \"\(d.clip.preview)\"" + (note.map { " · \($0)" } ?? "")
             paste(d.text, clip: d.clip, ctx: ctx, note: note)
             if d.isForm { await formFiller?.run() }
         case .top3(let cands):
+            lastAction = "showed top 3"
             hud.showTop3(candidates: cands, near: ctx.fieldRect) { [weak self] pick in
                 guard let self else { return }
-                // Esc means "plain paste" — the toast promises it.
-                guard let pick else { self.pasteLatest(); return }
+                // Esc/⌘V means "plain paste" — the toast promises it.
+                guard let pick else { self.lastAction = "plain paste · declined options"; self.pasteLatest(); return }
+                self.lastAction = "pasted \"\(pick.clip.preview)\" · picked"
                 self.paste(pick.clip.text, clip: pick.clip, ctx: ctx)
             }
         case .picker(let cands):
+            lastAction = "showed picker"
             hud.showPicker(candidates: cands, near: ctx.fieldRect) { [weak self] pick in
                 guard let self else { return }
-                guard let pick else { self.pasteLatest(); return }
+                guard let pick else { self.lastAction = "plain paste · declined options"; self.pasteLatest(); return }
+                self.lastAction = "pasted \"\(pick.clip.preview)\" · picked"
                 self.paste(pick.clip.text, clip: pick.clip, ctx: ctx)
             }
-        case .pasteLatest:
+        case .pasteLatest(let reason):
+            lastAction = "plain paste · \(reason.label)"
             pasteLatest()
         }
     }

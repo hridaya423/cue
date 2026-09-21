@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// The hierarchical provider picker shared by onboarding and Settings.
-/// Rows: Jev → Kev → Laya → Other local models → Custom endpoint → Off.
-/// Selecting a row sets `settings.provider`; rows expand to their detail.
+/// The provider picker shared by onboarding and Settings.
+/// Users don't know what kev/laya/von are — the picker leads with what each
+/// model is *for*: Jev hosted on top, then local cards pitched by reason
+/// (best balance / best accuracy / fastest) with meters, sizes, and inline
+/// install/run controls. Everything else is one disclosure away.
 public struct ProviderPicker: View {
     var model: AppModel
 
@@ -15,146 +17,171 @@ public struct ProviderPicker: View {
     private var settings: AppSettings { model.settings }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            jevRow
-            localRow(ModelCatalog.kev)
-            localRow(ModelCatalog.laya)
+        VStack(alignment: .leading, spacing: 10) {
+            jevCard
+            sectionHeader("Local models — on-device, private")
+            modelCard(ModelCatalog.von)
+            modelCard(ModelCatalog.kev)
+            modelCard(ModelCatalog.laya)
             othersRow
+            sectionHeader("Advanced")
             customRow
             offRow
         }
     }
 
-    // MARK: - Rows
-
-    private var jevRow: some View {
-        row(
-            title: "Jev",
-            detail: "TypeSafe's hosted decision model — best quality, ~100ms. Via TypeSafe direct or Vercel AI Gateway.",
-            selected: settings.provider == .jevDirect || settings.provider == .jevGateway
-        ) {
-            if settings.provider != .jevDirect && settings.provider != .jevGateway {
-                settings.provider = .jevDirect
-            }
-        } detail: {
-            if settings.provider == .jevDirect || settings.provider == .jevGateway {
-                VStack(alignment: .leading, spacing: 8) {
-                    subCard("TypeSafe direct", "api.typesafe.ai · TYPESAFE_API_KEY",
-                            selected: settings.provider == .jevDirect) {
-                        settings.provider = .jevDirect
-                    }
-                    subCard("AI Gateway", "ai-gateway.vercel.sh/typesafe · AI_GATEWAY_API_KEY",
-                            selected: settings.provider == .jevGateway) {
-                        settings.provider = .jevGateway
-                    }
-                    SecureField("API key", text: jevKeyBinding)
-                        .textFieldStyle(.roundedBorder)
-                    testRow
-                }
-                .padding(.top, 6)
-            }
-        }
+    private func sectionHeader(_ s: String) -> some View {
+        Text(s)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
     }
 
-    private func localRow(_ spec: ModelSpec) -> some View {
-        let selected = settings.provider == .local && settings.localModelID == spec.id
-        return row(
-            title: spec.title,
-            detail: spec.blurb,
-            selected: selected
-        ) {
-            selectLocal(spec)
-        } detail: {
-            if selected { localDetail(spec).padding(.top, 6) }
-        }
-    }
+    // MARK: - Jev (hosted)
 
-    private var othersRow: some View {
-        let others = ModelCatalog.others
-        let selected = settings.provider == .local && others.contains { $0.id == settings.localModelID }
-        return row(
-            title: "Other local models",
-            detail: "More open System One models — ranked by benchmark. Same contract, fully on-device.",
-            selected: selected,
-            accessory: othersExpanded ? "chevron.up" : "chevron.down"
-        ) {
-            withAnimation(.easeInOut(duration: 0.15)) { othersExpanded.toggle() }
-        } detail: {
-            if othersExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(others) { spec in
-                        let sel = selected && settings.localModelID == spec.id
-                        subCard("\(spec.title)", spec.blurb, selected: sel, badge: badge(for: spec)) {
-                            selectLocal(spec)
+    private var jevCard: some View {
+        let selected = settings.provider == .jevDirect || settings.provider == .jevGateway
+        return card(selected: selected) {
+            settings.provider = .jevDirect
+        } content: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Jev").font(.system(size: 14, weight: .semibold))
+                        HStack(spacing: 5) {
+                            pill("Hosted · best quality")
+                            if selected { pill("Active", accent: true) }
                         }
-                        if sel { localDetail(spec).padding(.leading, 12) }
                     }
+                    Spacer()
+                    meters(accuracy: 0.95, speed: 0.65)
                 }
-                .padding(.top, 6)
-            }
-        }
-    }
-
-    private var customRow: some View {
-        row(
-            title: "Custom endpoint",
-            detail: "Any server answering POST {base}/v1/systemone — self-hosted or third-party.",
-            selected: settings.provider == .custom
-        ) {
-            settings.provider = .custom
-        } detail: {
-            if settings.provider == .custom {
-                VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("Endpoint") {
-                        TextField("https://host:port", text: customURLBinding)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    LabeledContent("Model") {
-                        TextField("model", text: customModelBinding)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 160)
-                    }
-                    SecureField("Bearer key (optional)", text: customKeyBinding)
-                        .textFieldStyle(.roundedBorder)
-                    testRow
-                }
-                .padding(.top, 6)
-            }
-        }
-    }
-
-    private var offRow: some View {
-        row(
-            title: "Off",
-            detail: "No model calls. ⌘V and the smart hotkey paste normally — Cue just keeps history.",
-            selected: settings.provider == .off
-        ) {
-            settings.provider = .off
-        } detail: { EmptyView() }
-    }
-
-    // MARK: - Local model detail
-
-    @ViewBuilder
-    private func localDetail(_ spec: ModelSpec) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if spec.variants.count > 1 {
-                Picker("Weights", selection: variantBinding(spec)) {
-                    ForEach(spec.variants) { v in
-                        Text("\(v.paramsLabel) · \(v.diskLabel)").tag(v.id)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-            if let v = resolvedVariant(spec) {
-                Text("\(v.paramsLabel) params · \(v.diskLabel) disk · \(v.ramLabel) RAM")
+                Text("TypeSafe's hosted decision model — strongest picks, ~100ms, needs an API key. Via TypeSafe direct or Vercel AI Gateway.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if selected {
+                    Divider().opacity(0.5)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            subCard("TypeSafe direct", "api.typesafe.ai",
+                                    selected: settings.provider == .jevDirect) {
+                                settings.provider = .jevDirect
+                            }
+                            subCard("AI Gateway", "ai-gateway.vercel.sh",
+                                    selected: settings.provider == .jevGateway) {
+                                settings.provider = .jevGateway
+                            }
+                        }
+                        SecureField("API key", text: jevKeyBinding)
+                            .textFieldStyle(.roundedBorder)
+                        testRow
+                    }
+                }
             }
-            supportNote(spec)
-            stateRow(spec)
         }
     }
+
+    // MARK: - Local model cards
+
+    private func modelCard(_ spec: ModelSpec) -> some View {
+        let selected = settings.provider == .local && settings.localModelID == spec.id
+        let v = resolvedVariant(spec)
+        let state = model.models.status(of: spec.id)
+        let unsupported = spec.support.isUnsupported
+        return card(selected: selected, dimmed: unsupported) {
+            selectLocal(spec)
+        } content: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(spec.title).font(.system(size: 14, weight: .semibold))
+                        HStack(spacing: 5) {
+                            pill(spec.reason)
+                            if spec.rank == 1 { pill("Recommended") }
+                            if state == .running { pill("Active", accent: true) }
+                            if case .experimental = spec.support { pill("Experimental") }
+                        }
+                    }
+                    Spacer()
+                    if let v { meters(accuracy: v.accuracy, speed: v.speed) }
+                }
+                Text(spec.blurb)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Divider().opacity(0.5)
+                metaRow(spec, variant: v)
+                if selected {
+                    if spec.variants.count > 1 {
+                        Picker("Weights", selection: variantBinding(spec)) {
+                            ForEach(spec.variants) { w in
+                                Text("\(w.paramsLabel) · \(w.diskLabel)").tag(w.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .controlSize(.small)
+                    }
+                    supportNote(spec)
+                    stateRow(spec)
+                }
+            }
+        }
+    }
+
+    /// params · disk · RAM · port — the reference card's meta strip.
+    private func metaRow(_ spec: ModelSpec, variant v: WeightSpec?) -> some View {
+        HStack(spacing: 14) {
+            if let v {
+                metaItem("cpuchip", "\(v.paramsLabel) params")
+                metaItem("internaldrive", v.diskLabel)
+                metaItem("memorychip", "\(v.ramLabel) RAM")
+            }
+            metaItem("network", ":\(spec.defaultPort)")
+            Spacer()
+        }
+    }
+
+    private func metaItem(_ icon: String, _ text: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .labelStyle(.titleAndIcon)
+    }
+
+    /// Two thin bars like the reference: accuracy and speed for the variant.
+    private func meters(accuracy: Double, speed: Double) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            meter("accuracy", accuracy)
+            meter("speed", speed)
+        }
+    }
+
+    private func meter(_ label: String, _ value: Double) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(Color.accentColor)
+                    .frame(width: 52 * max(0.05, min(1, value)))
+            }
+            .frame(width: 52, height: 4)
+        }
+    }
+
+    private func pill(_ text: String, accent: Bool = false) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(accent ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.12),
+                        in: Capsule())
+            .foregroundStyle(accent ? Color.accentColor : .secondary)
+    }
+
+    // MARK: - State actions (install/start/stop/health)
 
     @ViewBuilder
     private func supportNote(_ spec: ModelSpec) -> some View {
@@ -212,7 +239,7 @@ public struct ProviderPicker: View {
         case .running:
             HStack(spacing: 8) {
                 Circle().fill(.green).frame(width: 7, height: 7)
-                Text("running on :\(spec.defaultPort)")
+                Text("running")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 Button("Stop") { model.models.stop() }.controlSize(.small)
                 Spacer()
@@ -243,52 +270,21 @@ public struct ProviderPicker: View {
         }
     }
 
-    // MARK: - Card scaffolding
+    // MARK: - More local models / advanced
 
-    private func row<Detail: View>(
-        title: String, detail: String, selected: Bool,
-        accessory: String? = nil,
-        action: @escaping () -> Void,
-        @ViewBuilder detail detailContent: () -> Detail
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: action) {
+    private var othersRow: some View {
+        let others = ModelCatalog.others
+        let selected = settings.provider == .local && others.contains { $0.id == settings.localModelID }
+        return VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { othersExpanded.toggle() }
+            } label: {
                 HStack {
-                    Text(title).font(.system(size: 13, weight: .medium))
-                    if let accessory {
-                        Image(systemName: accessory)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if selected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color.accentColor)
-                    }
-                }
-                .padding(12)
-            }
-            .buttonStyle(.plain)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8)
-                .stroke(selected ? Color.accentColor : .clear, lineWidth: 1.5))
-            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
-                .padding(.horizontal, 12).padding(.top, 3).padding(.bottom, 6)
-            detailContent().padding(.horizontal, 12).padding(.bottom, 6)
-        }
-    }
-
-    private func subCard(_ title: String, _ detail: String, selected: Bool,
-                         badge: String? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(title).font(.system(size: 12, weight: .medium))
-                    if let badge {
-                        Text(badge).font(.system(size: 9, weight: .semibold))
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(.quaternary, in: Capsule())
-                    }
+                    Text("More local models")
+                        .font(.system(size: 12, weight: .medium))
+                    Image(systemName: othersExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
                     Spacer()
                     if selected {
                         Image(systemName: "checkmark.circle.fill")
@@ -296,24 +292,116 @@ public struct ProviderPicker: View {
                             .foregroundStyle(Color.accentColor)
                     }
                 }
-                Text(detail).font(.system(size: 10)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 4)
             }
-            .padding(10)
+            .buttonStyle(.plain)
+            if othersExpanded {
+                VStack(spacing: 8) {
+                    ForEach(others) { spec in modelCard(spec) }
+                }
+            }
+        }
+    }
+
+    private var customRow: some View {
+        card(selected: settings.provider == .custom) {
+            settings.provider = .custom
+        } content: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Custom endpoint").font(.system(size: 14, weight: .semibold))
+                Text("Any server answering POST {base}/v1/systemone — self-hosted or third-party.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if settings.provider == .custom {
+                    Divider().opacity(0.5)
+                    VStack(alignment: .leading, spacing: 8) {
+                        LabeledContent("Endpoint") {
+                            TextField("https://host:port", text: customURLBinding)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        LabeledContent("Model") {
+                            TextField("model", text: customModelBinding)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 160)
+                        }
+                        SecureField("Bearer key (optional)", text: customKeyBinding)
+                            .textFieldStyle(.roundedBorder)
+                        testRow
+                    }
+                }
+            }
+        }
+    }
+
+    private var offRow: some View {
+        card(selected: settings.provider == .off) {
+            settings.provider = .off
+        } content: {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Off").font(.system(size: 14, weight: .semibold))
+                    Text("No model calls — smart pastes pass through as normal ⌘Vs. History, queue, and picker still work.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: - Card scaffolding
+
+    /// The card chrome shared by every row: plain-button hit area, quaternary
+    /// fill, accent ring when selected.
+    private func card<Content: View>(
+        selected: Bool, dimmed: Bool = false,
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content()
+                .padding(12)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .stroke(selected ? Color.accentColor : Color.secondary.opacity(0.12),
+                    lineWidth: selected ? 1.5 : 0.5))
+        .opacity(dimmed ? 0.55 : 1)
+        .overlay(alignment: .topTrailing) {
+            if selected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(10)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture(perform: action)
+    }
+
+    private func subCard(_ title: String, _ detail: String, selected: Bool,
+                         action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(title).font(.system(size: 11, weight: .medium))
+                    if selected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+                Text(detail).font(.system(size: 9)).foregroundStyle(.tertiary)
+            }
+            .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
+            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6)
                 .stroke(selected ? Color.accentColor.opacity(0.6) : .clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
-    }
-
-    private func badge(for spec: ModelSpec) -> String? {
-        switch spec.support {
-        case .supported: spec.rank == 1 ? "recommended" : nil
-        case .experimental: "experimental"
-        case .unsupported: "unavailable"
-        }
     }
 
     // MARK: - Actions & bindings
@@ -370,4 +458,8 @@ public struct ProviderPicker: View {
         Binding(get: { settings.customKey ?? "" },
                 set: { settings.customKey = $0.isEmpty ? nil : $0 })
     }
+}
+
+private extension ModelSpec.Support {
+    var isUnsupported: Bool { if case .unsupported = self { return true }; return false }
 }

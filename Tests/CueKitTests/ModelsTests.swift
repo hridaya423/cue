@@ -55,6 +55,32 @@ struct ModelCatalogTests {
                     "\(spec.id) has \(count) recommended variants")
         }
     }
+
+    @Test func everySpecHasUserFacingReason() {
+        // Cards pitch models by what they're FOR — a blank reason renders
+        // as an empty pill, so the catalog must always provide one.
+        for spec in ModelCatalog.all {
+            #expect(!spec.reason.isEmpty, "\(spec.id) missing reason")
+        }
+    }
+
+    @Test func variantScoresAreSane() {
+        for spec in ModelCatalog.all {
+            for v in spec.variants {
+                #expect((0...1).contains(v.accuracy), "\(v.id) accuracy \(v.accuracy) out of 0…1")
+                #expect((0...1).contains(v.speed), "\(v.id) speed \(v.speed) out of 0…1")
+            }
+        }
+    }
+
+    @Test func vonIsTheTopRecommendation() {
+        // Rank 1 leads the local recommendations — the "best balance" pick.
+        let top = ModelCatalog.all.min(by: { $0.rank < $1.rank })
+        #expect(top?.id == "von")
+        #expect(ModelCatalog.von.reason == "Best balance")
+        #expect(ModelCatalog.kev.reason == "Best local accuracy")
+        #expect(ModelCatalog.laya.reason == "Fastest")
+    }
 }
 
 struct PasteboardGateTests {

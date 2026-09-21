@@ -21,6 +21,11 @@ public final class HUDController {
         show(view: Top3View(candidates: candidates), near: rect, dismissOnResign: true)
         onKey = { [weak self] e in
             guard let self else { return true }
+            // ⌘V while we're up means "just paste it" — the intercepted key
+            // reached us, so decline → plain paste rather than swallow it.
+            if e.modifierFlags.contains(.command), Int(e.keyCode) == kVK_ANSI_V {
+                self.dismiss(); onPick(nil); return true
+            }
             switch Int(e.keyCode) {
             case kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3:
                 let i = Int(e.keyCode) - kVK_ANSI_1
@@ -38,6 +43,9 @@ public final class HUDController {
         show(view: PickerView(state: state), near: rect, dismissOnResign: true)
         onKey = { [weak self] e in
             guard let self else { return true }
+            if e.modifierFlags.contains(.command), Int(e.keyCode) == kVK_ANSI_V {
+                self.dismiss(); onPick(nil); return true
+            }
             switch Int(e.keyCode) {
             case kVK_DownArrow: state.move(1); return true
             case kVK_UpArrow: state.move(-1); return true

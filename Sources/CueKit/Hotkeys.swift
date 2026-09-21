@@ -36,7 +36,13 @@ public final class HotkeyManager {
     }
 
     /// When true, ⌘V itself is registered as a hotkey → smart paste.
-    public var interceptCmdV = false { didSet { reregister() } }
+    /// Only actually registered while Accessibility-trusted: an intercepted
+    /// ⌘V we can't repost (CGEvent needs trust) would be eaten — the worst
+    /// possible outcome for a paste. Untrusted → the real keystroke reaches
+    /// the app normally.
+    public var interceptCmdV = false {
+        didSet { reregister(); syncTrustWatch() }
+    }
 
     /// Set around synthesized ⌘V so we never retrigger ourselves.
     public var isSynthesizing = false
@@ -45,6 +51,8 @@ public final class HotkeyManager {
     private var bodies: [UInt32: () -> Void] = [:]
     private var hotkeyRefs: [EventHotKeyRef?] = []
     private var nextID: UInt32 = 1
+    private var interceptRegistered = false
+    private var trustTimer: Timer?
     private let settings: AppSettings
 
     public init(settings: AppSettings = .shared) {
@@ -66,11 +74,36 @@ public final class HotkeyManager {
             let hk = settings.hotkey(for: action.rawValue) ?? action.default
             register(hk) { [weak self] in self?.fire(action) }
         }
-        if interceptCmdV {
+        interceptRegistered = false
+        if interceptCmdV && ContextCaptor.isTrusted {
+            let before = hotkeyRefs.count
             register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
                 self?.fire(.smartPaste)
             }
+            // Only true if registration actually succeeded — a failed
+            // register must leave the flag false so the poll retries.
+            interceptRegistered = hotkeyRefs.count > before
         }
+    }
+
+    /// Trust can flip after grant or revoke; poll while interception is
+    /// wanted so the ⌘V hotkey appears/disappears without an app restart.
+    private func syncTrustWatch() {
+        if interceptCmdV, trustTimer == nil {
+            let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.syncInterceptRegistration() }
+            }
+            RunLoop.main.add(t, forMode: .common)
+            trustTimer = t
+        } else if !interceptCmdV {
+            trustTimer?.invalidate()
+            trustTimer = nil
+        }
+    }
+
+    private func syncInterceptRegistration() {
+        let should = interceptCmdV && ContextCaptor.isTrusted
+        if should != interceptRegistered { reregister() }
     }
 
     private func fire(_ action: Action) {
