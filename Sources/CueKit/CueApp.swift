@@ -139,24 +139,44 @@ public final class AppModel {
         win.makeKeyAndOrderFront(nil)
     }
 
+    /// Onboarding's borderless card window. `canBecomeKey` must be overridden:
+    /// borderless windows are never key by default, which would break the
+    /// API-key field and the Return-to-continue shortcut.
+    private final class CardWindow: NSWindow {
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { true }
+    }
+
     private func makeWindow(id: String) -> NSWindow {
         let view: AnyView = switch id {
         case "history": AnyView(HistoryView(model: self))
         case "settings": AnyView(SettingsView(model: self))
         default: AnyView(OnboardingView(model: self))
         }
-        let win = NSWindow(contentViewController: NSHostingController(rootView: view))
+        let win: NSWindow
+        if id == "onboarding" {
+            let card = CardWindow(contentViewController: NSHostingController(rootView: view))
+            card.styleMask = [.borderless]
+            card.isOpaque = false
+            card.backgroundColor = .clear
+            card.hasShadow = true
+            card.isMovableByWindowBackground = true
+            win = card
+        } else {
+            win = NSWindow(contentViewController: NSHostingController(rootView: view))
+            win.styleMask = [.titled, .closable, .resizable]
+        }
         win.title = switch id {
         case "history": "Clipboard History"
         case "settings": "Settings"
         default: "Welcome"
         }
-        win.styleMask = [.titled, .closable, .resizable]
         win.isReleasedWhenClosed = false
         let size: NSSize = switch id {
         case "history": NSSize(width: 480, height: 420)
         case "settings": NSSize(width: 480, height: 560)
-        default: NSSize(width: 480, height: 560)
+        // +28 vertical/horizontal padding in the view leaves room for shadow.
+        default: NSSize(width: 588, height: 648)
         }
         win.setContentSize(size)
         return win
