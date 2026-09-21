@@ -14,6 +14,8 @@ public final class AppModel {
     public let feedback: FeedbackTracker
     public let hud: HUDController
     public let redactor: PIIRedactor
+    public let models: ModelManager
+    public let providerStatus: ProviderStatus
     public let controller: SmartPasteController
 
     public var selfCheckResult: String?
@@ -29,10 +31,14 @@ public final class AppModel {
         feedback = FeedbackTracker()
         hud = HUDController()
         redactor = PIIRedactor()
+        models = ModelManager()
+        providerStatus = ProviderStatus()
         controller = SmartPasteController(
             store: store, settings: settings,
             executor: executor, feedback: feedback, hud: hud, redactor: redactor
-        ) { [settings] in settings.providerClient() }
+        ) { [settings, providerStatus] in
+            settings.providerClient().map { StatusTrackingProvider($0, status: providerStatus) }
+        }
 
         hotkeys.interceptCmdV = settings.triggerMode == .intercept
         hotkeys.reregister()
@@ -45,10 +51,25 @@ public final class AppModel {
         monitor.start()
         // Warm the redaction model in the background so the first paste
         // doesn't pay the download latency.
-        if settings.piiRedaction { Task { await redactor.prepare() } }
+        if settings.effectivePIIRedaction { Task { await redactor.prepare() } }
+        // Auto-start the selected local model server if it's installed.
+        if settings.provider == .local, let r = selectedLocal {
+            Task { await models.start(r) }
+        }
+        // No orphaned model servers: they stop when the app does.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [models] _ in
+            Task { @MainActor in models.stop() }
+        }
         if !settings.onboardingDone {
             Task { @MainActor in self.open(id: "onboarding") }
         }
+    }
+
+    /// The catalog pair for the current local-model selection, if any.
+    public var selectedLocal: ModelSpec.Resolved? {
+        ModelCatalog.variant(modelID: settings.localModelID, variantID: settings.localVariantID)
     }
 
     public func makeProvider() -> (any DecisionProvider)? {
@@ -58,7 +79,7 @@ public final class AppModel {
     /// Round-trips a trivial question so Settings/onboarding can verify keys.
     public func testProvider() async -> String {
         guard let provider = settings.providerClient() else {
-            return settings.provider == .none ? "No provider selected"
+            return settings.provider == .off ? "Model is off"
                 : settings.provider.needsAPIKey ? "No API key set" : "Check the endpoint URL"
         }
         do {

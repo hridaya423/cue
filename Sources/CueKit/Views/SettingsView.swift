@@ -65,70 +65,32 @@ struct HotkeyRecorder: NSViewRepresentable {
 
 public struct SettingsView: View {
     var model: AppModel
-    @State private var testResult: String?
-    @State private var testing = false
     @State private var loginError: String?
-    @State private var endpointUp: Bool?
 
     public var body: some View {
         @Bindable var settings = model.settings
 
         Form {
-            Section("Provider") {
-                Picker("Decision model", selection: $settings.provider) {
-                    ForEach(AppSettings.Provider.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-                if settings.provider.needsAPIKey {
-                    SecureField("API key", text: apiKeyBinding)
-                        .textFieldStyle(.roundedBorder)
-                }
-                if settings.provider.isEndpointBased {
-                    LabeledContent("Endpoint") {
-                        HStack(spacing: 6) {
-                            TextField("http://127.0.0.1:8009", text: endpointBinding)
-                                .textFieldStyle(.roundedBorder)
-                            Circle()
-                                .fill(endpointUp == true ? Color.green
-                                    : endpointUp == false ? Color.red
-                                    : Color.secondary.opacity(0.3))
-                                .frame(width: 7, height: 7)
-                                .help(endpointUp == true ? "reachable" : "not responding")
-                        }
-                    }
-                    .task(id: currentEndpoint) {
-                        endpointUp = await model.endpointReachable(currentEndpoint)
-                    }
-                    if settings.provider == .custom {
-                        SecureField("Bearer key (optional)", text: customKeyBinding)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
-                if settings.provider != .none {
-                    LabeledContent("Model") {
-                        TextField("model", text: modelBinding)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 160)
-                    }
-                    HStack {
-                        Button(testing ? "Testing…" : "Test connection") { Task { await testJev() } }
-                            .disabled(testing)
-                        if let testResult {
-                            Text(testResult).font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
-                    }
-                } else {
-                    Text("No provider — smart paste uses local heuristics until a key or endpoint is set.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+            Section("Decision model") {
+                ProviderPicker(model: model)
+                if model.providerStatus.state == .unreachable {
+                    Label("Provider unreachable — pastes pass through normally",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
                 }
             }
 
             Section("Privacy") {
-                Toggle("Redact PII before cloud calls", isOn: $settings.piiRedaction)
-                redactorStatus
-                Text("Names, emails, phones, cards and IDs are masked on-device before clip text reaches a remote model. Loopback endpoints (Kev, Laya, localhost) skip redaction — that data stays on the device anyway.")
+                Picker("PII redaction", selection: redactionBinding) {
+                    Text("Auto").tag(Bool?.none)
+                    Text("On").tag(Bool?.some(true))
+                    Text("Off").tag(Bool?.some(false))
+                }
+                Text("Auto means: on for cloud providers, off for local models — scrubbing traffic that never leaves the device only costs latency. Only the scrubbed preview reaches the model; the real clip is what pastes.")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
+                redactorStatus
             }
 
             Section("Trigger") {
@@ -192,7 +154,7 @@ public struct SettingsView: View {
     private var redactorStatus: some View {
         switch model.redactor.status {
         case .idle:
-            if model.settings.piiRedaction && model.redactor.needsDownload {
+            if model.settings.effectivePIIRedaction && model.redactor.needsDownload {
                 Button("Download redaction model (~12 MB)") {
                     Task { await model.redactor.prepare() }
                 }
@@ -212,40 +174,9 @@ public struct SettingsView: View {
         }
     }
 
-    private var apiKeyBinding: Binding<String> {
-        Binding(
-            get: { model.settings.provider == .jevGateway
-                ? model.settings.gatewayKey ?? ""
-                : model.settings.apiKey ?? "" },
-            set: { if model.settings.provider == .jevGateway {
-                model.settings.gatewayKey = $0.isEmpty ? nil : $0
-            } else {
-                model.settings.apiKey = $0.isEmpty ? nil : $0
-            } }
-        )
-    }
-    private var customKeyBinding: Binding<String> {
-        Binding(get: { model.settings.customKey ?? "" },
-                set: { model.settings.customKey = $0.isEmpty ? nil : $0 })
-    }
-    private var currentEndpoint: String {
-        switch model.settings.provider {
-        case .kev: model.settings.kevURL
-        case .laya: model.settings.layaURL
-        default: model.settings.customURL
-        }
-    }
-    private var endpointBinding: Binding<String> {
-        Binding(get: { currentEndpoint }, set: {
-            switch model.settings.provider {
-            case .kev: model.settings.kevURL = $0
-            case .laya: model.settings.layaURL = $0
-            default: model.settings.customURL = $0
-            }
-        })
-    }
-    private var modelBinding: Binding<String> {
-        Binding(get: { model.settings.model }, set: { model.settings.model = $0 })
+    private var redactionBinding: Binding<Bool?> {
+        Binding(get: { model.settings.piiRedaction },
+                set: { model.settings.piiRedaction = $0 })
     }
     private var triggerBinding: Binding<Bool> {
         Binding(get: { model.settings.triggerMode == .intercept },
@@ -281,9 +212,4 @@ public struct SettingsView: View {
         })
     }
 
-    private func testJev() async {
-        testing = true
-        defer { testing = false }
-        testResult = await model.testProvider()
-    }
 }

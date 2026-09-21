@@ -141,6 +141,11 @@ public final class SmartPasteController {
         }
         let ctx = ContextCaptor.capture()
 
+        // Image/file on the pasteboard → the user wants that, not a text pick.
+        if PasteboardGate.shouldPassThrough() {
+            pasteLatest()
+            return
+        }
         // Never think about password fields: plain paste, no API call.
         if ctx.field.isSecure {
             pasteLatest()
@@ -256,7 +261,7 @@ public final class SmartPasteController {
     private func makeEngine() -> DecisionEngine {
         var engine = DecisionEngine(
             provider: makeProvider(),
-            redactor: settings.piiRedaction ? redactor : nil
+            redactor: settings.effectivePIIRedaction ? redactor : nil
         )
         engine.confidenceThreshold = settings.confidenceThreshold
         engine.lowConfidenceMode = settings.lowConfidenceMode

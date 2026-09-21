@@ -40,12 +40,26 @@ public struct MenuBarView: View {
         switch model.settings.provider {
         case .jevDirect: parts.append("jev direct")
         case .jevGateway: parts.append("jev via gateway")
-        case .kev: parts.append("kev local")
-        case .laya: parts.append("laya local")
+        case .local:
+            if let r = model.selectedLocal {
+                var s = "\(r.spec.title.lowercased()) \(r.variant.paramsLabel)"
+                switch model.models.status(of: r.spec.id) {
+                case .running: s += " · running"
+                case .starting: s += " · starting"
+                case .installing: s += " · installing"
+                case .installed: s += " · stopped"
+                case .failed: s += " · failed"
+                case .notInstalled: s += " · not installed"
+                }
+                parts.append(s)
+            } else {
+                parts.append("local model")
+            }
         case .custom: parts.append("custom endpoint")
-        case .none: parts.append("heuristic mode")
+        case .off: parts.append("off")
         }
-        if model.settings.piiRedaction, model.settings.provider.mayBeRemote {
+        if model.providerStatus.state == .unreachable { parts.append("unreachable") }
+        if model.settings.effectivePIIRedaction, model.settings.provider.mayBeRemote {
             parts.append("pii scrubbed")
         }
         parts.append("\(model.store.clips.count) clips")

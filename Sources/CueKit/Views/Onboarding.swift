@@ -6,8 +6,6 @@ public struct OnboardingView: View {
     @State private var step = 0
     @State private var pollTimer: Timer?
     @State private var trusted = false
-    @State private var testResult: String?
-    @State private var testing = false
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -139,78 +137,10 @@ public struct OnboardingView: View {
 
     private var providerStep: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(AppSettings.Provider.allCases, id: \.self) { p in
-                    card(
-                        title: p.title,
-                        detail: p.blurb,
-                        selected: model.settings.provider == p
-                    ) { model.settings.provider = p; testResult = nil }
-                }
-
-                if model.settings.provider != .none {
-                    providerConfig
-                        .padding(.top, 4)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 8)
+            ProviderPicker(model: model)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
         }
-    }
-
-    @ViewBuilder
-    private var providerConfig: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            let p = model.settings.provider
-            if p.needsAPIKey {
-                SecureField("API key", text: keyBinding)
-                    .textFieldStyle(.roundedBorder)
-                Text(p == .jevGateway
-                     ? "AI_GATEWAY_API_KEY — ai-gateway.vercel.sh/typesafe"
-                     : "TYPESAFE_API_KEY — api.typesafe.ai")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-            if p.isEndpointBased {
-                LabeledContent("Endpoint") {
-                    TextField("http://127.0.0.1:8009", text: endpointBinding)
-                        .textFieldStyle(.roundedBorder)
-                }
-                LabeledContent("Model") {
-                    TextField("model", text: modelBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 160)
-                }
-                if p == .custom {
-                    SecureField("Bearer key (optional)", text: customKeyBinding)
-                        .textFieldStyle(.roundedBorder)
-                }
-                if p == .kev {
-                    hint("Serve it: uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b --port 8009")
-                }
-                if p == .laya {
-                    hint("Serve it: pip install laya && python3 Scripts/laya_server.py")
-                }
-            }
-            if p != .none {
-                HStack(spacing: 8) {
-                    Button(testing ? "Testing…" : "Test connection") { Task { await test() } }
-                        .disabled(testing)
-                    if let testResult {
-                        Text(testResult).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
-                    }
-                }
-            }
-        }
-        .padding(12)
-        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func hint(_ s: String) -> some View {
-        Text(s)
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(.tertiary)
-            .textSelection(.enabled)
     }
 
     // MARK: - Step 4: privacy
@@ -219,9 +149,18 @@ public struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 12) {
             card(
                 title: "Redact PII before cloud calls",
-                detail: "An on-device model (≈12 MB, Core ML) masks names, emails, phones, cards and IDs in clip text before anything reaches TypeSafe or your gateway. Local providers skip it — that data never leaves the device.",
-                selected: model.settings.piiRedaction
-            ) { model.settings.piiRedaction.toggle(); kickDownload() }
+                detail: "An on-device model (≈12 MB, Core ML) masks names, emails, phones, cards and IDs in clip text before anything reaches a remote endpoint. Auto by default: on for cloud providers, off for local models — the model only ever sees the scrubbed preview; the real clip is what pastes.",
+                selected: model.settings.effectivePIIRedaction
+            ) {
+                // Tapping flips the effective state into an explicit override.
+                model.settings.piiRedaction = !model.settings.effectivePIIRedaction
+                kickDownload()
+            }
+            Text(model.settings.piiRedaction == nil
+                 ? "Auto — \(model.settings.provider.mayBeRemote ? "on (remote provider)" : "off (local provider)")"
+                 : (model.settings.effectivePIIRedaction ? "On — override" : "Off — override"))
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
 
             redactorStatus
             Spacer()
@@ -233,7 +172,7 @@ public struct OnboardingView: View {
     private var redactorStatus: some View {
         switch model.redactor.status {
         case .idle:
-            if model.settings.piiRedaction {
+            if model.settings.effectivePIIRedaction {
                 Button("Download redaction model (~12 MB)") { kickDownload() }
             }
         case .downloading(let f):
@@ -279,7 +218,7 @@ public struct OnboardingView: View {
     }
 
     private func kickDownload() {
-        if model.settings.piiRedaction && model.redactor.needsDownload {
+        if model.settings.effectivePIIRedaction && model.redactor.needsDownload {
             Task { await model.redactor.prepare() }
         }
     }
@@ -287,45 +226,5 @@ public struct OnboardingView: View {
     private func setTrigger(_ mode: AppSettings.TriggerMode) {
         model.settings.triggerMode = mode
         model.hotkeys.interceptCmdV = mode == .intercept
-    }
-
-    private var keyBinding: Binding<String> {
-        Binding(
-            get: { model.settings.provider == .jevGateway
-                ? model.settings.gatewayKey ?? "" : model.settings.apiKey ?? "" },
-            set: { if model.settings.provider == .jevGateway {
-                model.settings.gatewayKey = $0.isEmpty ? nil : $0
-            } else {
-                model.settings.apiKey = $0.isEmpty ? nil : $0
-            } }
-        )
-    }
-    private var customKeyBinding: Binding<String> {
-        Binding(get: { model.settings.customKey ?? "" },
-                set: { model.settings.customKey = $0.isEmpty ? nil : $0 })
-    }
-    private var endpointBinding: Binding<String> {
-        Binding(get: {
-            switch model.settings.provider {
-            case .kev: model.settings.kevURL
-            case .laya: model.settings.layaURL
-            default: model.settings.customURL
-            }
-        }, set: {
-            switch model.settings.provider {
-            case .kev: model.settings.kevURL = $0
-            case .laya: model.settings.layaURL = $0
-            default: model.settings.customURL = $0
-            }
-        })
-    }
-    private var modelBinding: Binding<String> {
-        Binding(get: { model.settings.model }, set: { model.settings.model = $0 })
-    }
-
-    private func test() async {
-        testing = true
-        defer { testing = false }
-        testResult = await model.testProvider()
     }
 }

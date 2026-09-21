@@ -149,6 +149,44 @@ extension DecisionProvider {
     public var isRemote: Bool { true }
 }
 
+/// Observable record of the provider's health for the menu bar / settings UI.
+/// `unknown` until the first call completes.
+@MainActor @Observable
+public final class ProviderStatus {
+    public enum State: Sendable, Equatable {
+        case unknown, ok, unreachable
+    }
+    public private(set) var state: State = .unknown
+    public init() {}
+    nonisolated func record(ok: Bool) {
+        Task { @MainActor in self.state = ok ? .ok : .unreachable }
+    }
+}
+
+/// Wraps a provider and reports each call's success/failure into a
+/// ProviderStatus. Transparent to the engine — errors still propagate.
+public struct StatusTrackingProvider: DecisionProvider {
+    private let inner: any DecisionProvider
+    private let status: ProviderStatus
+    public var isRemote: Bool { inner.isRemote }
+
+    public init(_ inner: any DecisionProvider, status: ProviderStatus) {
+        self.inner = inner
+        self.status = status
+    }
+
+    public func evaluate(state: JSONValue, questions: [String: Question]) async throws -> JevResponse {
+        do {
+            let r = try await inner.evaluate(state: state, questions: questions)
+            status.record(ok: true)
+            return r
+        } catch {
+            status.record(ok: false)
+            throw error
+        }
+    }
+}
+
 public struct JevClient: DecisionProvider {
     public let endpoint: JevEndpoint
     private let apiKey: String

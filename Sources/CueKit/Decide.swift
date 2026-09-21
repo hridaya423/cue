@@ -46,8 +46,7 @@ public enum Transform: String, Sendable, CaseIterable {
 public struct ScoredCandidate: Sendable {
     public var clip: Clip
     public var probability: Double
-    /// Strength of evidence for this specific pick (heuristic), or the
-    /// question-level confidence (Jev) broadcast onto each candidate.
+    /// The pick question's confidence, broadcast onto each candidate.
     public var confidence: Double
 }
 
@@ -57,11 +56,6 @@ public struct Decision: Sendable {
     public var transform: Transform
     public var isForm: Bool
     public var confidence: Double
-    public var source: Source
-
-    public enum Source: Sendable {
-        case jev, heuristic, latest
-    }
 }
 
 /// What the controller should do — UI branches on this and nothing else.
@@ -73,83 +67,12 @@ public enum PasteOutcome: Sendable {
     case pasteLatest
 }
 
-// MARK: - Heuristic fallback
-
-/// Used when no provider is configured or the call fails. Scores clips against
-/// the field's label/placeholder with shape rules; never auto-pastes on a pure
-/// recency win — low confidence surfaces the picker instead.
-public enum HeuristicRanker {
-    public static func rank(context: ContextSnapshot, candidates: [Clip]) -> [ScoredCandidate] {
-        // Local lets: Regex isn't Sendable, so no statics.
-        let emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-        let digitsRe = /\d/
-        let probe = [context.field.label, context.field.placeholder, context.windowTitle]
-            .joined(separator: " ")
-            .lowercased()
-        let n = Double(max(candidates.count, 1))
-
-        return candidates.enumerated().map { i, clip in
-            var score = 0.0
-            var confidence = 0.4
-            let text = clip.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            let digits = text.filter(\.isNumber).count
-
-            func signal(_ s: Double, _ c: Double) {
-                score += s
-                confidence = max(confidence, c)
-            }
-
-            if probe.contains("email") || probe.contains("e-mail"), text.wholeMatch(of: emailRe) != nil {
-                signal(1.0, 0.9)
-            }
-            if probe.contains("phone") || probe.contains("tel") || probe.contains("mobile"),
-               digits >= 7, Double(digits) / Double(max(text.count, 1)) > 0.5 {
-                signal(0.9, 0.85)
-            }
-            if probe.contains("url") || probe.contains("website") || probe.contains("link") || probe.contains("site"),
-               clip.isURL {
-                signal(0.9, 0.85)
-            }
-            if probe.contains("zip") || probe.contains("postal"), text.count <= 10 {
-                signal(0.6, 0.6)
-            }
-            if probe.contains("code") || probe.contains("otp") || probe.contains("verification"),
-               (4...8).contains(digits), text.count <= 12 {
-                signal(0.9, 0.85)
-            }
-            if probe.contains("name"),
-               !text.contains(digitsRe), text.split(separator: " ").count <= 4, text.count <= 40 {
-                signal(0.5, 0.6)
-            }
-            if probe.contains("user") || probe.contains("login"),
-               !text.contains(" "), text.count <= 30 {
-                signal(0.4, 0.55)
-            }
-            if probe.contains("search") || probe.contains("query"), text.count <= 60 {
-                signal(0.3, 0.5)
-            }
-            if clip.pinned { score += 0.1 }
-            score += 0.15 * (1.0 - Double(i) / n) // recency
-
-            return ScoredCandidate(clip: clip, probability: score, confidence: confidence)
-        }
-        .sorted { $0.probability > $1.probability }
-    }
-
-    /// Does the focused field look like one step of a data-entry form?
-    public static func looksFormLike(context: ContextSnapshot, candidates: [Clip]) -> Bool {
-        let probe = (context.field.label + " " + context.field.placeholder).lowercased()
-        let formWords = ["name", "email", "phone", "address", "street", "city", "zip",
-                         "postal", "country", "card", "first", "last", "company"]
-        return candidates.count >= 2 && formWords.contains { probe.contains($0) }
-    }
-}
-
 // MARK: - Engine
 
-/// Builds the Jev request from a context snapshot and folds the answers into
-/// a PasteOutcome. Falls back to the heuristic ranker when no provider is
-/// configured or the call fails — the outcome contract never changes.
+/// Builds the System One request from a context snapshot and folds the
+/// answers into a PasteOutcome. Every failure path — no provider configured,
+/// unreachable endpoint, redaction failure, malformed answer — degrades to
+/// `.pasteLatest`: a plain ⌘V, silently. Smart paste never blocks a paste.
 public struct DecisionEngine: Sendable {
     public enum Mode: Sendable {
         case hotkey
@@ -176,42 +99,33 @@ public struct DecisionEngine: Sendable {
         mode: Mode,
         feedback: [String: Double] = [:]
     ) async -> PasteOutcome {
-        guard !candidates.isEmpty else { return .pasteLatest }
+        guard !candidates.isEmpty, let provider else { return .pasteLatest }
 
-        var ranked: [ScoredCandidate]
+        let resp: JevResponse
         var isForm = false
         var transform: Transform = .asIs
-        var source: Decision.Source = .jev
-
-        if let provider {
-            do {
-                // Redaction failure throws → heuristic path → nothing leaves
-                // the device. Never send raw text after a failed scrub.
-                let scrub = provider.isRemote ? redactor : nil
-                let resp = try await provider.evaluate(
-                    state: try await Self.stateJSON(context: context, mode: mode, redactor: scrub),
-                    questions: try await Self.questions(candidates: candidates, mode: mode, redactor: scrub)
-                )
-                ranked = Self.ranked(from: resp, candidates: candidates)
-
-                if mode == .intercept, case .noul(let p) = resp.answers["use_latest"], p >= 0.5 {
-                    return .pasteLatest
-                }
-                if mode == .formFill, case .noul(let p) = resp.answers["form_field"], p < 0.5 {
-                    return .pasteLatest
-                }
-                if case .noul(let p) = resp.answers["form"], p >= 0.5 { isForm = true }
-                if case .choice(let key, _, _) = resp.answers["transform"],
-                   let t = Transform(rawValue: key) { transform = t }
-            } catch {
-                ranked = HeuristicRanker.rank(context: context, candidates: candidates)
-                source = .heuristic
-            }
-        } else {
-            ranked = HeuristicRanker.rank(context: context, candidates: candidates)
-            source = .heuristic
-            isForm = HeuristicRanker.looksFormLike(context: context, candidates: candidates)
+        do {
+            // Redaction failure throws → .pasteLatest → nothing leaves the
+            // device. Never send raw text after a failed scrub.
+            let scrub = provider.isRemote ? redactor : nil
+            resp = try await provider.evaluate(
+                state: try await Self.stateJSON(context: context, mode: mode, redactor: scrub),
+                questions: try await Self.questions(candidates: candidates, mode: mode, redactor: scrub)
+            )
+        } catch {
+            return .pasteLatest
         }
+
+        var ranked = Self.ranked(from: resp, candidates: candidates)
+        if mode == .intercept, case .noul(let p) = resp.answers["use_latest"], p >= 0.5 {
+            return .pasteLatest
+        }
+        if mode == .formFill, case .noul(let p) = resp.answers["form_field"], p < 0.5 {
+            return .pasteLatest
+        }
+        if case .noul(let p) = resp.answers["form"], p >= 0.5 { isForm = true }
+        if case .choice(let key, _, _) = resp.answers["transform"],
+           let t = Transform(rawValue: key) { transform = t }
 
         // Blend local feedback, renormalize.
         if !feedback.isEmpty {
@@ -231,35 +145,33 @@ public struct DecisionEngine: Sendable {
 
         // Mid-form: never pop a HUD — paste confidently or stop.
         if mode == .formFill {
-            return top.confidence >= 0.5 ? makePaste(top, transform: transform, isForm: true, source: source) : .pasteLatest
+            return top.confidence >= 0.5 ? makePaste(top, transform: transform, isForm: true) : .pasteLatest
         }
 
         // Intercepted ⌘V without a confident answer must stay a plain paste —
-        // popping a HUD on every paste would be unusable. This applies to the
-        // heuristic path (rarely confident) and to a genuinely uncertain Jev.
+        // popping a HUD on every paste would be unusable.
         if mode == .intercept, top.confidence < confidenceThreshold {
             return .pasteLatest
         }
 
         if top.confidence >= confidenceThreshold {
-            return makePaste(top, transform: transform, isForm: isForm, source: source)
+            return makePaste(top, transform: transform, isForm: isForm)
         }
         switch lowConfidenceMode {
         case .top3: return .top3(Array(ranked.prefix(3)))
         case .picker: return .picker(ranked)
-        case .pasteBest: return makePaste(top, transform: transform, isForm: isForm, source: source)
+        case .pasteBest: return makePaste(top, transform: transform, isForm: isForm)
         case .pasteLatest: return .pasteLatest
         }
     }
 
-    private func makePaste(_ sc: ScoredCandidate, transform: Transform, isForm: Bool, source: Decision.Source) -> PasteOutcome {
+    private func makePaste(_ sc: ScoredCandidate, transform: Transform, isForm: Bool) -> PasteOutcome {
         .paste(Decision(
             text: transform.apply(sc.clip.text),
             clip: sc.clip,
             transform: transform,
             isForm: isForm,
-            confidence: sc.confidence,
-            source: source
+            confidence: sc.confidence
         ))
     }
 

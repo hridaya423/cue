@@ -18,6 +18,10 @@ cp ".build/$CONFIG/Cue" "$APP/Contents/MacOS/"
 # resolves them from Contents/Resources inside a .app.
 find ".build/$CONFIG" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
 
+# The Laya server shim — the managed-model installer runs this inside the
+# model's venv to speak /v1/systemone.
+cp Scripts/laya_server.py "$APP/Contents/Resources/"
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

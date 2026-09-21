@@ -6,8 +6,7 @@ import Foundation
 /// write, and a real synthesized ⌘V. Run from the menu bar (Debug → self-check).
 ///
 /// Invariant checked: the field ends up holding exactly what the pasteboard
-/// holds after the decision — proving capture → decide → paste works. With the
-/// heuristic provider, the seeded email clip must also be the actual pick.
+/// holds after the decision — proving capture → decide → paste works.
 @MainActor
 public enum SelfCheck {
     public static func run(model: AppModel) async -> String {
@@ -49,9 +48,6 @@ public enum SelfCheck {
         let pasted = NSPasteboard.general.string(forType: .string) ?? ""
         guard field.stringValue == pasted, !pasted.isEmpty else {
             return "FAIL — field=\(field.stringValue.prefix(40)) pasteboard=\(pasted.prefix(40))"
-        }
-        if model.settings.provider == .none, field.stringValue != marker {
-            return "FAIL — heuristic picked '\(pasted.prefix(40))' for an Email field, expected the seeded email"
         }
         return "PASS — pasted “\(pasted.prefix(40))”"
     }

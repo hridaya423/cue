@@ -53,8 +53,8 @@ public final class PIIRedactor: Redacting {
     public func redact(_ text: String) async throws -> String {
         guard !text.isEmpty else { return text }
         // First call lazily downloads+loads the model; a failure propagates —
-        // the engine then falls back to the on-device heuristic instead of
-        // sending unredacted text anywhere.
+        // the engine degrades to a plain paste rather than send unredacted
+        // text anywhere.
         let r = try await engine.redaction(of: text)
         status = .ready
         return r.redactedText

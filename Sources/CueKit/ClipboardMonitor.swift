@@ -55,3 +55,23 @@ public final class ClipboardMonitor {
         ))
     }
 }
+
+/// Cue only reasons about text. If the pasteboard holds an image or a file,
+/// smart paste must not touch it — a model pick would overwrite the copied
+/// image with a text clip. Gate runs before any provider call.
+public enum PasteboardGate {
+    private static let passthroughTypes: Set<NSPasteboard.PasteboardType> = [
+        .png, .tiff, .fileURL,
+        NSPasteboard.PasteboardType("public.jpeg"),
+        NSPasteboard.PasteboardType("public.image"),
+    ]
+
+    public static func shouldPassThrough(_ types: [NSPasteboard.PasteboardType]?) -> Bool {
+        (types ?? []).contains { passthroughTypes.contains($0) }
+    }
+
+    @MainActor
+    public static func shouldPassThrough() -> Bool {
+        shouldPassThrough(NSPasteboard.general.types)
+    }
+}

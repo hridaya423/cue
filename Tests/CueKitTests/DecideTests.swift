@@ -13,51 +13,6 @@ struct TransformsTests {
     }
 }
 
-struct HeuristicRankerTests {
-    private func ctx(label: String, placeholder: String = "") -> ContextSnapshot {
-        var c = ContextSnapshot()
-        c.field.label = label
-        c.field.placeholder = placeholder
-        c.field.role = "AXTextField"
-        return c
-    }
-
-    @Test func emailFieldPicksEmail() {
-        let clips = [
-            Clip(text: "some random sentence", kind: .text),
-            Clip(text: "me@example.com", kind: .text),
-        ]
-        let ranked = HeuristicRanker.rank(context: ctx(label: "Email"), candidates: clips)
-        #expect(ranked.first?.clip.text == "me@example.com")
-        #expect(ranked.first!.confidence >= 0.7)
-    }
-
-    @Test func phoneFieldPicksDigits() {
-        let clips = [
-            Clip(text: "my notes", kind: .text),
-            Clip(text: "+1 (415) 555-0132", kind: .text),
-        ]
-        let ranked = HeuristicRanker.rank(context: ctx(label: "Phone number"), candidates: clips)
-        #expect(ranked.first?.clip.text == "+1 (415) 555-0132")
-    }
-
-    @Test func urlFieldPicksURL() {
-        let clips = [
-            Clip(text: "plain text here", kind: .text),
-            Clip(text: "https://github.com/x", kind: .url),
-        ]
-        let ranked = HeuristicRanker.rank(context: ctx(label: "Website"), candidates: clips)
-        #expect(ranked.first?.clip.isURL == true)
-    }
-
-    @Test func formDetection() {
-        let clips = [Clip(text: "a", kind: .text), Clip(text: "b", kind: .text)]
-        #expect(HeuristicRanker.looksFormLike(context: ctx(label: "First name"), candidates: clips))
-        #expect(!HeuristicRanker.looksFormLike(context: ctx(label: "Spotlight"), candidates: clips))
-        #expect(!HeuristicRanker.looksFormLike(context: ctx(label: "Email"), candidates: [clips[0]]))
-    }
-}
-
 // MARK: - Engine
 
 /// Shared record of what the provider was asked (JSONValue is Equatable).
@@ -127,7 +82,6 @@ struct DecisionEngineTests {
         let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
         guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
         #expect(d.clip.text == "me@example.com")
-        #expect(d.source == .jev)
     }
 
     @Test func lowConfidenceShowsTop3() async {
@@ -147,15 +101,19 @@ struct DecisionEngineTests {
         guard case .pasteLatest = outcome else { Issue.record("expected pasteLatest, got \(outcome)"); return }
     }
 
-    @Test func providerErrorFallsBackToHeuristic() async {
-        var engine = DecisionEngine(provider: StubProvider(
+    @Test func providerErrorPastesLatest() async {
+        // No heuristics: a dead/unreachable provider degrades to a normal paste.
+        let engine = DecisionEngine(provider: StubProvider(
             response: response(pick: "c1", conf: 1), error: JevError.http(500, "boom")))
-        engine.confidenceThreshold = 0.7
         let outcome = await engine.decide(context: makeContext(label: "Email"), candidates: clips, mode: .hotkey)
-        // Heuristic should still pick the email clip for an Email field.
-        guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
-        #expect(d.clip.text == "me@example.com")
-        #expect(d.source == .heuristic)
+        guard case .pasteLatest = outcome else { Issue.record("expected pasteLatest, got \(outcome)"); return }
+    }
+
+    @Test func noProviderPastesLatest() async {
+        let engine = DecisionEngine(provider: nil)
+        let outcome = await engine.decide(
+            context: makeContext(label: "Email"), candidates: clips, mode: .hotkey)
+        guard case .pasteLatest = outcome else { Issue.record("expected pasteLatest, got \(outcome)"); return }
     }
 
     @Test func feedbackDemotesClip() async {
@@ -207,11 +165,9 @@ struct DecisionEngineTests {
         guard case .pasteLatest = outcome else { Issue.record("expected pasteLatest, got \(outcome)"); return }
     }
 
-    @Test func interceptHeuristicIsPlainPaste() async {
-        // Offline + intercept: heuristic confidence is almost always below
-        // threshold → plain paste, not a HUD on every ⌘V.
-        var engine = DecisionEngine(provider: nil)
-        engine.confidenceThreshold = 0.7
+    @Test func interceptNoProviderIsPlainPaste() async {
+        // Offline + intercept: nothing to decide → plain paste on every ⌘V.
+        let engine = DecisionEngine(provider: nil)
         let outcome = await engine.decide(
             context: makeContext(label: "Notes"), candidates: clips, mode: .intercept)
         guard case .pasteLatest = outcome else { Issue.record("expected pasteLatest, got \(outcome)"); return }
@@ -266,9 +222,22 @@ struct DecisionEngineTests {
         engine.confidenceThreshold = 0.7
         let outcome = await engine.decide(context: makeContext(label: "Email"), candidates: clips, mode: .hotkey)
         #expect(provider.box.calls == 0) // nothing was sent
-        guard case .paste(let d) = outcome, d.source == .heuristic else {
-            Issue.record("expected heuristic paste, got \(outcome)"); return
+        guard case .pasteLatest = outcome else {
+            Issue.record("expected pasteLatest, got \(outcome)"); return
         }
+    }
+
+    @Test func rawClipPastesAfterRedaction() async {
+        // Redaction scrubs what the model sees; the paste still executes on
+        // the raw clip — placeholders like [EMAIL_1] must never reach the field.
+        let redactor = StubRedactor()
+        let provider = StubProvider(response: response(pick: "c2", conf: 0.95))
+        var engine = DecisionEngine(provider: provider, redactor: redactor)
+        engine.confidenceThreshold = 0.7
+        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
+        #expect(d.text == "me@example.com")
+        #expect(!d.text.contains("[PII]"))
     }
 
     @Test func emptyCandidatesPastesLatest() async {
