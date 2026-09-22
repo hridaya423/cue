@@ -67,7 +67,10 @@ public struct MenuBarView: View {
         case .off: parts.append("off")
         }
         if model.providerStatus.state == .unreachable { parts.append("unreachable") }
-        if model.settings.effectivePIIRedaction, model.settings.provider.mayBeRemote {
+        // Mirrors the decision path: scrubbing only happens when the resolved
+        // endpoint is actually remote — a loopback custom endpoint is local.
+        if model.settings.effectivePIIRedaction,
+           model.makeProvider()?.isRemote == true {
             parts.append("pii scrubbed")
         }
         parts.append("\(model.store.clips.count) clips")

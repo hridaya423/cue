@@ -4,6 +4,7 @@ import ServiceManagement
 import SwiftUI
 
 /// Records a single hotkey: click, press the combo, done. Esc cancels.
+/// Tab-reachable, Enter/Space arms recording, VoiceOver gets a real label.
 struct HotkeyRecorder: NSViewRepresentable {
     var value: AppSettings.Hotkey?
     var onChange: (AppSettings.Hotkey) -> Void
@@ -32,6 +33,12 @@ struct HotkeyRecorder: NSViewRepresentable {
             path.fill()
             NSColor.separatorColor.setStroke()
             path.stroke()
+            if window?.firstResponder === self {
+                NSColor.controlAccentColor.withAlphaComponent(0.6).setStroke()
+                let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: -2.5, dy: -2.5), xRadius: 7, yRadius: 7)
+                ring.lineWidth = 2
+                ring.stroke()
+            }
             let str = NSAttributedString(
                 string: recording ? "press keys…" : label,
                 attributes: [.font: NSFont.systemFont(ofSize: 11),
@@ -41,17 +48,24 @@ struct HotkeyRecorder: NSViewRepresentable {
             str.draw(at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2))
         }
 
+        override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
+        override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
+
         override func mouseDown(with event: NSEvent) {
             recording = true
             window?.makeFirstResponder(self)
         }
 
         override func keyDown(with event: NSEvent) {
-            guard recording else { return super.keyDown(with: event) }
-            if Int(event.keyCode) == kVK_Escape { // Esc cancels
-                recording = false
-                window?.makeFirstResponder(nil)
+            // Enter/Space arms recording — keyboard parity with the click.
+            if !recording, Int(event.keyCode) == kVK_Return || Int(event.keyCode) == kVK_Space {
+                recording = true
                 return
+            }
+            guard recording else { return super.keyDown(with: event) }
+            if Int(event.keyCode) == kVK_Escape { // Esc cancels, restores prior value
+                recording = false
+                return // keep firstResponder: Escape restores focus state
             }
             let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
             guard !mods.isEmpty else { return } // require a modifier
@@ -59,6 +73,16 @@ struct HotkeyRecorder: NSViewRepresentable {
                                          modifiers: AppSettings.Hotkey.carbonModifiers(mods)))
             recording = false
             window?.makeFirstResponder(nil)
+        }
+
+        override func accessibilityRole() -> NSAccessibility.Role? { .button }
+        override func accessibilityTitle() -> String? {
+            recording ? "Recording shortcut — press keys, Escape cancels" : "Shortcut: \(label)"
+        }
+        override func accessibilityPerformPress() -> Bool {
+            recording = true
+            window?.makeFirstResponder(self)
+            return true
         }
     }
 }

@@ -22,6 +22,7 @@ public final class PasteExecutor {
     /// pasteboard right now, which our monitor may not have seen yet.
     public func pasteCurrent() {
         hotkeys.isSynthesizing = true
+        hotkeys.suspendIntercept()
         if let onWouldPost {
             onWouldPost(NSPasteboard.general.string(forType: .string) ?? "")
         } else {
@@ -30,12 +31,14 @@ public final class PasteExecutor {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             self?.hotkeys.isSynthesizing = false
+            self?.hotkeys.resumeIntercept()
         }
     }
 
     /// Put `text` on the pasteboard and send ⌘V to the focused app.
     public func paste(_ text: String) {
         hotkeys.isSynthesizing = true
+        hotkeys.suspendIntercept()
         monitor.suppressCapture = true
 
         let pb = NSPasteboard.general
@@ -53,6 +56,7 @@ public final class PasteExecutor {
             try? await Task.sleep(for: .milliseconds(300))
             self?.monitor.suppressCapture = false
             self?.hotkeys.isSynthesizing = false
+            self?.hotkeys.resumeIntercept()
         }
     }
 

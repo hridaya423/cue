@@ -288,7 +288,8 @@ public final class SmartPasteController {
         }
     }
 
-    private func makeEngine() -> DecisionEngine {
+    /// Internal: the practice session builds its engine through the same path.
+    func makeEngine() -> DecisionEngine {
         var engine = DecisionEngine(
             provider: makeProvider(),
             redactor: settings.effectivePIIRedaction ? redactor : nil

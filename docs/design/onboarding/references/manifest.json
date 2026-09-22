@@ -1,0 +1,44 @@
+[
+  {
+    "file": "01-welcome.png",
+    "original": "exec-075806db-8c38-40eb-88f2-a181cac591f0.png",
+    "status": "Approved fold-out welcome",
+    "sha256": "0bafe8f0782409a00cd0799730e59e9b7e5494749545120f748c09050998d2ea",
+    "role": "Design reference only; do not bundle in app"
+  },
+  {
+    "file": "02-accessibility.png",
+    "original": "exec-33b7bde6-78a7-4e78-ac6f-83017cb969b6.png",
+    "status": "Approved revised Accessibility",
+    "sha256": "fa51aafe3b61fb5c3a6b2f3f0bf3f8b9f9e2b1b7e044b996b88d11069f6a68ff",
+    "role": "Design reference only; do not bundle in app"
+  },
+  {
+    "file": "03-trigger.png",
+    "original": "exec-b71b5afe-af48-404a-ac2e-53b223d47ee6.png",
+    "status": "Earlier trigger concept; functional details in spec override",
+    "sha256": "74ed5c5b1e5c6f358fa43fba6b6c472d27ff9ce3dc22daac88883e248a0443c9",
+    "role": "Design reference only; do not bundle in app"
+  },
+  {
+    "file": "04-models.png",
+    "original": "exec-0f0878d9-db44-457c-a434-acf791a359b0.png",
+    "status": "Approved dedicated model picker; names, order, icons and claims corrected in spec",
+    "sha256": "9e5794ae67884290de63accd7bf796d1091878b05eaab5cbae2e138a4a3d4add",
+    "role": "Design reference only; do not bundle in app"
+  },
+  {
+    "file": "05-privacy.png",
+    "original": "exec-0726191b-750e-4383-88dc-f5e07d8ad838.png",
+    "status": "Approved separate privacy",
+    "sha256": "6f775c9290c5fc4b526294062f740684fb8a7245dc1877c319b6b81cf6ccd873",
+    "role": "Design reference only; do not bundle in app"
+  },
+  {
+    "file": "06-practice-success.png",
+    "original": "exec-ebab086a-553c-4f1a-b55d-eef3815dc45d.png",
+    "status": "Earlier practice success concept; pre-success states specified in spec",
+    "sha256": "76cb1efc163aa4c0c2f2989d2bef80017e033ce31c36f061709038ab126a8fa3",
+    "role": "Design reference only; do not bundle in app"
+  }
+]

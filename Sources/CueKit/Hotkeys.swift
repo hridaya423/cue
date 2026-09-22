@@ -51,7 +51,11 @@ public final class HotkeyManager {
     private var bodies: [UInt32: () -> Void] = [:]
     private var hotkeyRefs: [EventHotKeyRef?] = []
     private var nextID: UInt32 = 1
-    private var interceptRegistered = false
+    /// The live ⌘V intercept registration, tracked separately so a synthetic
+    /// paste can lift it — RegisterEventHotKey consumes ⌘V wholesale, which
+    /// would otherwise eat our own repost before the target app sees it.
+    private var interceptRef: EventHotKeyRef?
+    private var interceptRegistered: Bool { interceptRef != nil }
     private var trustTimer: Timer?
     private let settings: AppSettings
 
@@ -68,21 +72,34 @@ public final class HotkeyManager {
     public func reregister() {
         for ref in hotkeyRefs { if let ref { UnregisterEventHotKey(ref) } }
         hotkeyRefs.removeAll()
+        interceptRef = nil // the loop above already unregistered it
         bodies.removeAll()
         nextID = 1
         for action in Action.allCases {
             let hk = settings.hotkey(for: action.rawValue) ?? action.default
             register(hk) { [weak self] in self?.fire(action) }
         }
-        interceptRegistered = false
         if interceptCmdV && ContextCaptor.isTrusted {
-            let before = hotkeyRefs.count
-            register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
+            interceptRef = register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
                 self?.fire(.smartPaste)
             }
-            // Only true if registration actually succeeded — a failed
-            // register must leave the flag false so the poll retries.
-            interceptRegistered = hotkeyRefs.count > before
+        }
+    }
+
+    /// Temporarily lift the ⌘V intercept registration so a synthesized paste
+    /// reaches the focused app. Without this the hotkey machinery consumes the
+    /// synthetic event itself — isSynthesizing only stops our handler, the
+    /// keystroke is already gone. resumeIntercept() restores it.
+    public func suspendIntercept() {
+        guard let ref = interceptRef else { return }
+        UnregisterEventHotKey(ref)
+        interceptRef = nil
+    }
+
+    public func resumeIntercept() {
+        guard interceptCmdV, ContextCaptor.isTrusted, interceptRef == nil else { return }
+        interceptRef = register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
+            self?.fire(.smartPaste)
         }
     }
 
@@ -111,14 +128,16 @@ public final class HotkeyManager {
         handlers[action]?()
     }
 
-    private func register(_ hk: AppSettings.Hotkey, body: @escaping () -> Void) {
+    @discardableResult
+    private func register(_ hk: AppSettings.Hotkey, body: @escaping () -> Void) -> EventHotKeyRef? {
         let id = EventHotKeyID(signature: OSType(0x53435048), id: nextID) // 'SCPH'
         var ref: EventHotKeyRef?
         let err = RegisterEventHotKey(hk.keyCode, hk.modifiers, id, GetApplicationEventTarget(), 0, &ref)
-        guard err == noErr else { return }
+        guard err == noErr else { return nil }
         bodies[nextID] = body
         hotkeyRefs.append(ref)
         nextID += 1
+        return ref
     }
 
     private func handle(id: UInt32) {

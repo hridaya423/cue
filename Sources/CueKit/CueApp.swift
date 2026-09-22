@@ -21,6 +21,10 @@ public final class AppModel {
     public var selfCheckResult: String?
     public var trusted: Bool { ContextCaptor.isTrusted }
 
+    /// The active guided-paste session (onboarding's practice screen). When
+    /// set it gets first refusal on the smart-paste trigger; nil = normal.
+    public var practice: OnboardingPractice?
+
     private var windows: [String: NSWindow] = [:]
 
     public init() {
@@ -42,7 +46,12 @@ public final class AppModel {
 
         hotkeys.interceptCmdV = settings.triggerMode == .intercept
         hotkeys.reregister()
-        hotkeys.on(.smartPaste) { [weak self] in self?.controller.smartPaste() }
+        hotkeys.on(.smartPaste) { [weak self] in
+            // Practice gets first refusal: it consumes the trigger only while
+            // its own field is focused; everything else is normal dispatch.
+            if self?.practice?.handleTrigger() == true { return }
+            self?.controller.smartPaste()
+        }
         hotkeys.on(.picker) { [weak self] in self?.controller.showPicker() }
         hotkeys.on(.rawPaste) { [weak self] in self?.controller.pasteLatest() }
         hotkeys.on(.queueToggle) { [weak self] in self?.toggleQueue() }
@@ -76,20 +85,34 @@ public final class AppModel {
         settings.providerClient()
     }
 
-    /// Round-trips a trivial question so Settings/onboarding can verify keys.
-    public func testProvider() async -> String {
+    /// Typed connection check — onboarding gates Continue on this without
+    /// parsing UI strings. Settings' formatted status stays on testProvider().
+    public enum ProviderConnectionResult: Sendable, Equatable {
+        case connected(model: String)
+        case failed(message: String)
+    }
+
+    public func testConnection() async -> ProviderConnectionResult {
         guard let provider = settings.providerClient() else {
-            return settings.provider == .off ? "Model is off"
-                : settings.provider.needsAPIKey ? "No API key set" : "Check the endpoint URL"
+            return .failed(message: settings.provider == .off ? "Model is off"
+                : settings.provider.needsAPIKey ? "No API key set" : "Check the endpoint URL")
         }
         do {
             let resp = try await provider.evaluate(
                 state: .string("The user clicked test."),
                 questions: ["ok": .noul(instructions: "Did the request succeed?")]
             )
-            return "Connected — \(resp.model), \(resp.inputTokens) tokens in"
+            return .connected(model: resp.model)
         } catch {
-            return "Failed: \(error.localizedDescription)"
+            return .failed(message: error.localizedDescription)
+        }
+    }
+
+    /// Round-trips a trivial question so Settings/onboarding can verify keys.
+    public func testProvider() async -> String {
+        switch await testConnection() {
+        case .connected(let model): "Connected — \(model)"
+        case .failed(let message): "Failed: \(message)"
         }
     }
 
@@ -139,44 +162,39 @@ public final class AppModel {
         win.makeKeyAndOrderFront(nil)
     }
 
-    /// Onboarding's borderless card window. `canBecomeKey` must be overridden:
-    /// borderless windows are never key by default, which would break the
-    /// API-key field and the Return-to-continue shortcut.
-    private final class CardWindow: NSWindow {
-        override var canBecomeKey: Bool { true }
-        override var canBecomeMain: Bool { true }
-    }
-
     private func makeWindow(id: String) -> NSWindow {
         let view: AnyView = switch id {
         case "history": AnyView(HistoryView(model: self))
         case "settings": AnyView(SettingsView(model: self))
         default: AnyView(OnboardingView(model: self))
         }
-        let win: NSWindow
+        let win = NSWindow(contentViewController: NSHostingController(rootView: view))
         if id == "onboarding" {
-            let card = CardWindow(contentViewController: NSHostingController(rootView: view))
-            card.styleMask = [.borderless]
-            card.isOpaque = false
-            card.backgroundColor = .clear
-            card.hasShadow = true
-            card.isMovableByWindowBackground = true
-            win = card
+            // Native chrome: transparent titlebar, hidden title, real traffic
+            // lights. AppKit owns the window shadow; not resizable — the
+            // content column scrolls internally at larger text sizes.
+            win.styleMask = [.titled, .closable, .fullSizeContentView]
+            win.titlebarAppearsTransparent = true
+            win.titleVisibility = .hidden
+            win.isMovableByWindowBackground = false
+            // Debug/screenshot hook: `defaults write com.local.cue obTheme light|dark`.
+            // Not a user feature — only a forced appearance for captures.
+            if let theme = UserDefaults.standard.string(forKey: "obTheme") {
+                win.appearance = NSAppearance(named: theme == "light" ? .aqua : .darkAqua)
+            }
         } else {
-            win = NSWindow(contentViewController: NSHostingController(rootView: view))
             win.styleMask = [.titled, .closable, .resizable]
         }
         win.title = switch id {
         case "history": "Clipboard History"
         case "settings": "Settings"
-        default: "Welcome"
+        default: "Welcome to Cue"
         }
         win.isReleasedWhenClosed = false
         let size: NSSize = switch id {
         case "history": NSSize(width: 480, height: 420)
         case "settings": NSSize(width: 480, height: 560)
-        // +28 vertical/horizontal padding in the view leaves room for shadow.
-        default: NSSize(width: 588, height: 648)
+        default: NSSize(width: 760, height: 580)
         }
         win.setContentSize(size)
         return win

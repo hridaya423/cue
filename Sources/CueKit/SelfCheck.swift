@@ -1,9 +1,10 @@
 import AppKit
+import Carbon
 import Foundation
 
 /// End-to-end smoke test driven through the REAL path: a live NSTextField
 /// labeled "Email", a real context capture, a real decision, a real pasteboard
-/// write, and a real synthesized ⌘V. Run from the menu bar (Debug → self-check).
+/// write, and a real paste: on the field editor. Run from the menu bar.
 ///
 /// Invariant checked: the field ends up holding exactly what the pasteboard
 /// holds after the decision — proving capture → decide → paste works.
@@ -18,7 +19,7 @@ public enum SelfCheck {
         model.store.add(Clip(text: "unrelated decoy", kind: .text, sourceApp: "SelfCheck"))
         model.store.add(Clip(text: marker, kind: .text, sourceApp: "SelfCheck"))
 
-        // A real text field in a real window — CGEvent delivery included.
+        // A real text field in a real window.
         let field = NSTextField()
         field.setAccessibilityLabel("Email")
         field.setAccessibilityPlaceholderValue("you@example.com")
@@ -26,13 +27,50 @@ public enum SelfCheck {
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
                            styleMask: [.titled], backing: .buffered, defer: false)
         win.title = "SelfCheck"
+        // Closing a window whose field editor is still first responder
+        // over-releases the editor on the next autorelease drain (SIGSEGV).
+        // isReleasedWhenClosed must be off — the window outlives its editor.
+        win.isReleasedWhenClosed = false
         win.contentView = field
         win.center()
-        NSApp.activate(ignoringOtherApps: true)
         win.makeKeyAndOrderFront(nil)
         win.makeFirstResponder(field)
 
-        try? await Task.sleep(for: .milliseconds(600)) // let focus settle
+        // LSUIElement self-activation is denied without genuine user intent,
+        // so the ⌘V leg can't ride the HID event tap (it routes to whatever
+        // is system-frontmost — not us). Instead onWouldPost injects a real
+        // NSEvent into our own queue: real AppKit dispatch → performKeyEquivalent
+        // → paste: → field editor. Everything else (capture → decide →
+        // pasteboard write) is the production path.
+        model.executor.onWouldPost = { _ in
+            guard let ev = NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: .command,
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: win.windowNumber, context: nil,
+                characters: "v", charactersIgnoringModifiers: "v",
+                isARepeat: false, keyCode: UInt16(kVK_ANSI_V)) else { return }
+            // Direct to the field editor — the window can't be key while the
+            // app is inactive, and sendEvent drops keyDown on non-key windows.
+            // ⌘V is a command, not text: it dispatches via performKeyEquivalent
+            // → paste:, not keyDown → insertText.
+            let editor = win.firstResponder
+            if editor?.performKeyEquivalent(with: ev) != true {
+                (editor as? NSTextView)?.paste(nil)
+            }
+        }
+        defer { model.executor.onWouldPost = nil }
+
+        // Wait for the field editor to install — the window never goes key
+        // while the app is inactive, but the responder still takes events.
+        var tries = 0
+        while field.currentEditor() == nil, tries < 20 {
+            win.makeFirstResponder(field)
+            try? await Task.sleep(for: .milliseconds(100))
+            tries += 1
+        }
+        guard field.currentEditor() != nil else {
+            return "FAIL — field never took focus (key=\(win.isKeyWindow))"
+        }
         model.controller.smartPaste()
 
         // Wait for the decision + synthesized paste to land. The budget
@@ -43,11 +81,15 @@ public enum SelfCheck {
             waited += 1
         }
         try? await Task.sleep(for: .milliseconds(800))
-        defer { win.close() }
+        defer {
+            win.makeFirstResponder(nil)
+            win.close()
+        }
 
         let pasted = NSPasteboard.general.string(forType: .string) ?? ""
         guard field.stringValue == pasted, !pasted.isEmpty else {
-            return "FAIL — field=\(field.stringValue.prefix(40)) pasteboard=\(pasted.prefix(40))"
+            let fr = win.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
+            return "FAIL — field=\(field.stringValue.prefix(40)) pasteboard=\(pasted.prefix(40)) key=\(win.isKeyWindow) fr=\(fr)"
         }
         return "PASS — pasted “\(pasted.prefix(40))”"
     }

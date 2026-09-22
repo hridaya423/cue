@@ -31,7 +31,7 @@ in `Sources/CueKit`:
 - `Clip.swift`, `ClipStore.swift` — model + JSON history at `~/Library/Application Support/Cue/history.json` (cap from settings, pins exempt)
 - `ClipboardMonitor.swift` — polls `NSPasteboard.changeCount`; `PasteboardGate` — image/file pasteboards pass through before any model call
 - `Context.swift` — `ContextCaptor`: frontmost app + focused AX element (role/label/placeholder/value/rect). Secure fields are flagged, never read.
-- `Hotkeys.swift` — Carbon `RegisterEventHotKey`; `isSynthesizing` guards our own ⌘V. ⌘V interception only registers while Accessibility-trusted (a swallowed keystroke we can't repost is worse than none) — a 1s poll re-registers on grant. All bindings rebindable in Settings.
+- `Hotkeys.swift` — Carbon `RegisterEventHotKey`; `isSynthesizing` guards our own ⌘V. ⌘V interception only registers while Accessibility-trusted (a swallowed keystroke we can't repost is worse than none) — a 1s poll re-registers on grant. `suspendIntercept()`/`resumeIntercept()` lift the ⌘V registration around synthetic pastes — RegisterEventHotKey consumes the event wholesale, so without suspension our own reposted ⌘V is eaten before the target app sees it. All bindings rebindable in Settings.
 - `Jev.swift` — `JSONValue`, `Question`/`Answer` contract, `JevClient` (one POST `{base}/v1/systemone`), `JevEndpoint.custom` URL normalization + `isRemote` loopback check, `StatusTrackingProvider`/`ProviderStatus` for reachability UI.
 - `Models.swift` — `ModelCatalog` (benchmark-ranked local model specs: variants, disk/RAM, support tier) + `ModelManager` (uv bootstrap, install via venv/repo/shim, start/stop, health). Absolute tool paths; pipes drained.
 - `Redaction.swift` — `Redacting` protocol + `PIIRedactor` wrapping the desert-ant `redact` CoreML model (downloads on demand, ~12 MB).
@@ -41,7 +41,7 @@ in `Sources/CueKit`:
 - `Controller.swift` — `SmartPasteController` orchestrates; `FeedbackTracker` learns from ⌘Z-within-2.5s.
 - `HUD.swift` — non-activating panels near the caret: top-3, full picker, status toast.
 - `Views/` — menu bar, history, settings (+hotkey recorder), onboarding; `ProviderPicker.swift` is the shared provider/model UI.
-- `SelfCheck.swift` — real end-to-end check: labeled NSTextField → real capture → real decision → real ⌘V → assert field got the pasteboard's content. Menu bar → "Run self-check".
+- `SelfCheck.swift` — real end-to-end check: labeled NSTextField → real capture → real decision → real pasteboard write → assert the field got the pasteboard's content. An LSUIElement app can't self-activate from a synthetic driver, so the keystroke leg rides `PasteExecutor.onWouldPost` → real `performKeyEquivalent`/`paste:` on the field editor (the HID-tap leg only ever reaches the system-frontmost app). Menu bar → "Run self-check".
 
 ## Invariants — don't break these
 
