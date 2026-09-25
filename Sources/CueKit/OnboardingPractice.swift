@@ -13,9 +13,8 @@ public enum OnboardingSample {
         "Let’s review everything on Friday."
 
     public static let practiceMessage =
-        "Invoice #CU-1847 is approved for £2,480. Priya can help at priya@example.com. " +
-        "The billing portal is https://example.com/invoices/CU-1847. " +
-        "Please submit it before 4:30 PM Thursday."
+        "Reach Mira at mira@example.com or +44 7700 900123. " +
+        "The project brief is at https://example.com/launch."
 
     public enum Target: String, CaseIterable, Sendable {
         case email = "Email"

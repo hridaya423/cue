@@ -190,7 +190,7 @@ public final class SmartPasteController {
             let indicator = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(400))
                 guard !Task.isCancelled, let self, self.busy else { return }
-                self.hud.showStatus("Deciding…")
+                self.hud.showDeciding(near: ctx.caretRect ?? ctx.fieldRect)
             }
             defer {
                 indicator.cancel()
@@ -251,6 +251,7 @@ public final class SmartPasteController {
             }
         case .pasteLatest(let reason):
             lastAction = "plain paste · \(reason.label)"
+            hud.dismiss() // a shown deciding indicator must not linger
             pasteLatest()
         }
     }

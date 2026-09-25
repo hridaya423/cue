@@ -75,6 +75,13 @@ public final class HUDController {
         }
     }
 
+    /// Caret-adjacent "thinking" dots while the model is working — much less
+    /// intrusive than a top-of-screen toast, and it sits where the result
+    /// will appear. Caller dismisses (paste/chooser replaces it).
+    public func showDeciding(near rect: CGRect?) {
+        show(view: DecidingView(), near: rect, dismissOnResign: false)
+    }
+
     /// Tiny confirmation pill. Auto-dismisses.
     public func showStatus(_ text: String) {
         show(view: StatusToastView(text: text), near: nil, dismissOnResign: false)
@@ -329,6 +336,29 @@ struct PickerView: View {
         }
         .frame(width: 420)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Three pulsing dots in a capsule — sits at the caret while the model works.
+struct DecidingView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.28, paused: reduceMotion)) { tl in
+            let phase = Int(tl.date.timeIntervalSinceReferenceDate / 0.28) % 3
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(Color.secondary.opacity(i == phase ? 0.9 : 0.3))
+                        .frame(width: 5, height: 5)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(.regularMaterial, in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Deciding what to paste")
     }
 }
 

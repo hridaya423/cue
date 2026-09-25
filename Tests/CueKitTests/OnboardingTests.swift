@@ -34,11 +34,13 @@ struct OnboardingSampleTests {
         #expect(OnboardingSample.Target.website.expected == "https://example.com/launch")
     }
 
-    @Test func practiceSampleHighlightsItsBillingDetails() {
+    @Test func practiceSampleHighlightsItsDetails() {
+        // The practice reuses the welcome narrative — same Mira message, so
+        // the extraction the user just saw demoed is the one they perform.
         let text = OnboardingSample.practiceMessage
-        #expect(OnboardingSample.Target.email.expected(in: text) == "priya@example.com")
+        #expect(OnboardingSample.Target.email.expected(in: text) == "mira@example.com")
         #expect(OnboardingSample.Target.website.expected(in: text)
-                == "https://example.com/invoices/CU-1847")
+                == "https://example.com/launch")
         #expect(text.contains(OnboardingSample.Target.email.expected(in: text)))
         #expect(text.contains(OnboardingSample.Target.website.expected(in: text)))
     }

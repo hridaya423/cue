@@ -156,8 +156,10 @@ public struct OnboardingView: View {
         case .practice:
             if let p = practice, case .succeeded = p.phase {
                 "One copied message. Just the detail you needed."
+            } else if let p = practice, p.target == .website {
+                "We copied a message. Paste just the link."
             } else {
-                "We copied an invoice brief. Paste just the billing link."
+                "We copied a message. Paste just the email."
             }
         }
     }
@@ -660,7 +662,7 @@ public struct OnboardingView: View {
 
     private func enterPractice() {
         let p = OnboardingPractice(model: model)
-        p.target = .website
+        p.target = .email
         practice = p
         model.practice = p
     }
@@ -831,7 +833,7 @@ private struct PracticeScreen: View {
         FoldOut(arrowX: paraRects.first.map { 24 + $0.midX }) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    OBCaption("Invoice brief")
+                    OBCaption("Sample copied message")
                     Spacer()
                     Label("Copied for you", systemImage: "checkmark")
                         .font(.system(size: 12))

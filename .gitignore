@@ -4,3 +4,8 @@ build/
 .DS_Store
 .devin/
 Scripts/__pycache__/
+output/
+Evals/results/*.log
+Evals/results/*.err
+Evals/results/raw-*.jsonl
+Evals/results/v3-raw*.jsonl

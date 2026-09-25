@@ -304,7 +304,7 @@ public struct DecisionEngine: Sendable {
         let lines = try await scrubbed(rawLines, redactor: redactor)
         var criteria: [String: String] = [:]
         for (i, line) in lines.enumerated() { criteria[options[i].id] = line }
-        criteria["none"] = "none of these fits the field"
+        criteria["none"] = "none of these could plausibly fill this field"
         var q: [String: Question] = [
             "pick": .choice(
                 instructions: """
@@ -390,11 +390,17 @@ public enum DecisionPolicy {
         let plausible = ranked.filter { $0.probability >= 0.1 }
         let noneLeads = top == nil || noneProb >= top!.probability
 
+        // `none` only ends the paste when it's actually dominant — a
+        // plurality "none" beside real candidates deserves the chooser
+        // (Esc/⌘V inside it still yields a plain paste).
+        let noneDominant = noneProb >= threshold && noneProb >= (top?.probability ?? 0)
+
         switch mode {
         case .intercept:
             // ⌘V: the user's own copy wins if it fits verbatim.
             if let u = useLatest, u >= 0.5 { return .pasteLatest(.useLatest) }
             if decisive, let top { return .paste(decision(top, isForm: false)) }
+            if noneDominant { return .pasteLatest(.nothingFits) }
             if plausible.count >= 2 {
                 switch fallback {
                 case .pasteBest: return .paste(decision(plausible[0], isForm: false))
@@ -406,8 +412,8 @@ public enum DecisionPolicy {
             return .pasteLatest(.lowConfidence)
 
         case .hotkey:
-            if noneLeads { return .pasteLatest(.nothingFits) }
             if decisive, let top { return .paste(decision(top, isForm: isForm)) }
+            if noneDominant { return .pasteLatest(.nothingFits) }
             if plausible.count >= 2 {
                 switch fallback {
                 case .pasteBest: return .paste(decision(plausible[0], isForm: isForm))
@@ -417,8 +423,8 @@ public enum DecisionPolicy {
                 }
             }
             // Weak but unopposed leader — take it rather than a bare ⌘V of c1.
-            if let top { return .paste(decision(top, isForm: isForm)) }
-            return .pasteLatest(.noAnswer)
+            if let top, top.probability > noneProb { return .paste(decision(top, isForm: isForm)) }
+            return .pasteLatest(noneLeads ? .nothingFits : .noAnswer)
 
         case .formFill:
             // Mid-form: never pop a chooser — paste confidently or stop.
