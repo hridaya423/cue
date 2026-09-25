@@ -24,6 +24,11 @@ public final class PIIRedactor: Redacting {
     }
 
     private let engine = Redact()
+    /// Clip text is immutable, so identical strings re-scrub identically —
+    /// cache by content. A 30-option request otherwise pays N sequential
+    /// Neural Engine runs on every smart paste.
+    private var cache: [String: String] = [:]
+    private var cacheOrder: [String] = []
 
     public init() {
         if engine.isDownloaded() { status = .ready }
@@ -52,11 +57,18 @@ public final class PIIRedactor: Redacting {
 
     public func redact(_ text: String) async throws -> String {
         guard !text.isEmpty else { return text }
+        if let hit = cache[text] { return hit }
         // First call lazily downloads+loads the model; a failure propagates —
         // the engine degrades to a plain paste rather than send unredacted
         // text anywhere.
         let r = try await engine.redaction(of: text)
         status = .ready
+        if cacheOrder.count >= 256, let evict = cacheOrder.first {
+            cache.removeValue(forKey: evict)
+            cacheOrder.removeFirst()
+        }
+        cache[text] = r.redactedText
+        cacheOrder.append(text)
         return r.redactedText
     }
 }

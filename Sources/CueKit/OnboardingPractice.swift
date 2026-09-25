@@ -177,7 +177,7 @@ public final class OnboardingPractice {
             lastWasExtraction = false
             model.executor.pasteCurrent()
             scheduleObservation(epoch: myEpoch)
-        case .top3, .picker:
+        case .choose:
             // The model asked for confirmation — a truthful non-success.
             phase = .uncertain
         }

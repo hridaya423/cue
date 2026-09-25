@@ -29,8 +29,15 @@ public struct ContextSnapshot: Sendable, Equatable {
     public var bundleID = ""
     public var windowTitle = ""
     public var field = Field()
+    /// Short text gathered near the field (label elements, preceding labels,
+    /// page title hints). Lets the model tell work vs personal apart.
+    public var nearby = ""
+    /// Host of the enclosing web area, when the field lives in a browser.
+    public var webHost = ""
     /// Screen rect of the focused element (Cocoa coordinates), for HUD positioning.
     public var fieldRect: CGRect? = nil
+    /// Caret rect inside the field (Cocoa coordinates), when AX provides one.
+    public var caretRect: CGRect? = nil
 
     public static let empty = ContextSnapshot()
 }
@@ -55,6 +62,8 @@ public enum ContextCaptor {
         guard isTrusted else { return ctx }
 
         let system = AXUIElementCreateSystemWide()
+        // A hung target app must not stall a paste — 50 ms per AX call.
+        AXUIElementSetMessagingTimeout(system, 0.05)
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
               let focusedRef, CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else { return ctx }
@@ -62,20 +71,95 @@ public enum ContextCaptor {
 
         ctx.field.role = axString(el, kAXRoleAttribute) ?? ""
         ctx.field.isSecure = ctx.field.role == "AXSecureTextField"
+        if ctx.field.isSecure {
+            // Never read or transmit secure contents — bail immediately.
+            ctx.fieldRect = axRect(el)
+            ctx.windowTitle = windowTitle(of: app) ?? ""
+            return ctx
+        }
         ctx.field.label = axString(el, kAXTitleAttribute)
             ?? axString(el, kAXDescriptionAttribute)
             ?? axString(el, "AXPlaceholderValue")
+            ?? firstLabelElement(of: el)
             ?? ""
-        if ctx.field.isSecure {
-            ctx.field.value = "" // never read or transmit secure contents
-        } else {
-            let raw = axString(el, kAXValueAttribute) ?? ""
-            ctx.field.value = String(raw.prefix(200))
-        }
+        let raw = axString(el, kAXValueAttribute) ?? ""
+        ctx.field.value = String(raw.prefix(200))
         ctx.field.placeholder = axString(el, "AXPlaceholderValue") ?? ""
         ctx.fieldRect = axRect(el)
+        ctx.caretRect = caretRect(of: el)
+        ctx.nearby = nearbyText(of: el)
+        ctx.webHost = webHost(of: el)
         ctx.windowTitle = windowTitle(of: app) ?? ""
         return ctx
+    }
+
+    /// AX label element that describes this field (web forms wire these up
+    /// via aria-labelledby / <label for>).
+    private static func firstLabelElement(of el: AXUIElement) -> String? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, "AXTitleUIElement" as CFString, &ref) == .success,
+              let ref, CFGetTypeID(ref) == AXUIElementGetTypeID() else { return nil }
+        return axString(ref as! AXUIElement, kAXValueAttribute)
+            ?? axString(ref as! AXUIElement, kAXTitleAttribute)
+    }
+
+    /// Text around the field: the field's help, its parent's title, and
+    /// sibling static texts (usually the visible label). ~300 chars max.
+    private static func nearbyText(of el: AXUIElement) -> String {
+        var parts: [String] = []
+        if let help = axString(el, kAXHelpAttribute) { parts.append(help) }
+        if let parent = axElement(el, kAXParentAttribute) {
+            if let t = axString(parent, kAXTitleAttribute) { parts.append(t) }
+            var kids: CFTypeRef?
+            if AXUIElementCopyAttributeValue(parent, kAXChildrenAttribute as CFString, &kids) == .success,
+               let arr = kids as? [AXUIElement] {
+                for k in arr.prefix(20) where axString(k, kAXRoleAttribute) == "AXStaticText" {
+                    if let v = axString(k, kAXValueAttribute), !v.isEmpty { parts.append(v) }
+                }
+            }
+            // One level up — section/group headings ("Contact", "Shipping").
+            if let gp = axElement(parent, kAXParentAttribute),
+               let t = axString(gp, kAXTitleAttribute), !t.isEmpty {
+                parts.append(t)
+            }
+        }
+        return String(parts.joined(separator: " · ").prefix(300))
+    }
+
+    /// Host of the enclosing AXWebArea — browsers expose the page URL there.
+    private static func webHost(of el: AXUIElement) -> String {
+        var cur: AXUIElement? = el
+        for _ in 0..<6 {
+            guard let c = cur else { return "" }
+            if axString(c, kAXRoleAttribute) == "AXWebArea",
+               let url = axString(c, "AXURL"),
+               let host = URLComponents(string: url)?.host { return host }
+            cur = axElement(c, kAXParentAttribute)
+        }
+        return ""
+    }
+
+    /// Bounds of the caret (AXSelectedTextRange → AXBoundsForRange), so the
+    /// chooser anchors to the insertion point, not the field's edge.
+    private static func caretRect(of el: AXUIElement) -> CGRect? {
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+              let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
+        var boundsRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+                el, "AXBoundsForRange" as CFString, rangeRef, &boundsRef) == .success,
+              let boundsRef, CFGetTypeID(boundsRef) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue(boundsRef as! AXValue, .cgRect, &rect) else { return nil }
+        let screenH = NSScreen.screens.first?.frame.height ?? 0
+        return CGRect(x: rect.minX, y: screenH - rect.maxY, width: rect.width, height: rect.height)
+    }
+
+    private static func axElement(_ el: AXUIElement, _ attr: String) -> AXUIElement? {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success,
+              let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
+        return v as! AXUIElement
     }
 
     private static func windowTitle(of app: NSRunningApplication?) -> String? {

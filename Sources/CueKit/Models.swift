@@ -186,7 +186,7 @@ public enum ModelCatalog {
         variants: [
             WeightSpec(id: "jev-lite-e4b", paramsLabel: "4B", diskLabel: "~4 GB", ramLabel: "~6 GB",
                        recommended: true, accuracy: 0.7, speed: 0.5,
-                       serveModel: "jev-lite", hfRepo: "vagmi/jev-lite"),
+                       serveModel: "jev-lite-gemma4-e4b", hfRepo: "vagmi/jev-lite"),
         ])
 
     /// flash-linear-attention is a hard dep and Triton has no macOS wheels —

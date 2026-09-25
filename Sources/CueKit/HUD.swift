@@ -16,9 +16,15 @@ public final class HUDController {
 
     public init() {}
 
-    public func showTop3(candidates: [ScoredCandidate], near rect: CGRect?,
-                         onPick: @escaping (ScoredCandidate?) -> Void) {
-        show(view: Top3View(candidates: candidates), near: rect, dismissOnResign: true)
+    /// Caret-anchored disambiguation: the model's top options, 1/2/3 or
+    /// arrows+Return to pick, Esc/⌘V = plain paste. Non-activating.
+    public func showChooser(options: [ScoredOption], near rect: CGRect?,
+                            onPick: @escaping (ScoredOption?) -> Void) {
+        let state = ChooserState(options: options)
+        show(view: ChooserView(state: state), near: rect, dismissOnResign: true)
+        NSAccessibility.post(element: NSApp as Any,
+                             notification: .announcementRequested,
+                             userInfo: [.announcement: "Paste options available. Press a number to choose, Escape for a plain paste."])
         onKey = { [weak self] e in
             guard let self else { return true }
             // ⌘V while we're up means "just paste it" — the intercepted key
@@ -27,10 +33,16 @@ public final class HUDController {
                 self.dismiss(); onPick(nil); return true
             }
             switch Int(e.keyCode) {
-            case kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3:
+            case kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4,
+                 kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9:
                 let i = Int(e.keyCode) - kVK_ANSI_1
-                if i < candidates.count { self.dismiss(); onPick(candidates[i]) }
+                if i < state.options.count { self.dismiss(); onPick(state.options[i]) }
                 return true
+            case kVK_DownArrow: state.move(1); return true
+            case kVK_UpArrow: state.move(-1); return true
+            case kVK_Return, kVK_ANSI_KeypadEnter:
+                let sel = state.options.indices.contains(state.selection) ? state.options[state.selection] : nil
+                self.dismiss(); onPick(sel); return true
             case kVK_Escape: self.dismiss(); onPick(nil); return true
             default: return true // swallow everything else
             }
@@ -139,6 +151,18 @@ public final class HUDController {
     }
 }
 
+// MARK: - Chooser state
+
+@Observable
+final class ChooserState {
+    var selection = 0
+    let options: [ScoredOption]
+    init(options: [ScoredOption]) { self.options = options }
+    func move(_ delta: Int) {
+        selection = min(max(selection + delta, 0), max(options.count - 1, 0))
+    }
+}
+
 // MARK: - Picker state
 
 @Observable
@@ -172,47 +196,70 @@ private extension Clip {
     var kindIcon: String { isURL ? "link" : "text.alignleft" }
 }
 
-struct Top3View: View {
-    let candidates: [ScoredCandidate]
+struct ChooserView: View {
+    var state: ChooserState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Not sure — pick one")
+            Text("Which one?")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
-            ForEach(Array(candidates.prefix(3).enumerated()), id: \.offset) { i, cand in
-                HStack(spacing: 10) {
+            ForEach(Array(state.options.enumerated()), id: \.offset) { i, so in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text("\(i + 1)")
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .frame(width: 18, height: 18)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
-                    Image(systemName: cand.clip.kindIcon)
-                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                        .frame(width: 14)
-                    Text(cand.clip.preview)
-                        .font(.system(size: 13))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        .frame(width: 17, height: 17)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(so.option.text)
+                            .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(contextLine(for: so.option))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                     Spacer(minLength: 8)
-                    Text("\(Int(cand.probability * 100))%")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
+                .background(i == state.selection
+                            ? Color.accentColor.opacity(0.15)
+                            : .clear,
+                            in: RoundedRectangle(cornerRadius: 6))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Paste \(so.option.text), \(contextLine(for: so.option))")
             }
-            Text("esc for plain paste")
+            Text("1–3 to paste · esc for plain paste")
                 .font(.system(size: 10))
                 .foregroundStyle(.quaternary)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 6)
         }
-        .frame(width: 380)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 2)
+        .frame(minWidth: 280, maxWidth: 420)
+        .fixedSize(horizontal: true, vertical: true)
+        .frame(maxWidth: 420)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
+    }
+
+    /// "Mail · 2m ago · copied from Slack", preferring the app + age; falls
+    /// back to the snippet when a span needs its surrounding line.
+    private func contextLine(for o: PasteOption) -> String {
+        var parts: [String] = []
+        if !o.clip.sourceApp.isEmpty { parts.append(o.clip.sourceApp) }
+        parts.append(o.clip.copiedAt.relativeAge)
+        if o.kind != .text, o.snippet != o.text, !o.snippet.isEmpty {
+            parts.append("“\(o.snippet)”")
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

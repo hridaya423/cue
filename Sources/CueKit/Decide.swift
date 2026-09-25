@@ -40,27 +40,13 @@ public enum Transform: String, Sendable, CaseIterable {
         }
         return c.string ?? text
     }
-
-    /// Labels sent to Jev as choice criteria.
-    static var criteriaDescriptions: [String: String] {
-        [
-            asIs.rawValue: "paste exactly as copied",
-            trim.rawValue: "remove leading and trailing whitespace",
-            lowercase.rawValue: "lowercase all text (emails, usernames)",
-            digitsOnly.rawValue: "keep digits only (phone/number fields)",
-            stripURLTracking.rawValue: "strip tracking parameters from a URL (utm_*, fbclid, gclid)",
-            extractEmail.rawValue: "paste only the email address inside the clip (e.g. a copied contact card for an email/To field)",
-            extractPhone.rawValue: "paste only the phone number inside the clip",
-            extractURL.rawValue: "paste only the URL inside the clip",
-        ]
-    }
 }
 
 /// Deterministic span detection shared by the extract transforms and the
 /// "contains:" hints added to pick criteria. Email needs regex —
 /// NSDataDetector only catches mailto:-style links, not bare addresses.
 public enum SpanExtractor {
-    private static let emailPattern = try! NSRegularExpression(
+    static let emailPattern = try! NSRegularExpression(
         pattern: #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Za-z]{2,}"#, options: .caseInsensitive)
 
     public static func emails(in text: String) -> [String] {
@@ -108,7 +94,8 @@ public struct ScoredCandidate: Sendable {
 public struct Decision: Sendable {
     public var text: String
     public var clip: Clip
-    public var transform: Transform
+    /// Human-readable note for the toast/status line ("email", "picked").
+    public var detail: String?
     public var isForm: Bool
     public var confidence: Double
 }
@@ -119,6 +106,7 @@ public enum PasteOutcome: Sendable {
     /// last-action line so a silent fallback is never mysterious.
     public enum PlainReason: Sendable {
         case useLatest      // model judged c1 already right, verbatim
+        case nothingFits    // model said none of the options belongs here
         case lowConfidence  // no decisive pick
         case unreachable    // provider call failed
         case noProvider     // off / unconfigured
@@ -128,6 +116,7 @@ public enum PasteOutcome: Sendable {
         public var label: String {
             switch self {
             case .useLatest: "latest was already right"
+            case .nothingFits: "nothing here fits this field"
             case .lowConfidence: "not confident"
             case .unreachable: "model unreachable"
             case .noProvider: "no model configured"
@@ -138,8 +127,9 @@ public enum PasteOutcome: Sendable {
     }
 
     case paste(Decision)
-    case top3([ScoredCandidate])
-    case picker([ScoredCandidate])
+    /// Several options plausibly fit — show the caret-anchored chooser.
+    /// Ranked model output; the user (or Esc → plain paste) decides.
+    case choose([ScoredOption])
     /// Behave like a plain ⌘V of the most recent clip (also = "stop" in form-fill).
     case pasteLatest(PlainReason)
 }
@@ -158,8 +148,16 @@ public struct DecisionEngine: Sendable {
     }
 
     public var provider: (any DecisionProvider)?
-    public var confidenceThreshold = 0.7
+    /// Top-option probability needed for an automatic paste, and the gap it
+    /// must hold over the runner-up. Below it with ≥2 plausible options, the
+    /// chooser shows. Tuned by Evals/results — not a guess.
+    public var confidenceThreshold = 0.6
+    public var decisivenessMargin = 0.25
+    /// What undecided cases do — the user's "When unsure" setting.
     public var lowConfidenceMode: AppSettings.LowConfidenceMode = .top3
+    /// Model-call ceiling. Intercepted ⌘V caps harder — a slow ⌘V feels
+    /// broken, a fast plain paste doesn't.
+    public var timeout: TimeInterval = 2.5
     /// When set and the provider is remote, clip/context text is scrubbed of
     /// PII before it goes on the wire. Loopback endpoints skip it entirely.
     public var redactor: (any Redacting)?
@@ -176,91 +174,94 @@ public struct DecisionEngine: Sendable {
         mode: Mode,
         feedback: [String: Double] = [:]
     ) async -> PasteOutcome {
-        guard !candidates.isEmpty else { return .pasteLatest(.empty) }
+        let options = OptionBuilder.options(from: candidates)
+        guard !options.isEmpty else { return .pasteLatest(.empty) }
         guard let provider else { return .pasteLatest(.noProvider) }
 
         let resp: JevResponse
         var isForm = false
-        var transform: Transform = .asIs
         do {
             // Redaction failure throws → .pasteLatest → nothing leaves the
             // device. Never send raw text after a failed scrub.
             let scrub = provider.isRemote ? redactor : nil
-            resp = try await provider.evaluate(
-                state: try await Self.stateJSON(context: context, mode: mode, redactor: scrub),
-                questions: try await Self.questions(candidates: candidates, mode: mode, redactor: scrub)
-            )
+            let limit = mode == .intercept ? min(timeout, 1.2) : timeout
+            resp = try await Self.withTimeout(limit) {
+                try await provider.evaluate(
+                    state: try await Self.stateJSON(context: context, mode: mode, redactor: scrub),
+                    questions: try await Self.questions(options: options, context: context,
+                                                        mode: mode, redactor: scrub)
+                )
+            }
         } catch {
+            // Hotkey: the model is gone but history isn't — surface the
+            // recency-ordered plausible options so a stalled paste still
+            // offers the right things. Intercept stays silent.
+            if mode == .hotkey {
+                let kind = FieldKind.infer(label: context.field.label,
+                                         placeholder: context.field.placeholder,
+                                         nearby: context.nearby)
+                // Only offer when the field has a type signal — a generic
+                // field + a dead model should paste c1 like nothing happened.
+                let fallback = kind == .generic ? []
+                    : options.filter { kind.matches($0) }
+                if fallback.count >= 2 {
+                    return .choose(fallback.prefix(3).map {
+                        ScoredOption(option: $0, probability: 0, confidence: 0)
+                    })
+                }
+            }
             return .pasteLatest(.unreachable)
         }
 
-        var ranked = Self.ranked(from: resp, candidates: candidates)
-        if mode == .intercept, case .noul(let p) = resp.answers["use_latest"], p >= 0.5 {
-            return .pasteLatest(.useLatest)
-        }
+        var ranked = Self.ranked(from: resp, options: options)
         if mode == .formFill, case .noul(let p) = resp.answers["form_field"], p < 0.5 {
             return .pasteLatest(.lowConfidence)
         }
         if case .noul(let p) = resp.answers["form"], p >= 0.5 { isForm = true }
-        if case .choice(let key, _, _) = resp.answers["transform"],
-           let t = Transform(rawValue: key) { transform = t }
 
         // Blend local feedback, renormalize.
         if !feedback.isEmpty {
             ranked = ranked.map { sc in
                 var s = sc
-                s.probability *= feedback[sc.clip.id] ?? 1
+                s.probability *= feedback[sc.option.clip.id] ?? 1
                 return s
             }
-        }
-        let total = ranked.reduce(0) { $0 + $1.probability }
-        if total > 0 {
-            ranked = ranked.map { var s = $0; s.probability /= total; return s }
-        }
-        ranked.sort { $0.probability > $1.probability }
-
-        guard let top = ranked.first else { return .pasteLatest(.noAnswer) }
-
-        // A decisive leader pastes even when the model's overall confidence is
-        // conservative — small local models routinely report low confidence on
-        // correct picks, and gating on confidence alone would route every
-        // paste to a HUD.
-        func confident(_ t: ScoredCandidate, _ bar: Double) -> Bool {
-            t.confidence >= bar || t.probability >= bar
+            let total = ranked.reduce(0) { $0 + $1.probability }
+            if total > 0 {
+                ranked = ranked.map { var s = $0; s.probability /= total; return s }
+            }
+            ranked.sort { $0.probability > $1.probability }
         }
 
-        // Mid-form: never pop a HUD — paste confidently or stop.
-        if mode == .formFill {
-            return confident(top, 0.5)
-                ? makePaste(top, transform: transform, isForm: true)
-                : .pasteLatest(.lowConfidence)
-        }
+        let noneProb: Double
+        if case .choice(_, _, let probs) = resp.answers["pick"] {
+            noneProb = probs["none"] ?? 0
+        } else { noneProb = 0 }
+        let useLatest: Double? = {
+            guard mode == .intercept, case .noul(let p) = resp.answers["use_latest"] else { return nil }
+            return p
+        }()
 
-        // Intercepted ⌘V without a confident answer must stay a plain paste —
-        // popping a HUD on every paste would be unusable.
-        if mode == .intercept, !confident(top, confidenceThreshold) {
-            return .pasteLatest(.lowConfidence)
-        }
-
-        if confident(top, confidenceThreshold) {
-            return makePaste(top, transform: transform, isForm: isForm)
-        }
-        switch lowConfidenceMode {
-        case .top3: return .top3(Array(ranked.prefix(3)))
-        case .picker: return .picker(ranked)
-        case .pasteBest: return makePaste(top, transform: transform, isForm: isForm)
-        case .pasteLatest: return .pasteLatest(.lowConfidence)
-        }
+        return DecisionPolicy.outcome(
+            ranked: ranked, noneProb: noneProb, useLatest: useLatest, isForm: isForm,
+            mode: mode, threshold: confidenceThreshold, margin: decisivenessMargin,
+            fallback: lowConfidenceMode)
     }
 
-    private func makePaste(_ sc: ScoredCandidate, transform: Transform, isForm: Bool) -> PasteOutcome {
-        .paste(Decision(
-            text: transform.apply(sc.clip.text),
-            clip: sc.clip,
-            transform: transform,
-            isForm: isForm,
-            confidence: sc.confidence
-        ))
+    /// Wrap a provider call in a hard ceiling — a hanging endpoint must never
+    /// stall a paste. Structured-concurrency timeout: the racing task loses.
+    static func withTimeout<T: Sendable>(_ seconds: TimeInterval,
+                                         _ work: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await work() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw CancellationError()
+            }
+            let v = try await group.next()!
+            group.cancelAll()
+            return v
+        }
     }
 
     // MARK: - Request construction
@@ -269,54 +270,58 @@ public struct DecisionEngine: Sendable {
                           redactor: (any Redacting)? = nil) async throws -> JSONValue {
         let r = try await scrubbed(
             [context.windowTitle, context.field.label,
-             context.field.placeholder, context.field.value],
+             context.field.placeholder, context.field.value, context.nearby],
             redactor: redactor)
+        let expects = FieldKind.infer(label: context.field.label,
+                                      placeholder: context.field.placeholder,
+                                      nearby: context.nearby)
         return .object([
             "task": .string(mode == .formFill ? "form-fill" : "smart-paste"),
             "app": .string(context.appName),
             "window": .string(r[0]),
+            "web_host": .string(context.webHost),
+            "nearby": .string(r[4]),
             "field": .object([
                 "role": .string(context.field.role),
                 "label": .string(r[1]),
                 "placeholder": .string(r[2]),
                 "current_value": .string(r[3]),
+                "expects": .string(expects == .generic ? "" : expects.rawValue),
             ]),
         ])
     }
 
-    static func questions(candidates: [Clip], mode: Mode,
-                          redactor: (any Redacting)? = nil) async throws -> [String: Question] {
-        // Criteria lines carry spans detected in the FULL text — the preview
-        // truncates at 80 chars, so an email buried deeper would otherwise be
-        // invisible to the model (and unpickable by an extract transform).
-        // Whole lines are scrubbed so hinted PII is redacted too.
-        let rawLines = candidates.map { clip -> String in
-            var line = "\(clip.kind.rawValue) · \"\(clip.preview)\""
-            let spans = SpanExtractor.spans(in: clip.text)
-                .filter { !clip.preview.contains($0) }
-            if !spans.isEmpty {
-                line += " · contains: \(spans.prefix(3).joined(separator: ", "))"
-            }
-            let app = clip.sourceApp.isEmpty ? "unknown app" : clip.sourceApp
-            return line + " · copied from \(app) · \(clip.copiedAt.relativeAge)"
+    static func questions(options: [PasteOption], context: ContextSnapshot,
+                          mode: Mode, redactor: (any Redacting)? = nil) async throws -> [String: Question] {
+        // Each option describes itself: what it is, its exact text, the line
+        // of the clip it came from, and where/when it was copied. Whole
+        // lines are scrubbed so hinted PII is redacted too.
+        let rawLines = options.map { o -> String in
+            let app = o.clip.sourceApp.isEmpty ? "unknown app" : o.clip.sourceApp
+            let detail = o.kind == .text ? o.snippet : "\(o.text) · in: \"\(o.snippet)\""
+            return "\(o.kind.rawValue) · \"\(detail)\" · copied from \(app) · \(o.clip.copiedAt.relativeAge)"
         }
         let lines = try await scrubbed(rawLines, redactor: redactor)
         var criteria: [String: String] = [:]
-        for (i, line) in lines.enumerated() { criteria["c\(i + 1)"] = line }
+        for (i, line) in lines.enumerated() { criteria[options[i].id] = line }
+        criteria["none"] = "none of these fits the field"
         var q: [String: Question] = [
             "pick": .choice(
-                instructions: "The user invoked smart-paste. Which clipboard item best fits the focused field? Use the field's label, placeholder, and current value. c1 is the most recently copied item.",
+                instructions: """
+                The user invoked smart-paste. Choose the option a person would type \
+                into the focused field described by `field`. Weigh, in order: the \
+                field's purpose (`field.label`, `field.placeholder`, `field.expects`); \
+                who or what the surrounding page or conversation is about (`window`, \
+                `nearby`, `web_host`); then recency — c1 is newest. Choose `none` \
+                when no option belongs in this field.
+                """,
                 criteria: criteria
-            ),
-            "transform": .choice(
-                instructions: "The copied text options are:\n\(lines.enumerated().map { "c\($0.offset + 1): \($0.element)" }.joined(separator: "\n"))\n\nFor the item that best fits the focused field, choose whether to extract one detail or paste it as-is. Use the field label and the actual copied text. Choose extract_email, extract_phone, or extract_url only when the field needs that value; otherwise choose as_is.",
-                criteria: Transform.criteriaDescriptions
             ),
         ]
         switch mode {
         case .intercept:
             q["use_latest"] = .noul(
-                instructions: "The user pressed the ordinary paste shortcut. Is the most recently copied item (c1) already the right thing to paste here — verbatim, including any extra text it contains?"
+                instructions: "The user pressed the ordinary paste shortcut. c1 is what a plain paste would insert, exactly as copied. Does c1's full text belong in this field exactly as-is?"
             )
         case .formFill:
             q["form_field"] = .noul(
@@ -344,17 +349,88 @@ public struct DecisionEngine: Sendable {
         }
     }
 
-    static func ranked(from resp: JevResponse, candidates: [Clip]) -> [ScoredCandidate] {
+    static func ranked(from resp: JevResponse, options: [PasteOption]) -> [ScoredOption] {
         guard case .choice(let pick, let confidence, let probs) = resp.answers["pick"] else { return [] }
-        var ranked = candidates.enumerated().compactMap { i, clip in
-            probs["c\(i + 1)"].map { ScoredCandidate(clip: clip, probability: $0, confidence: confidence) }
+        var ranked = options.compactMap { o in
+            probs[o.id].map { ScoredOption(option: o, probability: $0, confidence: confidence) }
         }
         // If probabilities came back empty, trust the winning key.
-        if ranked.isEmpty, pick.hasPrefix("c"), let i = Int(pick.dropFirst()),
-           candidates.indices.contains(i - 1) {
-            ranked = [ScoredCandidate(clip: candidates[i - 1], probability: 1, confidence: confidence)]
+        if ranked.isEmpty, let o = options.first(where: { $0.id == pick }) {
+            ranked = [ScoredOption(option: o, probability: 1, confidence: confidence)]
         }
-        return ranked
+        return ranked.sorted { $0.probability > $1.probability }
+    }
+}
+
+// MARK: - Policy
+
+/// Pure answer → outcome fold, so the recorded answers can be re-scored
+/// offline with different thresholds (CueEval --rescore).
+public enum DecisionPolicy {
+    /// - `ranked`: model-ranked options, highest probability first.
+    /// - `noneProb`: probability on the `none` criterion.
+    /// - `useLatest`: intercept-mode noul verdict; ≥0.5 = plain ⌘V as-is.
+    /// - `isForm`: model flagged a multi-field form (hotkey only).
+    public static func outcome(
+        ranked: [ScoredOption],
+        noneProb: Double,
+        useLatest: Double?,
+        isForm: Bool,
+        mode: DecisionEngine.Mode,
+        threshold: Double,
+        margin: Double,
+        fallback: AppSettings.LowConfidenceMode = .top3
+    ) -> PasteOutcome {
+        let top = ranked.first
+        let second = ranked.dropFirst().first
+        let decisive = top != nil
+            && top!.probability >= threshold
+            && top!.probability - (second?.probability ?? 0) >= margin
+        // Options that clear the noise floor — the chooser never shows junk.
+        let plausible = ranked.filter { $0.probability >= 0.1 }
+        let noneLeads = top == nil || noneProb >= top!.probability
+
+        switch mode {
+        case .intercept:
+            // ⌘V: the user's own copy wins if it fits verbatim.
+            if let u = useLatest, u >= 0.5 { return .pasteLatest(.useLatest) }
+            if decisive, let top { return .paste(decision(top, isForm: false)) }
+            if plausible.count >= 2 {
+                switch fallback {
+                case .pasteBest: return .paste(decision(plausible[0], isForm: false))
+                case .pasteLatest: return .pasteLatest(.lowConfidence)
+                case .picker: return .choose(Array(plausible))
+                case .top3: return .choose(Array(plausible.prefix(3)))
+                }
+            }
+            return .pasteLatest(.lowConfidence)
+
+        case .hotkey:
+            if noneLeads { return .pasteLatest(.nothingFits) }
+            if decisive, let top { return .paste(decision(top, isForm: isForm)) }
+            if plausible.count >= 2 {
+                switch fallback {
+                case .pasteBest: return .paste(decision(plausible[0], isForm: isForm))
+                case .pasteLatest: return .pasteLatest(.lowConfidence)
+                case .picker: return .choose(Array(plausible))
+                case .top3: return .choose(Array(plausible.prefix(3)))
+                }
+            }
+            // Weak but unopposed leader — take it rather than a bare ⌘V of c1.
+            if let top { return .paste(decision(top, isForm: isForm)) }
+            return .pasteLatest(.noAnswer)
+
+        case .formFill:
+            // Mid-form: never pop a chooser — paste confidently or stop.
+            guard let top, top.probability >= 0.5 else { return .pasteLatest(.lowConfidence) }
+            return .paste(decision(top, isForm: true))
+        }
+    }
+
+    static func decision(_ s: ScoredOption, isForm: Bool) -> Decision {
+        Decision(text: s.option.text, clip: s.option.clip,
+                 detail: s.option.kind == .text ? nil : s.option.kind.rawValue,
+                 isForm: isForm, confidence: s.confidence)
     }
 }
 

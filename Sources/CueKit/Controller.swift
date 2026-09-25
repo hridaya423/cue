@@ -200,7 +200,7 @@ public final class SmartPasteController {
             let mode: DecisionEngine.Mode = settings.triggerMode == .intercept ? .intercept : .hotkey
             let outcome = await engine.decide(
                 context: ctx,
-                candidates: store.candidates(),
+                candidates: store.clips,
                 mode: mode,
                 feedback: feedback.multipliers(for: ctx)
             )
@@ -237,26 +237,17 @@ public final class SmartPasteController {
     private func handle(_ outcome: PasteOutcome, ctx: ContextSnapshot) async {
         switch outcome {
         case .paste(let d):
-            let note = d.transform == .asIs ? nil : d.transform.rawValue.replacing("_", with: " ")
-            lastAction = "pasted \"\(d.clip.preview)\"" + (note.map { " · \($0)" } ?? "")
-            paste(d.text, clip: d.clip, ctx: ctx, note: note)
+            lastAction = "pasted \"\(d.clip.preview)\"" + (d.detail.map { " · \($0)" } ?? "")
+            paste(d.text, clip: d.clip, ctx: ctx, note: d.detail)
             if d.isForm { await formFiller?.run() }
-        case .top3(let cands):
-            lastAction = "showed top 3"
-            hud.showTop3(candidates: cands, near: ctx.fieldRect) { [weak self] pick in
+        case .choose(let opts):
+            lastAction = "showed chooser"
+            hud.showChooser(options: opts, near: ctx.caretRect ?? ctx.fieldRect) { [weak self] pick in
                 guard let self else { return }
-                // Esc/⌘V means "plain paste" — the toast promises it.
+                // Esc/⌘V means "plain paste" — the chooser promises it.
                 guard let pick else { self.lastAction = "plain paste · declined options"; self.pasteLatest(); return }
-                self.lastAction = "pasted \"\(pick.clip.preview)\" · picked"
-                self.paste(pick.clip.text, clip: pick.clip, ctx: ctx)
-            }
-        case .picker(let cands):
-            lastAction = "showed picker"
-            hud.showPicker(candidates: cands, near: ctx.fieldRect) { [weak self] pick in
-                guard let self else { return }
-                guard let pick else { self.lastAction = "plain paste · declined options"; self.pasteLatest(); return }
-                self.lastAction = "pasted \"\(pick.clip.preview)\" · picked"
-                self.paste(pick.clip.text, clip: pick.clip, ctx: ctx)
+                self.lastAction = "pasted \"\(pick.option.text.prefix(40))\" · picked"
+                self.paste(pick.option.text, clip: pick.option.clip, ctx: ctx)
             }
         case .pasteLatest(let reason):
             lastAction = "plain paste · \(reason.label)"
@@ -269,7 +260,7 @@ public final class SmartPasteController {
         let engine = makeEngine()
         let outcome = await engine.decide(
             context: ctx,
-            candidates: store.candidates(),
+            candidates: store.clips,
             mode: .formFill,
             feedback: feedback.multipliers(for: ctx)
         )
@@ -295,7 +286,7 @@ public final class SmartPasteController {
             redactor: settings.effectivePIIRedaction ? redactor : nil
         )
         engine.confidenceThreshold = settings.confidenceThreshold
-        engine.lowConfidenceMode = settings.lowConfidenceMode
+        engine.timeout = timeout
         return engine
     }
 }
