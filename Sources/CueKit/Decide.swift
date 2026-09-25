@@ -309,7 +309,7 @@ public struct DecisionEngine: Sendable {
                 criteria: criteria
             ),
             "transform": .choice(
-                instructions: "Does the picked item need adjustment to fit this field (e.g. digits-only phone fields, lowercase emails)?",
+                instructions: "The copied text options are:\n\(lines.enumerated().map { "c\($0.offset + 1): \($0.element)" }.joined(separator: "\n"))\n\nFor the item that best fits the focused field, choose whether to extract one detail or paste it as-is. Use the field label and the actual copied text. Choose extract_email, extract_phone, or extract_url only when the field needs that value; otherwise choose as_is.",
                 criteria: Transform.criteriaDescriptions
             ),
         ]

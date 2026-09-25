@@ -83,6 +83,18 @@ struct ModelCatalogTests {
     }
 }
 
+struct ModelTransferProgressTests {
+    @Test func parsesTqdmPercentages() {
+        #expect(ModelTransferProgress.parse("model.safetensors: 47%|████▋| 47/100")?.fraction == 0.47)
+        #expect(ModelTransferProgress.parse("model.safetensors: 100%|██████████| 100/100")?.fraction == 1)
+    }
+
+    @Test func ignoresLinesWithoutPercentages() {
+        #expect(ModelTransferProgress.parse("Downloading model files") == nil)
+        #expect(ModelTransferProgress.parse("1000%|██████████") == nil)
+    }
+}
+
 struct PasteboardGateTests {
     private func t(_ name: String) -> NSPasteboard.PasteboardType {
         NSPasteboard.PasteboardType(name)

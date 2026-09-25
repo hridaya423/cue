@@ -14,7 +14,8 @@ let package = Package(
         .target(
             name: "CueKit",
             dependencies: [.product(name: "Redact", package: "desert-ant-core")],
-            path: "Sources/CueKit"
+            path: "Sources/CueKit",
+            resources: [.process("Resources")]
         ),
         .executableTarget(
             name: "Cue",

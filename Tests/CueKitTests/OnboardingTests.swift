@@ -33,6 +33,15 @@ struct OnboardingSampleTests {
         #expect(OnboardingSample.Target.email.expected == "mira@example.com")
         #expect(OnboardingSample.Target.website.expected == "https://example.com/launch")
     }
+
+    @Test func practiceSampleHighlightsItsBillingDetails() {
+        let text = OnboardingSample.practiceMessage
+        #expect(OnboardingSample.Target.email.expected(in: text) == "priya@example.com")
+        #expect(OnboardingSample.Target.website.expected(in: text)
+                == "https://example.com/invoices/CU-1847")
+        #expect(text.contains(OnboardingSample.Target.email.expected(in: text)))
+        #expect(text.contains(OnboardingSample.Target.website.expected(in: text)))
+    }
 }
 
 struct PracticeClassifyTests {

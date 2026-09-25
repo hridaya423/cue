@@ -12,6 +12,11 @@ public enum OnboardingSample {
         "or +44 7700 900123. The brief is at https://example.com/launch. " +
         "Let’s review everything on Friday."
 
+    public static let practiceMessage =
+        "Invoice #CU-1847 is approved for £2,480. Priya can help at priya@example.com. " +
+        "The billing portal is https://example.com/invoices/CU-1847. " +
+        "Please submit it before 4:30 PM Thursday."
+
     public enum Target: String, CaseIterable, Sendable {
         case email = "Email"
         case website = "Website"
@@ -19,9 +24,13 @@ public enum OnboardingSample {
         /// What the deterministic transform should produce for this field —
         /// the practice pass/fail bar, computed from the real extractor.
         public var expected: String {
+            expected(in: message)
+        }
+
+        public func expected(in text: String) -> String {
             switch self {
-            case .email: Transform.extractEmail.apply(message)
-            case .website: Transform.extractURL.apply(message)
+            case .email: Transform.extractEmail.apply(text)
+            case .website: Transform.extractURL.apply(text)
             }
         }
     }
@@ -34,7 +43,7 @@ public enum OnboardingSample {
 @MainActor @Observable
 public final class OnboardingPractice {
     public enum Phase: Equatable {
-        case intro                        // sample shown, "Copy sample" next
+        case intro
         case armed                        // copied; waiting for the trigger
         case deciding                     // engine call in flight
         case succeeded(observed: String)  // field == expected extraction
@@ -46,6 +55,7 @@ public final class OnboardingPractice {
     }
 
     public private(set) var phase: Phase = .intro
+    public private(set) var elapsedMilliseconds: Int?
     public var target = OnboardingSample.Target.email
     /// The observed practice-field text — kept in sync by the field bridge.
     public var fieldText = ""
@@ -57,6 +67,9 @@ public final class OnboardingPractice {
     private var lastWasExtraction = false
     /// Bumps on every attempt — stale async results check it before landing.
     private var epoch = 0
+    private var decisionTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
+    private var startedAt: ContinuousClock.Instant?
 
     private let model: AppModel
 
@@ -65,7 +78,7 @@ public final class OnboardingPractice {
         if model.makeProvider() == nil { phase = .unavailable }
     }
 
-    public var expected: String { target.expected }
+    public var expected: String { target.expected(in: OnboardingSample.practiceMessage) }
 
     /// The trigger hint shown in "Now press …" — the user's real binding.
     public var triggerHint: String {
@@ -79,25 +92,22 @@ public final class OnboardingPractice {
     /// still only sees this one sample clip.
     public func copySample() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(OnboardingSample.message, forType: .string)
-        focusField()
-        phase = .armed
+        NSPasteboard.general.setString(OnboardingSample.practiceMessage, forType: .string)
+        focus()
+        phase = model.makeProvider() == nil ? .unavailable : .armed
     }
 
-    /// Reset for Retry / Try Website. `recopy` performs the explicit sample
-    /// copy as part of the labeled retry (Try Website must not rely on stale
-    /// pasteboard contents).
-    public func reset(target newTarget: OnboardingSample.Target? = nil, recopy: Bool) {
-        epoch += 1 // invalidate in-flight attempt
+    public func reset(target newTarget: OnboardingSample.Target? = nil) {
+        cancel()
+        elapsedMilliseconds = nil
+        lastWasExtraction = false
         if let newTarget { target = newTarget }
         field?.stringValue = ""
         fieldText = ""
         if model.makeProvider() == nil {
             phase = .unavailable
-        } else if recopy {
-            copySample()
         } else {
-            phase = .intro
+            copySample()
         }
     }
 
@@ -123,29 +133,36 @@ public final class OnboardingPractice {
         else { return false }
 
         phase = .deciding
+        startedAt = .now
+        lastWasExtraction = false
         epoch += 1
         let myEpoch = epoch
         let candidates = [sampleClip()]
-        let engine = model.controller.makeEngine()
+        let engine = model.controller.makeEngine(timeout: 1.8)
         let mode: DecisionEngine.Mode =
             model.settings.triggerMode == .intercept ? .intercept : .hotkey
 
-        Task { [weak self] in
+        decisionTask = Task { [weak self] in
             let outcome = await engine.decide(context: ctx, candidates: candidates, mode: mode)
-            await MainActor.run { self?.resolve(outcome, epoch: myEpoch) }
+            guard !Task.isCancelled else { return }
+            self?.resolve(outcome, epoch: myEpoch)
         }
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(20))
-            await MainActor.run {
-                guard let self, self.epoch == myEpoch, self.phase == .deciding else { return }
-                self.phase = .failed("The model didn't answer in time — check that it's reachable")
-            }
+        timeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self, self.epoch == myEpoch, self.phase == .deciding else { return }
+            self.decisionTask?.cancel()
+            self.resolve(.pasteLatest(.unreachable), epoch: myEpoch)
         }
         return true
     }
 
     private func resolve(_ outcome: PasteOutcome, epoch myEpoch: Int) {
-        guard epoch == myEpoch else { return }
+        guard epoch == myEpoch, phase == .deciding else { return }
+        timeoutTask?.cancel()
+        guard field?.currentEditor() != nil, field?.window?.isKeyWindow == true else {
+            phase = .failed("Click the field and try your shortcut again.")
+            return
+        }
         switch outcome {
         case .paste(let d):
             // A real pick — possibly with an extraction transform. Deliver it
@@ -170,7 +187,7 @@ public final class OnboardingPractice {
     /// field actually contains shortly after executing.
     private func scheduleObservation(epoch myEpoch: Int) {
         Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(350))
+            try? await Task.sleep(for: .milliseconds(100))
             await MainActor.run {
                 guard let self, self.epoch == myEpoch, self.phase == .deciding else { return }
                 self.classifyField()
@@ -182,10 +199,15 @@ public final class OnboardingPractice {
     /// paste that never arrives still resolves via the timeout above.
     public func observeFieldText(_ text: String) {
         fieldText = text
+        if phase == .deciding && !text.isEmpty { classifyField() }
     }
 
     private func classifyField() {
         let observed = field?.stringValue ?? fieldText
+        if let startedAt {
+            let elapsed = startedAt.duration(to: .now).components
+            elapsedMilliseconds = Int(elapsed.seconds * 1000 + elapsed.attoseconds / 1_000_000_000_000_000)
+        }
         phase = Self.classify(observed: observed, expected: expected,
                               wasExtraction: lastWasExtraction,
                               trusted: ContextCaptor.isTrusted)
@@ -209,12 +231,18 @@ public final class OnboardingPractice {
     }
 
     private func sampleClip() -> Clip {
-        Clip(text: OnboardingSample.message, kind: .text, sourceApp: "Cue")
+        Clip(text: OnboardingSample.practiceMessage, kind: .text, sourceApp: "Cue")
     }
 
-    private func focusField() {
+    public func focus() {
         guard let field, let window = field.window else { return }
         window.makeFirstResponder(field)
+    }
+
+    public func cancel() {
+        epoch += 1
+        decisionTask?.cancel()
+        timeoutTask?.cancel()
     }
 }
 

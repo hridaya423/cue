@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Screen 4's content: "On this Mac" / "Hosted" tabs over a compact,
@@ -10,7 +11,7 @@ struct OnboardingModels: View {
     /// Test connection…) — the picker publishes it up to the shell.
     @Binding var primary: OBPrimary?
 
-    @State private var hosted = false
+    @State private var hosted = true
     @State private var moreExpanded = false
     @State private var advancedExpanded = false
     @State private var testing = false
@@ -18,30 +19,17 @@ struct OnboardingModels: View {
     @State private var selectedID: String = ""
 
     var onAdvance: () -> Void = {}
-    var onFinishLater: () -> Void = {}
 
     private var settings: AppSettings { model.settings }
 
-    init(model: AppModel, primary: Binding<OBPrimary?>,
-         onAdvance: @escaping () -> Void, onFinishLater: @escaping () -> Void) {
+    init(model: AppModel, primary: Binding<OBPrimary?>, onAdvance: @escaping () -> Void) {
         self.model = model
         self._primary = primary
         self.onAdvance = onAdvance
-        self.onFinishLater = onFinishLater
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $hosted) {
-                Text("On this Mac").tag(false)
-                Text("Hosted").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 240)
-            .frame(maxWidth: .infinity)
-            .padding(.bottom, 16)
-
             activeFold
         }
         .onAppear(perform: seedSelection)
@@ -52,7 +40,6 @@ struct OnboardingModels: View {
         .onChange(of: model.models.states) { _, _ in syncPrimary() }
         .onChange(of: testResult) { _, _ in syncPrimary() }
         .onChange(of: testing) { _, _ in syncPrimary() }
-        .onChange(of: moreExpanded) { _, _ in syncPrimary() }
     }
 
     // MARK: - Local tab
@@ -70,10 +57,21 @@ struct OnboardingModels: View {
 
     @ViewBuilder
     private var activeFold: some View {
-        if hosted {
-            FoldOut { hostedUpper } lower: { hostedLower }
-        } else {
-            FoldOut { localUpper } lower: { localLower }
+        FoldOut(showsFold: false, verticalPadding: 12, lowerTopPadding: 16) {
+            VStack(alignment: .leading, spacing: 16) {
+                Picker("", selection: $hosted) {
+                    Text("Hosted").tag(true)
+                    Text("On this Mac").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 240)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 0)
+                if hosted { hostedUpper } else { localUpper }
+            }
+        } lower: {
+            if hosted { hostedLower } else { localLower }
         }
     }
 
@@ -99,7 +97,7 @@ struct OnboardingModels: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(OBTheme.textSecondary)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
             }
         }
     }
@@ -118,12 +116,7 @@ struct OnboardingModels: View {
         } label: {
             HStack(spacing: 12) {
                 OBRadio(selected: selected)
-                Text(String(spec.title.prefix(1)))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(OBTheme.textSecondary)
-                    .frame(width: 32, height: 32)
-                    .background(OBTheme.textTertiary.opacity(0.14),
-                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                ModelMark(modelID: spec.id)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(spec.title)
                         .font(.system(size: 15, weight: .medium))
@@ -132,16 +125,21 @@ struct OnboardingModels: View {
                         .font(.system(size: 13))
                         .foregroundStyle(OBTheme.textSecondary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-                Spacer()
+                Spacer(minLength: 6)
                 if spec.rank == 1 {
                     Text("Recommended")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(OBTheme.textTertiary)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(OBTheme.action)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(OBTheme.selectionFill, in: Capsule())
+                        .fixedSize()
                 }
             }
             .padding(.horizontal, 16)
-            .frame(minHeight: 60)
+            .frame(minHeight: 48)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(selected ? OBTheme.selectionFill : .clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -163,20 +161,13 @@ struct OnboardingModels: View {
                 let v = resolvedVariant(spec)
                 let state = model.models.status(of: spec.id)
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(spec.title)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(OBTheme.textPrimary)
-                        if case .unsupported(let why) = spec.support {
-                            Text("Not installable on this Mac — \(why)")
-                                .font(.system(size: 12))
-                                .foregroundStyle(OBTheme.textTertiary)
-                        } else if case .experimental(let why) = spec.support {
-                            Text("Experimental — \(why)")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.orange)
-                        }
-                        Spacer()
+                    HStack(spacing: 12) {
+                        Text(spec.blurb)
+                            .font(.system(size: 12))
+                            .foregroundStyle(OBTheme.textSecondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 6)
                         if spec.variants.count > 1 {
                             Picker("Weights", selection: variantBinding(spec)) {
                                 ForEach(spec.variants) { w in
@@ -188,15 +179,24 @@ struct OnboardingModels: View {
                             .fixedSize()
                         }
                     }
-                    HStack(spacing: 16) {
+                    HStack(spacing: 14) {
                         if let v {
-                            meta("\(v.paramsLabel) params")
-                            meta("\(v.diskLabel) disk")
-                            meta("\(v.ramLabel) RAM")
+                            meta(v.paramsLabel)
+                            meta("\(v.diskLabel) download")
+                            meta("\(v.ramLabel) memory")
                         }
-                        Spacer()
-                        statusText(spec, state: state)
                     }
+                    if case .experimental(let why) = spec.support {
+                        Text("Experimental · \(why)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                    }
+                    if case .unsupported(let why) = spec.support {
+                        Text("Unavailable here · \(why)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(OBTheme.textTertiary)
+                    }
+                    setupStatus(spec, variant: v, state: state)
                 }
             }
         }
@@ -207,29 +207,74 @@ struct OnboardingModels: View {
     }
 
     @ViewBuilder
-    private func statusText(_ spec: ModelSpec, state: ModelManager.State) -> some View {
+    private func setupStatus(_ spec: ModelSpec, variant: WeightSpec?, state: ModelManager.State) -> some View {
         switch state {
         case .installing(let phase):
-            Label(phase, systemImage: "arrow.down.circle")
-                .font(.system(size: 12)).foregroundStyle(OBTheme.textSecondary)
+            let transfer = model.models.transfers[spec.id]
+            transferStatus(transfer, label: readablePhase(phase), downloading: "Downloading model runtime",
+                           symbol: "arrow.down.circle")
         case .starting:
-            Text("Starting — first launch downloads weights")
-                .font(.system(size: 12)).foregroundStyle(OBTheme.textSecondary)
+            let transfer = model.models.transfers[spec.id]
+            transferStatus(transfer, label: "Loading weights · checking the first decision",
+                           downloading: "Downloading model weights", symbol: "cpu")
         case .running:
-            Label("Running", systemImage: "checkmark.circle.fill")
+            let duration = model.models.warmupMilliseconds[spec.id]
+            Label(duration.map { "Ready · first decision \($0) ms" } ?? "Ready",
+                  systemImage: "checkmark.circle.fill")
                 .font(.system(size: 12)).foregroundStyle(.green)
         case .failed(let msg):
-            Text(msg).font(.system(size: 12)).foregroundStyle(.red).lineLimit(2)
+            Label(msg, systemImage: "exclamationmark.circle")
+                .font(.system(size: 12)).foregroundStyle(.red).lineLimit(2)
         case .installed:
-            if let v = resolvedVariant(spec),
-               model.models.installedVariant(of: spec.id) != v.id {
-                Text("Different weights installed — setup will replace them")
+            if let variant,
+               model.models.installedVariant(of: spec.id) != variant.id {
+                Label("A different size is installed", systemImage: "arrow.triangle.2.circlepath")
                     .font(.system(size: 12)).foregroundStyle(.orange)
             } else {
-                Text("Installed").font(.system(size: 12)).foregroundStyle(OBTheme.textSecondary)
+                Label("Downloaded · ready to start", systemImage: "checkmark.circle")
+                    .font(.system(size: 12)).foregroundStyle(OBTheme.textSecondary)
             }
         case .notInstalled:
-            Text("Not installed").font(.system(size: 12)).foregroundStyle(OBTheme.textTertiary)
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down.to.line")
+                Text("\(variant?.diskLabel ?? "Model weights") to download")
+            }
+            .font(.system(size: 12)).foregroundStyle(OBTheme.textTertiary)
+        }
+    }
+
+    private func transferStatus(
+        _ transfer: ModelTransferProgress?, label: String, downloading: String, symbol: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: transfer == nil ? symbol : "arrow.down.circle.fill")
+                    .foregroundStyle(OBTheme.action)
+                Text(transfer == nil ? label : downloading)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(OBTheme.textSecondary)
+                Spacer(minLength: 4)
+                if let transfer {
+                    Text("\(Int(transfer.fraction * 100))%")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(OBTheme.textTertiary)
+                }
+            }
+            if let transfer {
+                ProgressView(value: transfer.fraction).tint(OBTheme.action)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+    }
+
+    private func readablePhase(_ phase: String) -> String {
+        switch phase {
+        case "preparing": "Preparing model"
+        case "creating venv": "Preparing its runtime"
+        case "installing packages", "installing dependencies": "Downloading model runtime"
+        case "cloning repo": "Fetching model files"
+        default: phase.capitalized
         }
     }
 
@@ -238,7 +283,7 @@ struct OnboardingModels: View {
     private var hostedUpper: some View {
         VStack(alignment: .leading, spacing: 0) {
             hostedRow(.jevDirect, title: "TypeSafe direct",
-                      detail: "api.typesafe.ai · jev-latest")
+                      detail: "TypeSafe · jev-latest")
             Divider().padding(.leading, 68)
             hostedRow(.jevGateway, title: "AI Gateway",
                       detail: "Vercel AI Gateway · typesafe-ai/jev")
@@ -253,12 +298,7 @@ struct OnboardingModels: View {
         } label: {
             HStack(spacing: 12) {
                 OBRadio(selected: selected)
-                Text("J")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(OBTheme.textSecondary)
-                    .frame(width: 32, height: 32)
-                    .background(OBTheme.textTertiary.opacity(0.14),
-                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                ProviderMark(asset: p == .jevDirect ? "typesafe" : "vercel", size: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.system(size: 15, weight: .medium))
@@ -270,7 +310,7 @@ struct OnboardingModels: View {
                 Spacer()
             }
             .padding(.horizontal, 16)
-            .frame(minHeight: 60)
+            .frame(minHeight: 48)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -388,11 +428,13 @@ struct OnboardingModels: View {
         case .starting:
             return OBPrimary(title: "Starting model…", enabled: false)
         case .running:
-            // Only "running" when the running server is this model+variant.
-            return OBPrimary(title: "Continue") { advanceFromModels() }
+            if selectedIsRunning {
+                return OBPrimary(title: "Continue") { advanceFromModels() }
+            }
+            return OBPrimary(title: "Set up selected size") { setupSelected(spec) }
         case .failed:
-            // Retry the failed phase — installed manifests retry start only.
-            if model.models.installedVariant(of: spec.id) != nil {
+            if let variant = resolvedVariant(spec),
+               model.models.installedVariant(of: spec.id) == variant.id {
                 return OBPrimary(title: "Retry start") { startSelected(spec) }
             }
             return OBPrimary(title: "Retry setup") { setupSelected(spec) }
@@ -424,20 +466,9 @@ struct OnboardingModels: View {
     // MARK: - Actions
 
     private func seedSelection() {
-        switch settings.provider {
-        case .local:
-            hosted = false
-            selectedID = settings.localModelID.isEmpty
-                ? (headline.first?.id ?? "") : settings.localModelID
-        case .off:
-            // Fresh Off shows the hosted tab; Advanced stays collapsed —
-            // expanding it is the user's act.
-            hosted = true
-            selectedID = headline.first?.id ?? ""
-        default:
-            hosted = true
-            selectedID = headline.first?.id ?? ""
-        }
+        hosted = settings.provider != .local
+        selectedID = ModelCatalog.model(settings.localModelID)?.id ?? headline.first?.id ?? ""
+        moreExpanded = rest.contains { $0.id == selectedID }
         syncPrimary()
     }
 
@@ -455,7 +486,12 @@ struct OnboardingModels: View {
         settings.provider = .local
         settings.localModelID = spec.id
         guard let r = ModelCatalog.variant(modelID: spec.id, variantID: settings.localVariantID) else { return }
-        Task { await model.models.install(r); await model.models.start(r) }
+        Task {
+            model.models.stop()
+            await model.models.install(r)
+            guard case .installed = model.models.status(of: spec.id) else { return }
+            await model.models.start(r)
+        }
     }
 
     private func startSelected(_ spec: ModelSpec) {
@@ -473,8 +509,6 @@ struct OnboardingModels: View {
     }
 
     private func advanceFromModels() { onAdvance() }
-    private func finishLater() { onFinishLater() }
-
     private func configFingerprint() -> [String] {
         [settings.provider.rawValue, settings.model, settings.customURL,
          settings.apiKey ?? "", settings.gatewayKey ?? "", settings.customKey ?? ""]
@@ -528,4 +562,82 @@ struct OnboardingModels: View {
 
 private extension ModelSpec.Support {
     var isUnsupported: Bool { if case .unsupported = self { return true }; return false }
+}
+
+private struct ProviderMark: View {
+    var asset: String
+    var size: CGFloat
+
+    private var image: NSImage? {
+        guard let url = Bundle.module.url(forResource: asset, withExtension: "png") else { return nil }
+        return NSImage(contentsOf: url)
+    }
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(5)
+                    .frame(width: size, height: size)
+                    .background(.white, in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+            } else {
+                Image(systemName: "network")
+                    .font(.system(size: size * 0.48, weight: .medium))
+                    .foregroundStyle(OBTheme.textSecondary)
+                    .frame(width: size, height: size)
+                    .background(OBTheme.textTertiary.opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+            .stroke(OBTheme.separator.opacity(0.65), lineWidth: 0.5))
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ModelMark: View {
+    var modelID: String
+    var size: CGFloat = 32
+
+    private var symbol: String {
+        switch modelID {
+        case "kev": "cpu"
+        case "von": "waveform.path"
+        case "jevons": "leaf"
+        case "jevlite": "sparkles"
+        case "decider": "slider.horizontal.3"
+        default: "cpu"
+        }
+    }
+
+    private var tint: Color {
+        switch modelID {
+        case "kev": Color(red: 0.43, green: 0.39, blue: 0.86)
+        case "von": Color(red: 0.12, green: 0.54, blue: 0.78)
+        case "jevons": Color(red: 0.19, green: 0.57, blue: 0.42)
+        case "jevlite": Color(red: 0.62, green: 0.46, blue: 0.79)
+        default: OBTheme.textSecondary
+        }
+    }
+
+    var body: some View {
+        Group {
+            if modelID == "laya" {
+                ProviderMark(asset: "laya", size: size)
+            } else {
+                Image(systemName: symbol)
+                    .font(.system(size: size * 0.46, weight: .medium))
+                    .foregroundStyle(tint)
+                    .frame(width: size, height: size)
+                    .background(tint.opacity(0.11),
+                                in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                        .stroke(tint.opacity(0.18), lineWidth: 0.5))
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
 }

@@ -105,7 +105,7 @@ public enum ModelCatalog {
 
     public static let kev = ModelSpec(
         id: "kev", title: "Kev", rank: 2, reason: "Best local accuracy", defaultPort: 8009,
-        blurb: "Jared Palmer's Jev-style family — LoRA adapters on Qwen3.5. Real LLM reasoning, bigger downloads.",
+        blurb: "Higher-capacity choices for tougher decisions; larger variants take more space and memory.",
         kind: .repo(url: "https://github.com/jaredpalmer/kev.git",
                     syncExtras: ["serve"], installArgv: [],
                     serveArgv: ["python", "-m", "kev.serve", "--run", "{weights}", "--port", "{port}"],
@@ -128,7 +128,7 @@ public enum ModelCatalog {
 
     public static let laya = ModelSpec(
         id: "laya", title: "Laya", rank: 3, reason: "Fastest", defaultPort: 8765,
-        blurb: "421M encoder, ~33ms, single forward pass. Smallest + fastest option; pip-installable.",
+        blurb: "The quick, compact option, tuned for a single-pass decision.",
         kind: .shim(packages: ["laya"]),
         support: .supported,
         variants: [
@@ -145,7 +145,7 @@ public enum ModelCatalog {
 
     public static let von = ModelSpec(
         id: "von", title: "Von", rank: 1, reason: "Best balance", defaultPort: 8766,
-        blurb: "Best open local decision model — 395M encoder, ~18ms on Apple Silicon, leads the 49-task suite.",
+        blurb: "Cue’s best balance of accuracy and speed across its clipboard decision tests.",
         kind: .venv(packages: ["von-sdk"],
                     serveArgv: ["von", "serve", "--host", "127.0.0.1", "--port", "{port}"]),
         support: .supported,
@@ -223,6 +223,8 @@ public final class ModelManager {
     public private(set) var states: [String: State] = [:]
     /// Last output line per model — shown under the install progress.
     public private(set) var logTail: [String: String] = [:]
+    public private(set) var transfers: [String: ModelTransferProgress] = [:]
+    public private(set) var warmupMilliseconds: [String: Int] = [:]
 
     public private(set) var uvPath: String?
     public private(set) var uvBootstrapping = false
@@ -293,9 +295,16 @@ public final class ModelManager {
     /// weights (GBs) — the phase label says so and the timeout is generous.
     public func start(_ resolved: ModelSpec.Resolved) async {
         let spec = resolved.spec
-        if serverModelID == spec.id, server?.isRunning == true { return }
+        if serverModelID == spec.id, server?.isRunning == true {
+            switch status(of: spec.id) {
+            case .running, .starting: return
+            default: break
+            }
+        }
         stop()
         setState(spec.id, .starting)
+        transfers[spec.id] = nil
+        warmupMilliseconds[spec.id] = nil
 
         let dir = modelDir(spec.id)
         let argv = serveArgv(resolved)
@@ -325,7 +334,7 @@ public final class ModelManager {
             let data = h.availableData
             logHandle?.write(data)
             if let line = String(data: data, encoding: .utf8)?.split(whereSeparator: \.isNewline).last {
-                Task { @MainActor in self?.logTail[spec.id] = String(line).trimmingCharacters(in: .whitespaces) }
+                Task { @MainActor in self?.recordOutput(String(line), for: spec.id) }
             }
         }
         proc.standardOutput = pipe
@@ -336,7 +345,7 @@ public final class ModelManager {
                 self.server = nil
                 self.serverModelID = nil
                 if self.status(of: spec.id) == .running || self.status(of: spec.id) == .starting {
-                    self.setState(spec.id, .failed("server exited"))
+                    self.setState(spec.id, .failed("Model server stopped before it was ready."))
                 }
             }
         }
@@ -346,13 +355,27 @@ public final class ModelManager {
             server = proc
             serverModelID = spec.id
             let ok = await waitForHealth(port: spec.defaultPort, timeout: 600)
+            guard server === proc else { return }
             if ok {
+                let client = JevClient(endpoint: JevEndpoint(url: resolved.endpointURL,
+                                                            model: resolved.serveModel), timeout: 600)
+                let began = ContinuousClock.now
+                _ = try await client.evaluate(
+                    state: .string("A sample address is ready to paste into an Email field."),
+                    questions: ["ready": .choice(instructions: "Which field receives an email address?",
+                                                  criteria: ["email": "Email", "phone": "Phone"])])
+                guard server === proc else { return }
+                let elapsed = began.duration(to: .now).components
+                warmupMilliseconds[spec.id] = Int(elapsed.seconds * 1000 + elapsed.attoseconds / 1_000_000_000_000_000)
+                transfers[spec.id] = nil
                 setState(spec.id, .running)
             } else if server != nil {
-                setState(spec.id, .failed("never answered health check"))
+                setState(spec.id, .failed("Model server did not respond in time."))
                 stop()
             }
         } catch {
+            guard server == nil || server === proc else { return }
+            stop()
             setState(spec.id, .failed(error.localizedDescription))
         }
     }
@@ -488,10 +511,16 @@ public final class ModelManager {
 
     private func runStep(_ id: String, _ phase: String, _ argv: [String], cwd: URL) async throws {
         setState(id, .installing(phase))
+        transfers[id] = nil
         logTail[id] = argv.joined(separator: " ")
         try await run(argv, cwd: cwd) { [weak self] line in
-            Task { @MainActor in self?.logTail[id] = line }
+            Task { @MainActor in self?.recordOutput(line, for: id) }
         }
+    }
+
+    private func recordOutput(_ line: String, for id: String) {
+        logTail[id] = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let progress = ModelTransferProgress.parse(line) { transfers[id] = progress }
     }
 
     @discardableResult
@@ -524,6 +553,17 @@ public final class ModelManager {
                 }
             }
         }
+    }
+}
+
+public struct ModelTransferProgress: Equatable, Sendable {
+    public var fraction: Double
+
+    static func parse(_ line: String) -> Self? {
+        guard let match = line.range(of: #"\b\d{1,3}%\|"#, options: .regularExpression),
+              let percent = Double(line[match].dropLast(2)), (0...100).contains(percent)
+        else { return nil }
+        return Self(fraction: percent / 100)
     }
 }
 

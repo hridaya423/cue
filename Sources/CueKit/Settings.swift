@@ -250,22 +250,22 @@ public final class AppSettings {
     /// The configured decision provider, or nil when off/unconfigured — in
     /// which case every smart-paste degrades to a silent plain ⌘V.
     /// Every provider is the same client — only (url, model, key) differ.
-    public func providerClient() -> (any DecisionProvider)? {
+    public func providerClient(timeout: TimeInterval = 10) -> (any DecisionProvider)? {
         switch provider {
         case .jevDirect:
             guard let key = apiKey, !key.isEmpty else { return nil }
-            return JevClient(endpoint: .direct(model: directModel), apiKey: key)
+            return JevClient(endpoint: .direct(model: directModel), apiKey: key, timeout: timeout)
         case .jevGateway:
             guard let key = gatewayKey, !key.isEmpty else { return nil }
-            return JevClient(endpoint: .gateway(model: gatewayModel), apiKey: key)
+            return JevClient(endpoint: .gateway(model: gatewayModel), apiKey: key, timeout: timeout)
         case .local:
             guard let v = ModelCatalog.variant(modelID: localModelID, variantID: localVariantID) else {
                 return nil
             }
-            return JevClient(endpoint: JevEndpoint(url: v.endpointURL, model: v.serveModel))
+            return JevClient(endpoint: JevEndpoint(url: v.endpointURL, model: v.serveModel), timeout: timeout)
         case .custom:
             guard let ep = JevEndpoint.custom(base: customURL, model: customModel) else { return nil }
-            return JevClient(endpoint: ep, apiKey: customKey ?? "")
+            return JevClient(endpoint: ep, apiKey: customKey ?? "", timeout: timeout)
         case .off:
             return nil
         }

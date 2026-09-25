@@ -75,12 +75,24 @@ struct StubProvider: DecisionProvider {
 
 /// Replaces every string with a fixed placeholder and records what it saw.
 final class StubRedactor: Redacting, @unchecked Sendable {
-    var seen: [String] = []
+    private let seenLock = NSLock()
+    private var storedSeen: [String] = []
+    var seen: [String] {
+        seenLock.lock()
+        defer { seenLock.unlock() }
+        return storedSeen
+    }
     var error: Error?
     func redact(_ text: String) async throws -> String {
         if let error { throw error }
-        seen.append(text)
+        recordSeen(text)
         return "[PII]"
+    }
+
+    private func recordSeen(_ text: String) {
+        seenLock.lock()
+        storedSeen.append(text)
+        seenLock.unlock()
     }
 }
 
@@ -321,6 +333,21 @@ struct DecisionEngineTests {
         let outcome = await engine.decide(context: makeContext(label: "To:"), candidates: card, mode: .hotkey)
         guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
         #expect(d.text == "hridayahoney@gmail.com")
+    }
+
+    @Test func transformQuestionIncludesCopiedText() async {
+        let provider = StubProvider(response: response(pick: "c1", conf: 0.95,
+                                                       transform: "extract_url"))
+        var engine = DecisionEngine(provider: provider)
+        engine.confidenceThreshold = 0.7
+        _ = await engine.decide(context: makeContext(label: "Website"),
+                                candidates: [Clip(text: "Invoice portal https://example.com/pay", kind: .text)],
+                                mode: .hotkey)
+
+        let instructions = provider.box.questions.first?[
+            "transform"]?.jsonValue["instructions"]?.string
+        #expect(instructions?.contains("Invoice portal https://example.com/pay") == true)
+        #expect(instructions?.contains("extract_url") == true)
     }
 
     @Test func spanHintsReachTheModelPastPreviewTruncation() async {

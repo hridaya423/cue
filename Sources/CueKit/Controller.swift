@@ -110,13 +110,13 @@ public final class SmartPasteController {
     private let feedback: FeedbackTracker
     private let hud: HUDController
     private let redactor: (any Redacting)?
-    private let makeProvider: () -> (any DecisionProvider)?
+    private let makeProvider: (TimeInterval) -> (any DecisionProvider)?
     private var formFiller: FormFiller?
 
     public init(store: ClipStore, settings: AppSettings,
                 executor: PasteExecutor, feedback: FeedbackTracker, hud: HUDController,
                 redactor: (any Redacting)?,
-                makeProvider: @escaping () -> (any DecisionProvider)?) {
+                makeProvider: @escaping (TimeInterval) -> (any DecisionProvider)?) {
         self.store = store
         self.settings = settings
         self.executor = executor
@@ -289,9 +289,9 @@ public final class SmartPasteController {
     }
 
     /// Internal: the practice session builds its engine through the same path.
-    func makeEngine() -> DecisionEngine {
+    func makeEngine(timeout: TimeInterval = 10) -> DecisionEngine {
         var engine = DecisionEngine(
-            provider: makeProvider(),
+            provider: makeProvider(timeout),
             redactor: settings.effectivePIIRedaction ? redactor : nil
         )
         engine.confidenceThreshold = settings.confidenceThreshold

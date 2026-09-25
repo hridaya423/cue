@@ -191,19 +191,22 @@ public struct JevClient: DecisionProvider {
     public let endpoint: JevEndpoint
     private let apiKey: String
     private let session: URLSession
+    private let timeout: TimeInterval
 
     public var isRemote: Bool { endpoint.isRemote }
 
-    public init(endpoint: JevEndpoint, apiKey: String = "", session: URLSession = .shared) {
+    public init(endpoint: JevEndpoint, apiKey: String = "", session: URLSession = .shared,
+                timeout: TimeInterval = 10) {
         self.endpoint = endpoint
         self.apiKey = apiKey
         self.session = session
+        self.timeout = timeout
     }
 
     public func evaluate(state: JSONValue, questions: [String: Question]) async throws -> JevResponse {
         var req = URLRequest(url: endpoint.url)
         req.httpMethod = "POST"
-        req.timeoutInterval = 10
+        req.timeoutInterval = timeout
         if !apiKey.isEmpty {
             req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }

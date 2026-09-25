@@ -40,8 +40,8 @@ public final class AppModel {
         controller = SmartPasteController(
             store: store, settings: settings,
             executor: executor, feedback: feedback, hud: hud, redactor: redactor
-        ) { [settings, providerStatus] in
-            settings.providerClient().map { StatusTrackingProvider($0, status: providerStatus) }
+        ) { [settings, providerStatus] timeout in
+            settings.providerClient(timeout: timeout).map { StatusTrackingProvider($0, status: providerStatus) }
         }
 
         hotkeys.interceptCmdV = settings.triggerMode == .intercept
@@ -81,8 +81,8 @@ public final class AppModel {
         ModelCatalog.variant(modelID: settings.localModelID, variantID: settings.localVariantID)
     }
 
-    public func makeProvider() -> (any DecisionProvider)? {
-        settings.providerClient()
+    public func makeProvider(timeout: TimeInterval = 10) -> (any DecisionProvider)? {
+        settings.providerClient(timeout: timeout)
     }
 
     /// Typed connection check — onboarding gates Continue on this without
@@ -177,11 +177,14 @@ public final class AppModel {
             win.titlebarAppearsTransparent = true
             win.titleVisibility = .hidden
             win.isMovableByWindowBackground = false
-            // Debug/screenshot hook: `defaults write com.local.cue obTheme light|dark`.
-            // Not a user feature — only a forced appearance for captures.
-            if let theme = UserDefaults.standard.string(forKey: "obTheme") {
-                win.appearance = NSAppearance(named: theme == "light" ? .aqua : .darkAqua)
+            win.appearance = nil
+            #if DEBUG
+            if let appearance = ProcessInfo.processInfo.environment["OB_APPEARANCE"] {
+                win.appearance = NSAppearance(named: appearance == "light" ? .aqua : .darkAqua)
             }
+            #endif
+            win.isOpaque = true
+            win.backgroundColor = OBTheme.canvasNS
         } else {
             win.styleMask = [.titled, .closable, .resizable]
         }
@@ -194,7 +197,7 @@ public final class AppModel {
         let size: NSSize = switch id {
         case "history": NSSize(width: 480, height: 420)
         case "settings": NSSize(width: 480, height: 560)
-        default: NSSize(width: 760, height: 580)
+        default: NSSize(width: 760, height: 620)
         }
         win.setContentSize(size)
         return win

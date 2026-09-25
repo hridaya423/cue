@@ -14,7 +14,7 @@ enum OBTheme {
         })
     }
 
-    static let canvasNS        = nsColor(0xF7F8FA, 0x202226)
+    static let canvasNS        = nsColor(0xFAFAFB, 0x202226)
     static let sheetNS         = nsColor(0xFFFFFF, 0x2B2E33)
     static let unfoldedNS      = nsColor(0xFCFCFD, 0x26292E)
     static let textPrimaryNS   = nsColor(0x17191D, 0xF4F5F7)
@@ -57,12 +57,13 @@ extension NSColor {
 
 // MARK: - Fold-out surface
 
-/// The signature surface: an upper sheet whose bottom edge overlaps a
-/// lower sheet by 12pt, with a small coral lip at the seam. The upper
-/// sheet paints over the seam — zIndex keeps the tuck correct.
 struct FoldOut<Upper: View, Lower: View>: View {
+    var showsFold = true
+    var verticalPadding: CGFloat = 24
+    var lowerTopPadding: CGFloat = 28
     var overlap: CGFloat = 12
     var lowerInset: CGFloat = 16   // lower sheet is narrower by this per side
+    var arrowX: CGFloat? = nil
     @ViewBuilder var upper: Upper
     @ViewBuilder var lower: Lower
 
@@ -72,18 +73,23 @@ struct FoldOut<Upper: View, Lower: View>: View {
         VStack(spacing: -overlap) {
             upper
                 .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+                .padding(.vertical, verticalPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(OBTheme.sheet, in: sheetShape)
                 .overlay(sheetShape.stroke(sheetEdge, lineWidth: 0.5))
                 .shadow(color: .black.opacity(shadowSoft), radius: 2, y: 1)
                 .shadow(color: .black.opacity(shadowDeep), radius: 10, y: 6)
-                .overlay(alignment: .bottom) { foldLip }
+                .overlay(alignment: .bottom) {
+                    if showsFold && arrowX == nil { foldArrow }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    if showsFold, let arrowX { foldArrow.padding(.leading, max(0, arrowX - 15)) }
+                }
                 .zIndex(1)
             lower
                 .padding(.horizontal, 24)
-                .padding(.top, 16 + overlap) // content clears the tucked seam
-                .padding(.bottom, 16)
+                .padding(.top, lowerTopPadding + overlap) // content clears the tucked seam
+                .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(OBTheme.unfolded, in: sheetShape)
                 .overlay(sheetShape.stroke(sheetEdge, lineWidth: 0.5))
@@ -102,30 +108,30 @@ struct FoldOut<Upper: View, Lower: View>: View {
     private var shadowSoft: Double { scheme == .dark ? 0 : 0.06 }
     private var shadowDeep: Double { scheme == .dark ? 0.18 : 0.09 }
 
-    /// The coral fold lip: a shallow wedge hanging off the upper sheet's
-    /// bottom edge. Decorative only.
-    private var foldLip: some View {
-        FoldLipShape()
-            .fill(
-                LinearGradient(colors: [OBTheme.unfolded, OBTheme.foldEdge.opacity(0.55)],
-                               startPoint: .top, endPoint: .bottom)
+    private var foldArrow: some View {
+        FoldArrowShape()
+            .stroke(
+                OBTheme.foldEdge,
+                style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
             )
-            .overlay(FoldLipShape().stroke(OBTheme.foldEdge, lineWidth: 1))
-            .frame(width: 26, height: 11)
-            .offset(y: 5.5)
-            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+            .frame(width: 34, height: 44)
+            .offset(y: 18)
+            .shadow(color: OBTheme.foldEdge.opacity(0.25), radius: 3, x: 2, y: 2)
             .accessibilityHidden(true)
     }
 }
 
-/// Shallow downward curve — the tucked edge of the fold.
-private struct FoldLipShape: Shape {
+private struct FoldArrowShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         p.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        p.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY),
-                       control: CGPoint(x: rect.midX, y: rect.maxY * 1.6))
-        p.closeSubpath()
+        let tip = CGPoint(x: rect.maxX - 2, y: rect.maxY - 6)
+        p.addCurve(to: tip,
+                   control1: CGPoint(x: rect.minX, y: rect.maxY * 0.8),
+                   control2: CGPoint(x: rect.midX, y: rect.maxY - 4))
+        p.move(to: CGPoint(x: tip.x - 8, y: tip.y - 2))
+        p.addLine(to: tip)
+        p.addLine(to: CGPoint(x: tip.x - 2, y: tip.y - 8))
         return p
     }
 }
@@ -138,7 +144,7 @@ struct OBCaption: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
-            .font(.system(size: 13, weight: .medium))
+            .font(.system(size: 13))
             .foregroundStyle(OBTheme.textTertiary)
     }
 }
@@ -179,7 +185,60 @@ struct OBRadio: View {
                 Circle().fill(OBTheme.action).frame(width: 10, height: 10)
             }
         }
+        .frame(width: 20, height: 20)
+        .fixedSize()
         .accessibilityHidden(true)
+    }
+}
+
+struct PermissionSwitchDemo: View {
+    var granted: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var arrived = false
+    @State private var switched = false
+    @State private var pressing = false
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Capsule()
+                .fill(switched || granted ? OBTheme.action : OBTheme.inputStroke)
+                .frame(width: 40, height: 24)
+                .overlay {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 20, height: 20)
+                        .shadow(color: .black.opacity(0.12), radius: 1, y: 1)
+                        .offset(x: switched || granted ? 8 : -8)
+                }
+            if !reduceMotion && !granted {
+                Image(systemName: "cursorarrow")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(OBTheme.textPrimary)
+                    .shadow(color: OBTheme.sheet, radius: 1)
+                    .scaleEffect(pressing ? 0.88 : 1, anchor: .topLeading)
+                    .offset(x: arrived ? 0 : -40, y: arrived ? 9 : 25)
+            }
+        }
+        .frame(width: 86, height: 54, alignment: .trailing)
+        .accessibilityHidden(true)
+        .task(id: granted || reduceMotion) {
+            guard !granted && !reduceMotion else {
+                arrived = false
+                pressing = false
+                switched = granted
+                return
+            }
+            switched = false
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.62)) { arrived = true }
+            try? await Task.sleep(for: .milliseconds(660))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.12)) { pressing = true }
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { switched = true; pressing = false }
+        }
     }
 }
 
@@ -191,19 +250,50 @@ struct OBPrimary {
     var action: () -> Void = {}
 }
 
-/// Primary action — one filled button per screen, fixed position.
 struct OBPrimaryButton: View {
     var title: String
     var enabled = true
     var action: () -> Void
     var body: some View {
-        Button(title, action: action)
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(OBTheme.action)
-            .frame(minWidth: 140, maxWidth: 240)
-            .disabled(!enabled)
-            .keyboardShortcut(.defaultAction)
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 24)
+                .frame(minWidth: 140, minHeight: 38)
+        }
+        .buttonStyle(OBButtonStyle(fill: OBTheme.action))
+        .frame(minWidth: 140, maxWidth: 240)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
+        .keyboardShortcut(.defaultAction)
+    }
+}
+
+private struct OBButtonStyle: ButtonStyle {
+    var fill: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(LinearGradient(colors: [fill, fill.opacity(0.92)], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct OBBackButton: View {
+    var action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Label("Back", systemImage: "chevron.left")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(OBTheme.textSecondary)
+                .padding(.horizontal, 14)
+                .frame(height: 38)
+        }
+        .buttonStyle(OBButtonStyle(fill: OBTheme.textTertiary.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(OBTheme.separator, lineWidth: 0.5))
+        .frame(minWidth: 64)
     }
 }
 
@@ -215,7 +305,7 @@ struct OBPrimaryButton: View {
 /// top-left origin) so callers can anchor overlays like the transfer chip.
 struct HighlightedParagraph: NSViewRepresentable {
     var text: String
-    var highlight: String
+    var highlights: [String]
     var fontSize: CGFloat = 17
     /// Fixed layout width — panels are fixed-geometry, so measure at the
     /// width the sheet actually gives us.
@@ -230,11 +320,11 @@ struct HighlightedParagraph: NSViewRepresentable {
 
     func updateNSView(_ v: ParagraphNSView, context: Context) {
         v.onRects = onHighlightRects
-        v.update(text: text, highlight: highlight, fontSize: fontSize, width: width)
+        v.update(text: text, highlights: highlights, fontSize: fontSize, width: width)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsview: ParagraphNSView, context: Context) -> CGSize? {
-        nsview.update(text: text, highlight: highlight, fontSize: fontSize, width: width)
+        nsview.update(text: text, highlights: highlights, fontSize: fontSize, width: width)
         return CGSize(width: width, height: nsview.contentHeight)
     }
 
@@ -246,7 +336,7 @@ struct HighlightedParagraph: NSViewRepresentable {
         private let storage = NSTextStorage()
         private let layoutManager = NSLayoutManager()
         private let container = NSTextContainer()
-        private var highlight = ""
+        private var highlights: [String] = []
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -256,15 +346,22 @@ struct HighlightedParagraph: NSViewRepresentable {
         }
         required init?(coder: NSCoder) { fatalError() }
 
-        func update(text: String, highlight: String, fontSize: CGFloat, width: CGFloat) {
+        func update(text: String, highlights: [String], fontSize: CGFloat, width: CGFloat) {
             let para = NSMutableParagraphStyle()
-            para.lineHeightMultiple = 25.0 / 17.0
+            para.minimumLineHeight = fontSize * 1.4
+            para.maximumLineHeight = fontSize * 1.4
             storage.setAttributedString(NSAttributedString(string: text, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
                 .foregroundColor: OBTheme.textPrimaryNS,
                 .paragraphStyle: para,
             ]))
-            self.highlight = highlight
+            for span in highlights where !span.isEmpty {
+                if let range = text.range(of: span) {
+                    storage.addAttribute(.foregroundColor, value: OBTheme.highlightTextNS,
+                                         range: NSRange(range, in: text))
+                }
+            }
+            self.highlights = highlights
             container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
             layoutManager.ensureLayout(for: container)
             let h = ceil(layoutManager.usedRect(for: container).height)
@@ -285,21 +382,20 @@ struct HighlightedParagraph: NSViewRepresentable {
             }
         }
 
-        /// Per-line enclosing rects of the highlighted substring. The view
-        /// isFlipped, so rects already use top-left origin.
         private func highlightRects() -> [CGRect] {
-            guard !highlight.isEmpty,
-                  let charRange = storage.string.range(of: highlight)
-                        .map({ NSRange($0, in: storage.string) })
-            else { return [] }
-            let glyphRange = layoutManager.glyphRange(forCharacterRange: charRange,
-                                                      actualCharacterRange: nil)
             var rects: [CGRect] = []
-            layoutManager.enumerateEnclosingRects(
-                forGlyphRange: glyphRange,
-                withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
-                in: container
-            ) { r, _ in rects.append(r.insetBy(dx: -3, dy: -2)) }
+            for span in highlights where !span.isEmpty {
+                guard let charRange = storage.string.range(of: span)
+                        .map({ NSRange($0, in: storage.string) })
+                else { continue }
+                let glyphRange = layoutManager.glyphRange(forCharacterRange: charRange,
+                                                          actualCharacterRange: nil)
+                layoutManager.enumerateEnclosingRects(
+                    forGlyphRange: glyphRange,
+                    withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+                    in: container
+                ) { r, _ in rects.append(r.insetBy(dx: -3, dy: -2)) }
+            }
             return rects
         }
 

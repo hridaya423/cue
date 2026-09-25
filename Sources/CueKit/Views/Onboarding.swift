@@ -11,6 +11,28 @@ public struct OnboardingView: View {
 
     enum Step: CaseIterable {
         case welcome, accessibility, trigger, models, privacy, practice
+
+        func next(trusted: Bool, remote: Bool) -> Step? {
+            switch self {
+            case .welcome: trusted ? .trigger : .accessibility
+            case .accessibility: .trigger
+            case .trigger: .models
+            case .models: remote ? .privacy : .practice
+            case .privacy: .practice
+            case .practice: nil
+            }
+        }
+
+        func previous(trusted: Bool, remote: Bool) -> Step? {
+            switch self {
+            case .welcome: nil
+            case .accessibility: .welcome
+            case .trigger: trusted ? .welcome : .accessibility
+            case .models: .trigger
+            case .privacy: .models
+            case .practice: remote ? .privacy : .models
+            }
+        }
     }
 
     @State private var step: Step = .welcome
@@ -19,6 +41,7 @@ public struct OnboardingView: View {
     @State private var stepPrimary: OBPrimary?
     @State private var practice: OnboardingPractice?
     @State private var escMonitor: Any?
+    @State private var openedPermissionSettings = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(model: AppModel) { self.model = model }
@@ -33,10 +56,10 @@ public struct OnboardingView: View {
                 Text("Cue")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(OBTheme.textPrimary)
-                    .padding(.top, 26)
+                    .padding(.top, 24)
 
                 Text(title)
-                    .font(.system(size: 28, weight: .semibold))
+                    .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(OBTheme.textPrimary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 680)
@@ -64,21 +87,30 @@ public struct OnboardingView: View {
                         case .practice: practiceStep.transition(.opacity)
                         }
                     }
+                    .padding(.vertical, 12)
                     .frame(width: 600, alignment: .top)
                     .frame(maxWidth: .infinity)
                 }
-                .scrollIndicators(.hidden)
+                .scrollIndicators(.automatic)
                 .scrollBounceBehavior(.basedOnSize)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, 28)
+                .padding(.top, step == .models ? 4 : 16)
 
                 footer
             }
         }
-        .frame(width: 760, height: 580)
+        .frame(width: 760, height: 620)
+        .ignoresSafeArea()
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: step)
         .onAppear {
             trusted = ContextCaptor.isTrusted
+            #if DEBUG
+            if let s = ProcessInfo.processInfo.environment["OB_STEP"],
+               let i = Int(s), Step.allCases.indices.contains(i) {
+                step = Step.allCases[i]
+                if step == .practice { enterPractice() }
+            }
+            #endif
             escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
                 // Escape closes without completing — unless the hotkey
                 // recorder owns it (it cancels recording first).
@@ -104,8 +136,7 @@ public struct OnboardingView: View {
         case .accessibility: "Allow Accessibility access"
         case .trigger: "Make it your shortcut."
         case .models: "Choose your model."
-        case .privacy: privacyIsRemote
-            ? "Choose what leaves your Mac" : "Your model runs on this Mac"
+        case .privacy: "Choose what leaves your Mac"
         case .practice:
             if let p = practice, case .succeeded = p.phase {
                 "That's your first smart paste."
@@ -121,14 +152,12 @@ public struct OnboardingView: View {
         case .accessibility: "Cue needs permission to read field labels and paste into your apps."
         case .trigger: "Choose when Cue steps in."
         case .models: "Run a model on your Mac or connect a hosted service."
-        case .privacy: privacyIsRemote
-            ? "Mask personal details before Cue sends text to a hosted model."
-            : "This connection keeps model requests on your Mac."
+        case .privacy: "Mask personal details before Cue sends text to a hosted model."
         case .practice:
             if let p = practice, case .succeeded = p.phase {
                 "One copied message. Just the detail you needed."
             } else {
-                "Copy this message, then paste into \(practice?.target.rawValue ?? "Email")."
+                "We copied an invoice brief. Paste just the billing link."
             }
         }
     }
@@ -138,13 +167,7 @@ public struct OnboardingView: View {
             HStack { primaryCluster }.frame(maxWidth: .infinity)
             HStack {
                 if step != .welcome {
-                    Button(action: goBack) {
-                        Label("Back", systemImage: "chevron.left")
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(OBTheme.textSecondary)
-                    .frame(minWidth: 64, minHeight: 38)
+                    OBBackButton(action: goBack)
                 }
                 Spacer()
                 if showsFinishLater {
@@ -157,7 +180,7 @@ public struct OnboardingView: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 18)
+        .padding(.bottom, 24)
     }
 
     private var primaryCluster: some View {
@@ -201,17 +224,17 @@ public struct OnboardingView: View {
     }
 
     private func advance() {
-        let all = Step.allCases
-        guard let i = all.firstIndex(of: step), i + 1 < all.count else { return }
-        step = all[i + 1]
+        trusted = ContextCaptor.isTrusted
+        guard let next = step.next(trusted: trusted, remote: privacyIsRemote) else { return }
+        step = next
         stepPrimary = nil
         if step == .practice { enterPractice() }
     }
 
     private func goBack() {
-        let all = Step.allCases
-        guard let i = all.firstIndex(of: step), i > 0 else { return }
-        step = all[i - 1]
+        trusted = ContextCaptor.isTrusted
+        guard let previous = step.previous(trusted: trusted, remote: privacyIsRemote) else { return }
+        step = previous
         stepPrimary = nil
         if step != .practice { leavePractice() }
     }
@@ -236,35 +259,39 @@ public struct OnboardingView: View {
     // MARK: - Screen 2: Accessibility
 
     private var permissionStep: some View {
-        FoldOut {
+        FoldOut(showsFold: false, verticalPadding: 16, lowerTopPadding: 14) {
             VStack(alignment: .leading, spacing: 0) {
                 OBCaption("In System Settings")
                 Text("Privacy & Security › Accessibility")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 17))
                     .foregroundStyle(OBTheme.textPrimary)
                     .padding(.top, 12)
                 HStack(spacing: 12) {
                     Image(systemName: "paperclip")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(OBTheme.textSecondary)
                         .frame(width: 32, height: 32)
                         .background(OBTheme.textTertiary.opacity(0.14),
                                     in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     Text("Cue").font(.system(size: 15)).foregroundStyle(OBTheme.textPrimary)
                     Spacer()
-                    // The switch is a picture of the destination, not a
-                    // control — granting happens in System Settings.
-                    switchIllustration
-                        .padding(10)
-                        .background(OBTheme.highlight.opacity(0.35), in: Circle())
-                        .accessibilityHidden(true)
+                    PermissionSwitchDemo(granted: trusted)
                 }
+                .padding(.horizontal, 14)
                 .frame(height: 54)
+                .background(OBTheme.inputFill, in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(OBTheme.separator, lineWidth: 0.7))
+                .padding(.top, 12)
             }
         } lower: {
             VStack(alignment: .leading, spacing: 0) {
                 instruction(1, "Open System Settings below.")
                 instruction(2, "Turn on Cue under Accessibility.")
+                Text("Cue will bring you back when access is enabled.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(OBTheme.textSecondary)
+                    .padding(.leading, 40)
+                    .padding(.top, 6)
                 HStack(spacing: 8) {
                     if trusted {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
@@ -276,43 +303,42 @@ public struct OnboardingView: View {
                 }
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(trusted ? .green : OBTheme.textTertiary)
-                .padding(.top, 20)
+                .padding(.top, 10)
+                .frame(maxWidth: .infinity)
             }
+            .frame(maxWidth: .infinity)
         }
         .task(id: step == .accessibility) {
-            // Poll while this route is visible; the primary swaps to
-            // Continue when granted. The re-fired (false) task exits at once.
             guard step == .accessibility else { return }
-            while !Task.isCancelled {
+            while !Task.isCancelled && step == .accessibility {
                 trusted = ContextCaptor.isTrusted
-                try? await Task.sleep(for: .seconds(1))
+                if trusted {
+                    if openedPermissionSettings { model.open(id: "onboarding") }
+                    openedPermissionSettings = false
+                    advance()
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(500))
             }
         }
-    }
-
-    private var switchIllustration: some View {
-        Capsule()
-            .fill(OBTheme.action)
-            .frame(width: 38, height: 22)
-            .overlay(alignment: .trailing) {
-                Circle().fill(.white).padding(2)
-            }
     }
 
     private func instruction(_ n: Int, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("\(n).")
+        HStack(spacing: 12) {
+            Text("\(n)")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(OBTheme.textTertiary)
-                .frame(width: 16, alignment: .trailing)
+                .foregroundStyle(OBTheme.textPrimary)
+                .frame(width: 28, height: 28)
+                .background(OBTheme.textTertiary.opacity(0.1), in: Circle())
             Text(text)
-                .font(.system(size: 13))
-                .foregroundStyle(OBTheme.textSecondary)
+                .font(.system(size: 14))
+                .foregroundStyle(OBTheme.textPrimary)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
     }
 
     private func grantAccessibility() {
+        openedPermissionSettings = true
         ContextCaptor.requestTrust()
         NSWorkspace.shared.open(
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
@@ -323,7 +349,7 @@ public struct OnboardingView: View {
     @State private var recorderConflict: String?
 
     private var triggerStep: some View {
-        FoldOut {
+        FoldOut(showsFold: false, verticalPadding: 16, lowerTopPadding: 16) {
             VStack(alignment: .leading, spacing: 0) {
                 triggerRow(
                     title: "Dedicated shortcut",
@@ -332,11 +358,16 @@ public struct OnboardingView: View {
                 ) {
                     setTrigger(.hotkey)
                 } accessory: {
-                    HotkeyRecorder(
-                        value: settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
-                            ?? HotkeyManager.Action.smartPaste.default
-                    ) { hk in recordSmartPaste(hk) }
-                    .frame(width: 116, height: 34)
+                    VStack(spacing: 4) {
+                        HotkeyRecorder(
+                            value: settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
+                                ?? HotkeyManager.Action.smartPaste.default
+                        ) { hk in recordSmartPaste(hk) }
+                        .frame(width: 116, height: 34)
+                        Text("Click to record")
+                            .font(.system(size: 11))
+                            .foregroundStyle(OBTheme.textTertiary)
+                    }
                     .disabled(settings.triggerMode == .intercept)
                     .opacity(settings.triggerMode == .intercept ? 0.4 : 1)
                 }
@@ -352,12 +383,50 @@ public struct OnboardingView: View {
                 }
             }
         } lower: {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 10) {
                 OBCaption("Your shortcut pastes the part that fits the focused field.")
+                    .frame(maxWidth: .infinity)
                 if let recorderConflict {
                     Text(recorderConflict)
                         .font(.system(size: 12))
                         .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Copied message")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(OBTheme.textTertiary)
+                        HighlightedParagraph(
+                            text: "Reach Mira at mira@example.com or +44 7700 900123.",
+                            highlights: [OnboardingSample.Target.email.expected],
+                            fontSize: 12, width: 224)
+                    }
+                    .frame(width: 224, alignment: .leading)
+                    .padding(10)
+                    .background(OBTheme.inputFill,
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(OBTheme.inputStroke, lineWidth: 0.5))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(OBTheme.textTertiary)
+                        .fixedSize()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Email")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(OBTheme.textTertiary)
+                        Text(OnboardingSample.Target.email.expected)
+                            .font(.system(size: 13))
+                            .foregroundStyle(OBTheme.textPrimary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 10).frame(height: 30)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(OBTheme.inputFill,
+                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(OBTheme.inputStroke, lineWidth: 0.5))
+                    }
                 }
             }
         }
@@ -414,8 +483,6 @@ public struct OnboardingView: View {
     private var modelsStep: some View {
         OnboardingModels(model: model, primary: $stepPrimary) {
             advance()
-        } onFinishLater: {
-            finishLater()
         }
     }
 
@@ -424,57 +491,68 @@ public struct OnboardingView: View {
     /// Locality from the real endpoint, not the conservative mayBeRemote —
     /// a loopback custom endpoint is local.
     private var privacyIsRemote: Bool {
-        model.makeProvider()?.isRemote ?? false
+        switch settings.provider {
+        case .jevDirect, .jevGateway: true
+        case .local, .off: false
+        case .custom: model.makeProvider()?.isRemote ?? false
+        }
     }
 
     @State private var redactedSample: String?
 
     private var privacyStep: some View {
-        Group {
-            if privacyIsRemote { remotePrivacy } else { localPrivacy }
-        }
+        remotePrivacy
     }
 
+    @State private var privacyRects: [CGRect] = []
+
     private var remotePrivacy: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            FoldOut {
+        VStack(alignment: .leading, spacing: 14) {
+            FoldOut(arrowX: privacyRects.first.map { 24 + $0.midX }) {
                 VStack(alignment: .leading, spacing: 8) {
                     OBCaption("Example copied text")
                     HighlightedParagraph(
                         text: "Send the launch brief to Mira at mira@example.com.",
-                        highlight: "mira@example.com",
-                        fontSize: 15, width: 552)
+                        highlights: ["Mira", "mira@example.com"],
+                        fontSize: 16, width: 552) { rects in
+                        privacyRects = rects
+                    }
                 }
             } lower: {
                 VStack(alignment: .leading, spacing: 8) {
                     OBCaption(settings.effectivePIIRedaction
                               ? "Example sent to the model" : "Example sent without redaction")
                     Text(scrubbedSample)
-                        .font(.system(size: 15))
+                        .font(.system(size: 16))
                         .foregroundStyle(OBTheme.textPrimary)
                 }
             }
 
-            Toggle("Redact personal details", isOn: redactionToggle)
-                .toggleStyle(.switch)
-                .font(.system(size: 15))
-                .frame(maxWidth: .infinity)
-            Text("The detail you paste keeps its original text.")
-                .font(.system(size: 12))
-                .foregroundStyle(OBTheme.textTertiary)
-                .frame(maxWidth: .infinity)
-            if settings.piiRedaction != nil {
-                Button("Use automatic setting") { settings.piiRedaction = nil }
-                    .buttonStyle(.plain)
+            VStack(spacing: 8) {
+                Toggle("Redact personal details", isOn: redactionToggle)
+                    .toggleStyle(.switch)
+                    .font(.system(size: 15))
+                    .fixedSize()
+                Text("The detail you paste keeps its original text.")
                     .font(.system(size: 12))
                     .foregroundStyle(OBTheme.textTertiary)
-                    .frame(maxWidth: .infinity)
+                if settings.piiRedaction != nil {
+                    Button("Use automatic setting") { settings.piiRedaction = nil }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(OBTheme.textTertiary)
+                }
+                redactorLine
             }
-            redactorLine
-            Text("Redaction uses a small model on your Mac.")
-                .font(.system(size: 12))
-                .foregroundStyle(OBTheme.textTertiary)
-                .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity)
+            HStack(spacing: 6) {
+                Image(systemName: "desktopcomputer")
+                    .font(.system(size: 11))
+                Text("Redaction uses a small model on your Mac.")
+                    .font(.system(size: 12))
+            }
+            .foregroundStyle(OBTheme.textTertiary)
+            .frame(maxWidth: .infinity)
         }
         .task(id: model.redactor.status) {
             // Live preview once the redactor is ready — real output only.
@@ -487,7 +565,9 @@ public struct OnboardingView: View {
 
     /// Live redactor output when ready, else the labeled static example.
     private var scrubbedSample: String {
-        redactedSample ?? "Send the launch brief to [NAME] at [EMAIL]."
+        settings.effectivePIIRedaction
+            ? redactedSample ?? "Send the launch brief to [NAME] at [EMAIL]."
+            : "Send the launch brief to Mira at mira@example.com."
     }
 
     @ViewBuilder
@@ -513,55 +593,6 @@ public struct OnboardingView: View {
         }
     }
 
-    private var localPrivacy: some View {
-        FoldOut {
-            VStack(alignment: .leading, spacing: 8) {
-                OBCaption("Your clipboard text")
-                Text("Everything you copy stays on this Mac.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(OBTheme.textPrimary)
-            }
-        } lower: {
-            VStack(alignment: .leading, spacing: 8) {
-                OBCaption(privacyLocalCaption)
-                Text(privacyLocalDetail)
-                    .font(.system(size: 15))
-                    .foregroundStyle(OBTheme.textPrimary)
-                if settings.piiRedaction != nil {
-                    HStack {
-                        Toggle("Redact personal details anyway", isOn: redactionToggle)
-                            .toggleStyle(.switch)
-                            .font(.system(size: 13))
-                        Button("Use automatic") { settings.piiRedaction = nil }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 12))
-                            .foregroundStyle(OBTheme.textTertiary)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Lower-panel labels reflect the actual local configuration — a managed
-    /// model by name, a loopback custom endpoint by URL, off as no model.
-    private var privacyLocalCaption: String {
-        switch settings.provider {
-        case .off: "No model"
-        case .custom: "Custom endpoint"
-        default: "Local model"
-        }
-    }
-
-    private var privacyLocalDetail: String {
-        switch settings.provider {
-        case .off:
-            "No model configured — nothing leaves this Mac."
-        case .custom:
-            "Requests go to \(settings.customURL) — on this Mac."
-        default:
-            "\(ModelCatalog.model(settings.localModelID)?.title ?? "Your model") decides on-device."
-        }
-    }
 
     /// The tri-state: toggling writes an explicit override; auto is shown as
     /// the current effective value.
@@ -599,9 +630,7 @@ public struct OnboardingView: View {
     private var practiceStep: some View {
         Group {
             if let practice {
-                PracticeScreen(practice: practice, model: model) {
-                    step = .accessibility // permission lost → back to grant
-                }
+                PracticeScreen(practice: practice)
             }
         }
     }
@@ -610,7 +639,7 @@ public struct OnboardingView: View {
         guard let p = practice else { return OBPrimary(title: "Continue", enabled: false) }
         switch p.phase {
         case .intro:
-            return OBPrimary(title: "Copy sample") { p.copySample() }
+            return OBPrimary(title: "Preparing sample…", enabled: false)
         case .armed:
             return OBPrimary(title: "Waiting for \(p.triggerHint)…", enabled: false)
         case .deciding:
@@ -621,7 +650,7 @@ public struct OnboardingView: View {
                 closeWindow()
             }
         case .ordinaryPaste, .uncertain, .failed:
-            return OBPrimary(title: "Retry") { p.reset(target: nil, recopy: false) }
+            return OBPrimary(title: "Try again") { p.reset(target: nil) }
         case .lostPermission:
             return OBPrimary(title: "Grant access") { step = .accessibility; leavePractice() }
         case .unavailable:
@@ -631,11 +660,13 @@ public struct OnboardingView: View {
 
     private func enterPractice() {
         let p = OnboardingPractice(model: model)
+        p.target = .website
         practice = p
         model.practice = p
     }
 
     private func leavePractice() {
+        practice?.cancel()
         model.practice = nil
         practice = nil
     }
@@ -666,12 +697,12 @@ private struct WelcomeDemo: View {
     }
 
     var body: some View {
-        FoldOut {
-            VStack(alignment: .leading, spacing: 8) {
-                OBCaption("Example copied message")
+        FoldOut(arrowX: arrowX) {
+            VStack(alignment: .leading, spacing: 16) {
+                OBCaption("Copied message")
                 HighlightedParagraph(
                     text: OnboardingSample.message,
-                    highlight: span,
+                    highlights: [span],
                     width: 552
                 ) { rects in
                     paragraphLocalRects = rects
@@ -686,10 +717,13 @@ private struct WelcomeDemo: View {
         } lower: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Try a different field:")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(OBTheme.textSecondary)
+                    Text(target.rawValue)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(OBTheme.textPrimary)
                     Spacer()
+                    Text("Try a different field:")
+                        .font(.system(size: 11))
+                        .foregroundStyle(OBTheme.textSecondary)
                     Picker("", selection: $target) {
                         ForEach(OnboardingSample.Target.allCases, id: \.self) {
                             Text($0.rawValue).tag($0)
@@ -697,11 +731,8 @@ private struct WelcomeDemo: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(width: 180)
+                    .frame(width: 126)
                 }
-                Text(target.rawValue)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(OBTheme.textPrimary)
                 OBFieldPreview(label: target.rawValue, value: shownValue)
                     .background(
                         GeometryReader { g in
@@ -725,6 +756,10 @@ private struct WelcomeDemo: View {
     }
 
     private var span: String { target.expected }
+
+    private var arrowX: CGFloat? {
+        paragraphLocalRects.first.map { 24 + $0.midX }
+    }
 
     /// The field shows the extracted value — after the chip lands during a
     /// retarget animation, immediately otherwise.
@@ -789,29 +824,56 @@ private struct WelcomeDemo: View {
 /// is a real pasteboard write; the trigger is the user's real binding.
 private struct PracticeScreen: View {
     var practice: OnboardingPractice
-    var model: AppModel
-    var onLostPermission: () -> Void
+
+    @State private var paraRects: [CGRect] = []
 
     var body: some View {
-        FoldOut {
+        FoldOut(arrowX: paraRects.first.map { 24 + $0.midX }) {
             VStack(alignment: .leading, spacing: 8) {
-                OBCaption("Sample copied message")
+                HStack {
+                    OBCaption("Invoice brief")
+                    Spacer()
+                    Label("Copied for you", systemImage: "checkmark")
+                        .font(.system(size: 12))
+                        .foregroundStyle(OBTheme.textSecondary)
+                }
                 HighlightedParagraph(
-                    text: OnboardingSample.message,
-                    highlight: practice.expected,
-                    fontSize: 15, width: 552)
+                    text: OnboardingSample.practiceMessage,
+                    highlights: [practice.expected],
+                    fontSize: 16, width: 552) { rects in
+                    paraRects = rects
+                }
             }
         } lower: {
             VStack(alignment: .leading, spacing: 10) {
                 Text(practice.target.rawValue)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(OBTheme.textPrimary)
-                PracticeField(label: practice.target.rawValue,
-                              placeholder: "name@example.com",
-                              practice: practice)
-                    .frame(height: 36)
+                HStack(spacing: 10) {
+                    PracticeField(label: practice.target.rawValue,
+                                  placeholder: practice.target == .email
+                                    ? "name@example.com" : "https://…",
+                                  practice: practice)
+                        .frame(height: 36)
+                    if case .succeeded = practice.phase {
+                        Label("\(practice.target.rawValue) pasted",
+                              systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.green)
+                            .fixedSize()
+                        Button(practice.target == .website ? "Try Email" : "Try Website") {
+                            practice.reset(target: practice.target == .website ? .email : .website)
+                        }
+                        .controlSize(.regular)
+                    }
+                }
                 statusLine
             }
+        }
+        .task {
+            practice.copySample()
+            await Task.yield()
+            practice.focus()
         }
     }
 
@@ -819,7 +881,7 @@ private struct PracticeScreen: View {
     private var statusLine: some View {
         switch practice.phase {
         case .intro:
-            Text("Copy the sample, then use your shortcut in the field.")
+            Text("Preparing your sample…")
                 .font(.system(size: 12)).foregroundStyle(OBTheme.textTertiary)
         case .armed:
             Text("Now press \(practice.triggerHint)")
@@ -832,17 +894,11 @@ private struct PracticeScreen: View {
                     .foregroundStyle(OBTheme.textSecondary)
             }
         case .succeeded:
-            Label("\(practice.target.rawValue) pasted", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .medium)).foregroundStyle(.green)
-            HStack {
-                Button("Try Website") {
-                    practice.reset(target: .website, recopy: true)
-                }
-                .controlSize(.small)
-                Spacer()
-                Text("Find Cue in your Mac's menu bar")
-                    .font(.system(size: 11)).foregroundStyle(OBTheme.textTertiary)
-            }
+            Text(practice.elapsedMilliseconds.map { "Pasted in \($0) ms. Find Cue in your menu bar." }
+                 ?? "Find Cue in your Mac's menu bar.")
+                .font(.system(size: 12))
+                .foregroundStyle(OBTheme.textTertiary)
+                .frame(maxWidth: .infinity)
         case .ordinaryPaste(let observed):
             VStack(alignment: .leading, spacing: 6) {
                 Text("Cue used ordinary paste this time.")
