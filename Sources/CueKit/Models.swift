@@ -78,7 +78,7 @@ public struct ModelSpec: Sendable, Identifiable {
 public enum ModelCatalog {
     /// The ranked list. Rank drives ordering in "Other local models" and the
     /// recommended badge; kev/laya also get top-level rows in the picker.
-    public static let all: [ModelSpec] = [kev, laya, von, jevons, jevlite, decider]
+    public static let all: [ModelSpec] = ModelRoles.apply(to: [kev, laya, von, jevons, jevlite, decider])
 
     /// kev and laya are top-level picker rows; everything else is "Others".
     public static var others: [ModelSpec] {

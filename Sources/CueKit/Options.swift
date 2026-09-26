@@ -42,7 +42,7 @@ public enum FieldKind: String, Sendable {
         let s = "\(label) \(placeholder) \(nearby)".lowercased()
         func has(_ words: [String]) -> Bool { words.contains { s.contains($0) } }
         if has(["email", "e-mail", "mail address"]) { return .email }
-        if has(["phone", "mobile", "tel", "fax"]) { return .phone }
+        if has(["phone", "mobile", "tel", "fax", "callback"]) { return .phone }
         if has(["url", "website", "link", "domain"]) { return .url }
         if has(["first name", "last name", "full name", "name"]) { return .name }
         return .generic
@@ -76,6 +76,53 @@ public enum FieldKind: String, Sendable {
         case .name: option.kind == .text
         case .generic: true
         }
+    }
+}
+
+/// Explicit context evidence: distinctive words from the field's label,
+/// window title and nearby text that also appear in an option ("Re: …
+/// Priya Shah" ↔ priya.shah@…, "Cc:" ↔ "…, cc legal@…"). Only a match
+/// unique to one option counts as a pick — two options sharing the evidence
+/// is ambiguity, and the chooser handles it.
+public enum ContextSignal {
+    static let stop: Set<String> = [
+        "the", "and", "for", "from", "with", "your", "you", "our", "new", "message",
+        "email", "mail", "address", "phone", "number", "url", "link", "website",
+        "com", "org", "net", "www", "http", "https", "example", "subject", "add",
+        "contact", "name", "field", "enter", "draft", "reply", "fwd", "re", "to",
+    ]
+
+    static func words(_ s: String, min: Int) -> Set<String> {
+        Set(s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+            .filter { $0.count >= min && !stop.contains($0) })
+    }
+
+    /// Words the option itself carries: an email's local part (the domain is
+    /// shared by coworkers, so it isn't evidence), a URL's host and path, a
+    /// text clip's words, plus the words just before a span in its clip.
+    static func optionWords(_ o: PasteOption) -> Set<String> {
+        var own: String
+        switch o.kind {
+        case .email: own = String(o.text.split(separator: "@").first ?? "")
+        case .url, .phone, .text: own = o.text
+        }
+        if o.kind != .text, let r = o.snippet.range(of: o.text) {
+            own += " " + String(o.snippet[..<r.lowerBound].suffix(24))
+        }
+        return words(own, min: 2)
+    }
+
+    /// The one option with evidence, if exactly one has any.
+    public static func uniquePick(_ options: [PasteOption], label: String,
+                                  window: String, nearby: String) -> PasteOption? {
+        let ctx = words(label, min: 2).union(words("\(window) \(nearby)", min: 3))
+        guard !ctx.isEmpty else { return nil }
+        let all = options.filter { !optionWords($0).isDisjoint(with: ctx) }
+        // A span is more specific than the whole clip it came from.
+        let hits = all.filter { h in
+            !(h.kind == .text && all.contains { $0.kind != .text && $0.clip.id == h.clip.id })
+        }
+        return hits.count == 1 ? hits[0] : nil
     }
 }
 

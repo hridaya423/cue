@@ -89,6 +89,10 @@ public struct JevResponse: Sendable, Equatable {
     public var model: String
     public var answers: [String: Answer]
     public var inputTokens: Int
+
+    public init(model: String, answers: [String: Answer], inputTokens: Int = 0) {
+        self.model = model; self.answers = answers; self.inputTokens = inputTokens
+    }
 }
 
 public struct JevEndpoint: Sendable {

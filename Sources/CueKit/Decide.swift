@@ -112,6 +112,7 @@ public enum PasteOutcome: Sendable {
         case noProvider     // off / unconfigured
         case empty          // no candidates to choose among
         case noAnswer       // malformed model response
+        case redactionFailed // couldn't scrub PII for a remote model — nothing sent
 
         public var label: String {
             switch self {
@@ -122,6 +123,7 @@ public enum PasteOutcome: Sendable {
             case .noProvider: "no model configured"
             case .empty: "nothing in history"
             case .noAnswer: "model gave no answer"
+            case .redactionFailed: "couldn't mask personal details"
             }
         }
     }
@@ -195,12 +197,16 @@ public struct DecisionEngine: Sendable {
             let scrub = provider.isRemote ? redactor : nil
             let limit = mode == .intercept ? min(timeout, 1.2) : timeout
             resp = try await Self.withTimeout(limit) {
-                try await provider.evaluate(
-                    state: try await Self.stateJSON(context: context, mode: mode, redactor: scrub),
-                    questions: try await Self.questions(options: options, context: context,
-                                                        mode: mode, redactor: scrub)
-                )
+                let (state, questions): (JSONValue, [String: Question])
+                do {
+                    state = try await Self.stateJSON(context: context, mode: mode, redactor: scrub)
+                    questions = try await Self.questions(options: options, context: context,
+                                                         mode: mode, redactor: scrub)
+                } catch { throw ScrubFailed() }
+                return try await provider.evaluate(state: state, questions: questions)
             }
+        } catch is ScrubFailed {
+            return .pasteLatest(.redactionFailed)
         } catch {
             // Hotkey: the model is gone but history isn't — surface the
             // recency-ordered plausible options so a stalled paste still
@@ -208,13 +214,10 @@ public struct DecisionEngine: Sendable {
             if mode == .hotkey {
                 // Only offer when the field has a type signal — a generic
                 // field + a dead model should paste c1 like nothing happened.
-                let fallback = expects == .generic ? []
-                    : options.filter { expects.matches($0) }
-                if fallback.count >= 2 {
-                    return .choose(fallback.prefix(3).map {
-                        ScoredOption(option: $0, probability: 0, confidence: 0)
-                    })
-                }
+                let fallback = (expects == .generic ? [] : options.filter { expects.matches($0) })
+                    .map { ScoredOption(option: $0, probability: 0, confidence: 0) }
+                if fallback.count == 1 { return .paste(DecisionPolicy.decision(fallback[0], isForm: false)) }
+                if fallback.count >= 2 { return .choose(Array(fallback.prefix(3))) }
             }
             return .pasteLatest(.unreachable)
         }
@@ -251,8 +254,12 @@ public struct DecisionEngine: Sendable {
         return DecisionPolicy.outcome(
             ranked: ranked, noneProb: noneProb, useLatest: useLatest, isForm: isForm,
             mode: mode, threshold: confidenceThreshold, margin: decisivenessMargin,
-            fallback: lowConfidenceMode)
+            fallback: lowConfidenceMode, expects: expects,
+            signal: ContextSignal.uniquePick(options, label: context.field.label,
+                                             window: context.windowTitle, nearby: context.nearby)?.id)
     }
+
+    struct ScrubFailed: Error {}
 
     /// Wrap a provider call in a hard ceiling — a hanging endpoint must never
     /// stall a paste. Structured-concurrency timeout: the racing task loses.
@@ -310,19 +317,18 @@ public struct DecisionEngine: Sendable {
         let lines = try await scrubbed(rawLines, redactor: redactor)
         var criteria: [String: String] = [:]
         for (i, line) in lines.enumerated() { criteria[options[i].id] = line }
-        criteria["none"] = "none of these could plausibly fill this field"
+        criteria["none"] = "nothing here belongs in this field, such as a verification code or a search box"
+        // Prompt C — won the CueEval A/B/C round (Evals/results/summary.md).
+        let instructions = """
+            The user invoked smart-paste. Choose the option a person would type \
+            into the focused field described by `field`. Weigh, in order: the \
+            field's purpose (`field.label`, `field.placeholder`, `field.expects`); \
+            who or what the surrounding page or conversation is about (`window`, \
+            `nearby`, `web_host`); then recency — c1 is newest. Prefer the option \
+            matching a person or thing named in `window` or `nearby`.
+            """
         var q: [String: Question] = [
-            "pick": .choice(
-                instructions: """
-                The user invoked smart-paste. Choose the option a person would type \
-                into the focused field described by `field`. Weigh, in order: the \
-                field's purpose (`field.label`, `field.placeholder`, `field.expects`); \
-                who or what the surrounding page or conversation is about (`window`, \
-                `nearby`, `web_host`); then recency — c1 is newest. Choose `none` \
-                when no option belongs in this field.
-                """,
-                criteria: criteria
-            ),
+            "pick": .choice(instructions: instructions, criteria: criteria),
         ]
         switch mode {
         case .intercept:
@@ -385,13 +391,13 @@ public enum DecisionPolicy {
         mode: DecisionEngine.Mode,
         threshold: Double,
         margin: Double,
-        fallback: AppSettings.LowConfidenceMode = .top3
+        fallback: AppSettings.LowConfidenceMode = .top3,
+        expects: FieldKind = .generic,
+        noneThreshold: Double = 0.7,
+        signal: String? = nil
     ) -> PasteOutcome {
         let top = ranked.first
         let second = ranked.dropFirst().first
-        let decisive = top != nil
-            && top!.probability >= threshold
-            && top!.probability - (second?.probability ?? 0) >= margin
         // Options that clear the noise floor — the chooser never shows junk.
         let plausible = ranked.filter { $0.probability >= 0.1 }
         let noneLeads = top == nil || noneProb >= top!.probability
@@ -399,37 +405,71 @@ public enum DecisionPolicy {
         // `none` only ends the paste when it's actually dominant — a
         // plurality "none" beside real candidates deserves the chooser
         // (Esc/⌘V inside it still yields a plain paste).
-        let noneDominant = noneProb >= threshold && noneProb >= (top?.probability ?? 0)
+        let noneDominant = noneProb >= noneThreshold && noneProb >= (top?.probability ?? 0)
+        // Decisiveness is judged among the real options (their share of the
+        // non-`none` mass): "does something fit" and "which one" are separate
+        // questions, and small models park mass on `none` even when the
+        // choice among options is clear.
+        let mass = ranked.reduce(0) { $0 + $1.probability }
+        func share(_ s: ScoredOption?) -> Double { mass > 0 ? (s?.probability ?? 0) / mass : 0 }
+        let decisive = top != nil && !noneDominant
+            && share(top) >= threshold
+            && share(top) - share(second) >= margin
+        // Typed field (email/phone/URL): options of that type outrank the
+        // model's `none` — small models over-abstain on obvious cases (one
+        // email, an Email field). One match pastes; several go to the chooser.
+        let typed = expects == .generic || expects == .name
+            ? [] : ranked.filter { expects.matches($0.option) }
+        // Context evidence unique to one option (ContextSignal) orders the
+        // chooser so Return takes it — never an automatic paste: word overlap
+        // can't tell "Reply to Priya" from "Nadia's wedding · Your email".
+        func choose(_ opts: [ScoredOption]) -> PasteOutcome {
+            guard let i = opts.firstIndex(where: { $0.option.id == signal }) else { return .choose(opts) }
+            var o = opts; o.insert(o.remove(at: i), at: 0)
+            return .choose(o)
+        }
+        func typedOutcome(isForm: Bool) -> PasteOutcome? {
+            switch typed.count {
+            case 0: return nil
+            case 1: return .paste(decision(typed[0], isForm: isForm))
+            default: return choose(Array(typed.prefix(3)))
+            }
+        }
 
         switch mode {
         case .intercept:
             // ⌘V: the user's own copy wins if it fits verbatim.
             if let u = useLatest, u >= 0.5 { return .pasteLatest(.useLatest) }
             if decisive, let top { return .paste(decision(top, isForm: false)) }
+            if let t = typedOutcome(isForm: false) { return t }
             if noneDominant { return .pasteLatest(.nothingFits) }
             if plausible.count >= 2 {
                 switch fallback {
                 case .pasteBest: return .paste(decision(plausible[0], isForm: false))
                 case .pasteLatest: return .pasteLatest(.lowConfidence)
-                case .picker: return .choose(Array(plausible))
-                case .top3: return .choose(Array(plausible.prefix(3)))
+                case .picker: return choose(Array(plausible))
+                case .top3: return choose(Array(plausible.prefix(3)))
                 }
             }
             return .pasteLatest(.lowConfidence)
 
         case .hotkey:
             if decisive, let top { return .paste(decision(top, isForm: isForm)) }
+            if let t = typedOutcome(isForm: isForm) { return t }
             if noneDominant { return .pasteLatest(.nothingFits) }
             if plausible.count >= 2 {
                 switch fallback {
                 case .pasteBest: return .paste(decision(plausible[0], isForm: isForm))
                 case .pasteLatest: return .pasteLatest(.lowConfidence)
-                case .picker: return .choose(Array(plausible))
-                case .top3: return .choose(Array(plausible.prefix(3)))
+                case .picker: return choose(Array(plausible))
+                case .top3: return choose(Array(plausible.prefix(3)))
                 }
             }
             // Weak but unopposed leader — take it rather than a bare ⌘V of c1.
             if let top, top.probability > noneProb { return .paste(decision(top, isForm: isForm)) }
+            // One plausible option under a non-dominant `none`: the user asked
+            // for smart-paste, so confirm it with a one-row chooser.
+            if plausible.count == 1 { return choose(plausible) }
             return .pasteLatest(noneLeads ? .nothingFits : .noAnswer)
 
         case .formFill:

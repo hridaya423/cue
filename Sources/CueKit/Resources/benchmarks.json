@@ -1,0 +1,7 @@
+[
+  {"model": "kev", "variant": "kev-0.8b", "resolved": 0.84, "wrong": 0.01, "p50": 248, "p95": 479, "diskGB": 2.0, "ramGB": 4.0},
+  {"model": "laya", "variant": "laya-en", "resolved": 0.80, "wrong": 0.03, "p50": 308, "p95": 506, "diskGB": 0.9, "ramGB": 1.0},
+  {"model": "von", "variant": "von-1.0", "resolved": 0.88, "wrong": 0.10, "p50": 215, "p95": 408, "diskGB": 1.5, "ramGB": 2.0},
+  {"model": "jevons", "variant": "jevons-1.2b", "resolved": 0.47, "wrong": 0.01, "p50": 959, "p95": 2552, "diskGB": 1.5, "ramGB": 2.0},
+  {"model": "jevlite", "variant": "jev-lite-e4b", "resolved": 0.62, "wrong": 0.00, "p50": 2630, "p95": 2670, "diskGB": 4.0, "ramGB": 6.0}
+]

@@ -201,7 +201,7 @@ struct DecisionEngineTests {
         var engine = DecisionEngine(provider: StubProvider(response: pickResponse(
             pick: "c1", conf: 0.5, probs: ["c1": 0.45, "c2": 0.45, "none": 0.1])))
         engine.confidenceThreshold = 0.6
-        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        let outcome = await engine.decide(context: makeContext(label: "Notes"), candidates: clips, mode: .hotkey)
         guard case .choose(let opts) = outcome else { Issue.record("expected choose, got \(outcome)"); return }
         #expect(opts.count == 2)
         #expect(opts.first?.option.text == "latest clip") // ranked by probability
@@ -211,10 +211,29 @@ struct DecisionEngineTests {
         var engine = DecisionEngine(provider: StubProvider(response: pickResponse(
             pick: "none", conf: 0.9, probs: ["c1": 0.1, "c2": 0.1, "none": 0.8])))
         engine.confidenceThreshold = 0.6
-        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        let outcome = await engine.decide(context: makeContext(label: "Notes"), candidates: clips, mode: .hotkey)
         guard case .pasteLatest(let r) = outcome, r == .nothingFits else {
             Issue.record("expected pasteLatest(.nothingFits), got \(outcome)"); return
         }
+    }
+
+    @Test func typedFieldOutranksOverAbstainingNone() async {
+        // Small models put most mass on `none` even when the Email field has
+        // exactly one email option — that option pastes. Several emails →
+        // chooser of just the emails.
+        let engine = DecisionEngine(provider: StubProvider(response: pickResponse(
+            pick: "none", conf: 0.7, probs: ["c1": 0.1, "c2": 0.1, "none": 0.8])))
+        let one = await engine.decide(context: makeContext(label: "Email"), candidates: clips, mode: .hotkey)
+        guard case .paste(let d) = one, d.text == "me@example.com" else {
+            Issue.record("expected paste of the only email, got \(one)"); return
+        }
+        let many = [Clip(text: "notes", kind: .text), Clip(text: "a@x.example.com", kind: .text),
+                    Clip(text: "b@x.example.com", kind: .text)]
+        let e2 = DecisionEngine(provider: StubProvider(response: pickResponse(
+            pick: "none", conf: 0.7, probs: ["c1": 0.1, "c2": 0.05, "c3": 0.05, "none": 0.8])))
+        let two = await e2.decide(context: makeContext(label: "Email"), candidates: many, mode: .hotkey)
+        guard case .choose(let opts) = two else { Issue.record("expected choose, got \(two)"); return }
+        #expect(opts.map(\.option.text).sorted() == ["a@x.example.com", "b@x.example.com"])
     }
 
     @Test func weakSingleLeaderStillPastes() async {
@@ -253,7 +272,8 @@ struct DecisionEngineTests {
         var engine = DecisionEngine(provider: StubProvider(response: pickResponse(
             pick: "c1", conf: 0.4, probs: ["c1": 0.45, "c2": 0.45, "none": 0.1], useLatest: 0.1)))
         engine.confidenceThreshold = 0.6
-        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .intercept)
+        // Phone field: c1 doesn't fit, and no option is a phone.
+        let outcome = await engine.decide(context: makeContext(label: "Phone"), candidates: clips, mode: .intercept)
         guard case .choose(let opts) = outcome else { Issue.record("expected choose, got \(outcome)"); return }
         #expect(opts.count == 2)
     }
@@ -550,5 +570,45 @@ private extension JevResponse {
         var r = self
         r.answers["form_field"] = .noul(probability: p)
         return r
+    }
+}
+
+struct ContextSignalTests {
+    func opts(_ texts: [String]) -> [PasteOption] {
+        OptionBuilder.options(from: texts.map { Clip(text: $0, kind: .text) })
+    }
+
+    @Test func uniqueNameMatchWins() {
+        let o = opts(["priya.shah@acme.example.com", "me@gmail.example.com", "noreply@shop.example.io"])
+        let p = ContextSignal.uniquePick(o, label: "To:", window: "Re: Q3 roadmap — Priya Shah",
+                                         nearby: "From: Priya Shah")
+        #expect(p?.text == "priya.shah@acme.example.com")
+    }
+
+    @Test func sharedEvidenceIsAmbiguity() {
+        let o = opts(["zoe.lin@gmail.example.com", "z.lin@acme.example.com"])
+        #expect(ContextSignal.uniquePick(o, label: "To:", window: "Fwd: party pics", nearby: "From: Zoe Lin") == nil)
+    }
+
+    @Test func domainIsNotEvidence() {
+        // Coworkers share a domain — "Acme" must not single one out.
+        let o = opts(["me@gmail.example.com", "alex.rivera@acme.example.com", "dana@acme.example.com"])
+        #expect(ContextSignal.uniquePick(o, label: "Work email", window: "Acme Corp", nearby: "") == nil)
+    }
+
+    @Test func labelWordsBeforeASpanCount() {
+        let o = opts(["Send to finance@acme.example.com, cc legal@acme.example.com today"])
+        let p = ContextSignal.uniquePick(o, label: "Cc:", window: "Invoice follow-up", nearby: "")
+        #expect(p?.text == "legal@acme.example.com")
+    }
+
+    @Test func signalOrdersTheChooserButNeverPastes() {
+        let o = opts(["a@x.example.com", "b@x.example.com"])
+        let ranked = o.map { ScoredOption(option: $0, probability: 0.4, confidence: 0.2) }
+        let out = DecisionPolicy.outcome(ranked: ranked, noneProb: 0.2, useLatest: nil, isForm: false,
+                                         mode: .hotkey, threshold: 0.7, margin: 0.25,
+                                         expects: .email, signal: o[1].id)
+        guard case .choose(let c) = out else { Issue.record("expected choose, got \(out)"); return }
+        #expect(c.first?.option.text == "b@x.example.com")
     }
 }

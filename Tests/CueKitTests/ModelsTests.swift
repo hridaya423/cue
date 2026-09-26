@@ -73,16 +73,55 @@ struct ModelCatalogTests {
         }
     }
 
-    @Test func rolesFollowTheBenchmark() {
-        // Evals/results/summary.md (policy C, warm): kev 0.8B 84% right /
-        // 1% wrong / p50 248ms; laya 80% / 3% / 308ms, <1 GB; von 88% /
-        // 10% / 215ms. Fewest wrong pastes leads — a wrong paste is the
-        // failure users notice.
+    @Test func catalogRanksComeFromTheFrozenBenchmark() {
+        // The shipped benchmarks.json drives rank + reason; rank 1 is the
+        // first role (Recommended), and every role model beats every
+        // non-role model.
+        let roles = ModelRoles.roles(from: ModelRoles.benchmarks)
+        #expect(!roles.isEmpty)
         let top = ModelCatalog.all.min(by: { $0.rank < $1.rank })
-        #expect(top?.id == "kev")
-        #expect(ModelCatalog.kev.reason == "Most accurate")
-        #expect(ModelCatalog.laya.reason == "Best balance")
-        #expect(ModelCatalog.von.reason == "Fastest")
+        #expect(top?.id == roles.first?.bench.model)
+        #expect(top?.reason == roles.first?.role.rawValue)
+        let roleIDs = Set(roles.map(\.bench.model))
+        let worstRole = ModelCatalog.all.filter { roleIDs.contains($0.id) }.map(\.rank).max() ?? 0
+        #expect(ModelCatalog.all.filter { !roleIDs.contains($0.id) }.allSatisfy { $0.rank > worstRole })
+    }
+}
+
+struct ModelRolesTests {
+    func b(_ m: String, _ r: Double, _ w: Double, _ p50: Double, p95: Double = 400,
+           disk: Double = 1) -> ModelBenchmark {
+        ModelBenchmark(model: m, variant: m, resolved: r, wrong: w, p50: p50, p95: p95,
+                       diskGB: disk, ramGB: disk)
+    }
+
+    @Test func wrongPastesWeighDouble() {
+        // 88% right with 10% wrong loses accuracy to 84% with 1% wrong.
+        let r = ModelRoles.roles(from: [b("bold", 0.88, 0.10, 200), b("careful", 0.84, 0.01, 250)])
+        #expect(r.first?.role == .mostAccurate)
+        #expect(r.first?.bench.model == "careful")
+        #expect(r.contains { $0.role == .fastest && $0.bench.model == "bold" })
+    }
+
+    @Test func aDoubleWinnerFillsOnlyOneRole() {
+        // "a" is best at everything; it takes Most accurate and the next
+        // best fill the later roles.
+        let r = ModelRoles.roles(from: [b("a", 0.95, 0, 100), b("b", 0.85, 0.02, 200),
+                                        b("c", 0.82, 0.02, 300, disk: 0.5)])
+        #expect(r.map(\.role) == [.mostAccurate, .bestBalance, .fastest])
+        #expect(r.map(\.bench.model) == ["a", "c", "b"])
+    }
+
+    @Test func tieOnQualityGoesToFewerWrong() {
+        let r = ModelRoles.roles(from: [b("x", 0.90, 0.05, 300), b("y", 0.84, 0.02, 300)])
+        #expect(r.first?.bench.model == "y")
+    }
+
+    @Test func overBudgetModelsGetNoRole() {
+        let r = ModelRoles.roles(from: [b("slow", 0.99, 0, 900), b("ok", 0.8, 0.02, 300)])
+        #expect(!r.contains { $0.bench.model == "slow" })
+        let r2 = ModelRoles.roles(from: [b("tail", 0.99, 0, 300, p95: 2000)])
+        #expect(r2.isEmpty)
     }
 }
 

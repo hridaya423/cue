@@ -9,3 +9,4 @@ Evals/results/*.log
 Evals/results/*.err
 Evals/results/raw-*.jsonl
 Evals/results/v3-raw*.jsonl
+Evals/results/*-raw.jsonl

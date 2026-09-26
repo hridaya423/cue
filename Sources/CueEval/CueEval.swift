@@ -26,6 +26,11 @@ struct Args {
     var json: String?
     var onlyCategory: String?
     var onlyCase: String?
+    /// Replays recorded answers (a --record file) instead of calling the
+    /// endpoint: instant policy/threshold sweeps through the real engine.
+    var replay: String?
+    var threshold = 0.7
+    var margin = 0.25
 
     static func parse() throws -> Args {
         var a = Args()
@@ -43,8 +48,17 @@ struct Args {
             case "--json": a.json = try need(&it, "--json")
             case "--category": a.onlyCategory = try need(&it, "--category")
             case "--only": a.onlyCase = try need(&it, "--only")
+            case "--replay": a.replay = try need(&it, "--replay")
+            case "--threshold": a.threshold = Double(try need(&it, "--threshold")) ?? 0.7
+            case "--margin": a.margin = Double(try need(&it, "--margin")) ?? 0.25
             default: throw Err("unknown arg \(arg)")
             }
+        }
+        if let r = a.replay, a.endpoints.isEmpty {
+            a.endpoints = [EndpointSpec(name: "replay",
+                                        endpoint: JevEndpoint.custom(base: "http://127.0.0.1:9", model: "replay")!,
+                                        key: "")]
+            _ = r
         }
         guard !a.endpoints.isEmpty else { throw Err("no --endpoint given") }
         return a
@@ -92,12 +106,58 @@ final class RecordingProvider: DecisionProvider, @unchecked Sendable {
     }
 }
 
+/// Serves the first recorded response per case id (the --record format).
+final class ReplayProvider: DecisionProvider, @unchecked Sendable {
+    var isRemote: Bool { false }
+    var currentCaseID = ""
+    private var byCase: [String: JevResponse] = [:]
+
+    init(path: String) throws {
+        for line in try String(contentsOfFile: path, encoding: .utf8).split(whereSeparator: \.isNewline) {
+            guard let o = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let id = o["case"] as? String, byCase[id] == nil,
+                  let raw = o["answers"] as? [String: String] else { continue }
+            byCase[id] = JevResponse(model: o["model"] as? String ?? "replay",
+                                     answers: raw.compactMapValues(Self.parse))
+        }
+    }
+
+    /// "choice:c2 conf=0.4 c1=0.1,c2=0.9" | "noul:0.3" | "score:3 conf=0.5"
+    static func parse(_ s: String) -> Answer? {
+        let parts = s.split(separator: " ", maxSplits: 2).map(String.init)
+        guard let head = parts.first, let colon = head.firstIndex(of: ":") else { return nil }
+        let kind = head[..<colon], val = String(head[head.index(after: colon)...])
+        let conf = parts.count > 1 ? Double(parts[1].replacingOccurrences(of: "conf=", with: "")) ?? 0 : 0
+        switch kind {
+        case "noul": return Double(val).map { .noul(probability: $0) }
+        case "choice":
+            var probs: [String: Double] = [:]
+            if parts.count > 2 {
+                for kv in parts[2].split(separator: ",") {
+                    let p = kv.split(separator: "=")
+                    if p.count == 2, let v = Double(p[1]) { probs[String(p[0])] = v }
+                }
+            }
+            return .choice(key: val, confidence: conf, probabilities: probs)
+        case "score": return Double(val).map { .score(score: $0, confidence: conf, probabilities: [:]) }
+        default: return nil
+        }
+    }
+
+    func evaluate(state: JSONValue, questions: [String: Question]) async throws -> JevResponse {
+        guard let r = byCase[currentCaseID] else { throw Err("no recording for \(currentCaseID)") }
+        return r
+    }
+}
+
 struct CaseResult: Sendable {
     var caseID: String
     var verdict: EvalVerdict
     var latencies: [Double]
     var outcomeKind: String
     var pasted: String
+    /// Expected a single paste — a chooser here is friction, not safety.
+    var unambiguous: Bool
 }
 
 func normalize(_ outcome: PasteOutcome) -> EvalNormalizedOutcome {
@@ -134,7 +194,9 @@ func run() async throws -> Int {
 
     for ep in args.endpoints {
         var results: [CaseResult] = []
-        let client = JevClient(endpoint: ep.endpoint, apiKey: ep.key, timeout: args.timeout)
+        let replay = try args.replay.map { try ReplayProvider(path: $0) }
+        let client: any DecisionProvider = replay
+            ?? JevClient(endpoint: ep.endpoint, apiKey: ep.key, timeout: args.timeout)
         let recorder = RecordingProvider(client) { caseID, resp in
             let answers = resp.answers.mapValues { a -> String in
                 switch a {
@@ -152,11 +214,13 @@ func run() async throws -> Int {
         }
         for c in cases {
             recorder.currentCaseID = c.id
+            replay?.currentCaseID = c.id
             var latencies: [Double] = []
             var lastOutcome: EvalNormalizedOutcome?
             for rep in 0..<args.repeats {
                 var engine = DecisionEngine(provider: recorder)
-                engine.confidenceThreshold = 0.7
+                engine.confidenceThreshold = args.threshold
+                engine.decisivenessMargin = args.margin
                 let t0 = ContinuousClock.now
                 let outcome = await engine.decide(
                     context: c.contextSnapshot, candidates: c.clipList, mode: c.engineMode)
@@ -170,7 +234,8 @@ func run() async throws -> Int {
             let verdict = EvalScore.score(o, expect: c.expect, latestText: latest)
             results.append(CaseResult(caseID: c.id, verdict: verdict, latencies: latencies,
                                       outcomeKind: o.kind.rawValue,
-                                      pasted: o.texts.first.map { String($0.prefix(30)) } ?? ""))
+                                      pasted: o.texts.first.map { String($0.prefix(30)) } ?? "",
+                                      unambiguous: { if case .paste = c.expect { return true }; return false }()))
             let msAvg = latencies.reduce(0, +) / Double(latencies.count)
             print("\(pad(ep.name, 16)) \(pad(c.id, 34)) \(pad(verdict.rawValue, 18)) \(pad(o.kind.rawValue, 7)) \(pad(String((o.texts.first ?? "-").prefix(32)), 32)) \(Int(msAvg.rounded()))")
         }
@@ -184,12 +249,16 @@ func run() async throws -> Int {
         let chooser = byVerdict[.resolvedByChooser]?.count ?? 0
         let lucky = byVerdict[.luckyGuess]?.count ?? 0
         let misses = byVerdict[.miss]?.count ?? 0
+        let unamb = results.filter(\.unambiguous)
+        let chooserUnamb = unamb.isEmpty ? 0
+            : Double(unamb.filter { $0.outcomeKind == "choose" }.count) / Double(unamb.count) * 100
         summary[ep.name] = [
             "exact": exacts, "resolved_chooser": chooser, "lucky_guess": lucky,
             "miss": misses, "wrong": wrongs, "cases": results.count,
             "resolved_pct": (Double(exacts + chooser) / n * 100).rounded(),
             "wrong_pct": (Double(wrongs) / n * 100).rounded(),
             "p50_ms": p(0.5).rounded(), "p95_ms": p(0.95).rounded(),
+            "chooser_on_unambiguous_pct": chooserUnamb.rounded(),
         ]
         print("\(pad(ep.name, 16)) \(pad("TOTAL", 34)) \(exacts)+\(chooser) ok, \(lucky) lucky, \(misses) miss, \(wrongs) wrong")
         print(String(repeating: "-", count: 118))
@@ -198,7 +267,7 @@ func run() async throws -> Int {
     print("\n=== SUMMARY ===")
     for ep in args.endpoints {
         if let s = summary[ep.name] {
-            print("\(ep.name): resolved \(s["resolved_pct"]!)%  wrong \(s["wrong_pct"]!)%  p50 \(s["p50_ms"]!)ms  p95 \(s["p95_ms"]!)ms")
+            print("\(ep.name): resolved \(s["resolved_pct"]!)%  wrong \(s["wrong_pct"]!)%  p50 \(s["p50_ms"]!)ms  p95 \(s["p95_ms"]!)ms  chooser-on-unambiguous \(s["chooser_on_unambiguous_pct"]!)%")
         }
     }
 
