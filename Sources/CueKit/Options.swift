@@ -48,6 +48,25 @@ public enum FieldKind: String, Sendable {
         return .generic
     }
 
+    /// Would `text`, pasted exactly as copied, already fit this field? The
+    /// ⌘V-intercept contract: when it does, a plain paste is the answer and
+    /// no model call is made (fast, and never a surprise popup on ⌘V).
+    /// Generic fields take anything; typed fields need the whole text to be
+    /// one span of that type; name fields need text with no detected span.
+    public func acceptsVerbatim(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let spans = SpanExtractor.spansWithContext(in: t)
+        let want: PasteOption.Kind
+        switch self {
+        case .generic: return true
+        case .name: return spans.isEmpty
+        case .email: want = .email
+        case .phone: want = .phone
+        case .url: want = .url
+        }
+        return spans.count == 1 && spans[0].kind == want && spans[0].text == t
+    }
+
     /// Does an option satisfy this field kind?
     public func matches(_ option: PasteOption) -> Bool {
         switch self {

@@ -1,0 +1,62 @@
+{
+  "jevlite" : {
+    "cases" : 110,
+    "exact" : 56,
+    "lucky_guess" : 0,
+    "miss" : 42,
+    "p50_ms" : 2631,
+    "p95_ms" : 2669,
+    "resolved_chooser" : 12,
+    "resolved_pct" : 62,
+    "wrong" : 0,
+    "wrong_pct" : 0
+  },
+  "jevons" : {
+    "cases" : 110,
+    "exact" : 52,
+    "lucky_guess" : 0,
+    "miss" : 58,
+    "p50_ms" : 600,
+    "p95_ms" : 1487,
+    "resolved_chooser" : 0,
+    "resolved_pct" : 47,
+    "wrong" : 0,
+    "wrong_pct" : 0
+  },
+  "kev" : {
+    "cases" : 110,
+    "exact" : 55,
+    "lucky_guess" : 0,
+    "miss" : 17,
+    "p50_ms" : 211,
+    "p95_ms" : 489,
+    "resolved_chooser" : 35,
+    "resolved_pct" : 82,
+    "wrong" : 3,
+    "wrong_pct" : 3
+  },
+  "laya" : {
+    "cases" : 110,
+    "exact" : 45,
+    "lucky_guess" : 2,
+    "miss" : 10,
+    "p50_ms" : 389,
+    "p95_ms" : 442,
+    "resolved_chooser" : 43,
+    "resolved_pct" : 80,
+    "wrong" : 10,
+    "wrong_pct" : 9
+  },
+  "von" : {
+    "cases" : 110,
+    "exact" : 34,
+    "lucky_guess" : 0,
+    "miss" : 3,
+    "p50_ms" : 425,
+    "p95_ms" : 558,
+    "resolved_chooser" : 54,
+    "resolved_pct" : 80,
+    "wrong" : 19,
+    "wrong_pct" : 17
+  }
+}

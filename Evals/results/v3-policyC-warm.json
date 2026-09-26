@@ -1,0 +1,26 @@
+{
+  "kev" : {
+    "cases" : 110,
+    "exact" : 61,
+    "lucky_guess" : 0,
+    "miss" : 17,
+    "p50_ms" : 248,
+    "p95_ms" : 479,
+    "resolved_chooser" : 31,
+    "resolved_pct" : 84,
+    "wrong" : 1,
+    "wrong_pct" : 1
+  },
+  "von" : {
+    "cases" : 110,
+    "exact" : 45,
+    "lucky_guess" : 0,
+    "miss" : 2,
+    "p50_ms" : 215,
+    "p95_ms" : 408,
+    "resolved_chooser" : 52,
+    "resolved_pct" : 88,
+    "wrong" : 11,
+    "wrong_pct" : 10
+  }
+}

@@ -73,13 +73,16 @@ struct ModelCatalogTests {
         }
     }
 
-    @Test func vonIsTheTopRecommendation() {
-        // Rank 1 leads the local recommendations — the "best balance" pick.
+    @Test func rolesFollowTheBenchmark() {
+        // Evals/results/summary.md (policy C, warm): kev 0.8B 84% right /
+        // 1% wrong / p50 248ms; laya 80% / 3% / 308ms, <1 GB; von 88% /
+        // 10% / 215ms. Fewest wrong pastes leads — a wrong paste is the
+        // failure users notice.
         let top = ModelCatalog.all.min(by: { $0.rank < $1.rank })
-        #expect(top?.id == "von")
-        #expect(ModelCatalog.von.reason == "Best balance")
-        #expect(ModelCatalog.kev.reason == "Best local accuracy")
-        #expect(ModelCatalog.laya.reason == "Fastest")
+        #expect(top?.id == "kev")
+        #expect(ModelCatalog.kev.reason == "Most accurate")
+        #expect(ModelCatalog.laya.reason == "Best balance")
+        #expect(ModelCatalog.von.reason == "Fastest")
     }
 }
 

@@ -1,0 +1,14 @@
+{
+  "laya" : {
+    "cases" : 110,
+    "exact" : 48,
+    "lucky_guess" : 1,
+    "miss" : 18,
+    "p50_ms" : 308,
+    "p95_ms" : 506,
+    "resolved_chooser" : 40,
+    "resolved_pct" : 80,
+    "wrong" : 3,
+    "wrong_pct" : 3
+  }
+}

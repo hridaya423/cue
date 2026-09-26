@@ -31,14 +31,22 @@ permission grant sticks to the old binary:
 
 1. `NSPasteboard` is polled for text/URLs → history (JSON, capped, pinned items kept).
 2. On smart paste, the focused UI element is read via the Accessibility API:
-   app, window title, field role, label, placeholder, current value.
+   app, bundle, window title, field role/label/placeholder/value, caret rect,
+   and nearby text — enough for the model to tell an "Email" field from a
+   "Search" box. History is searched as *options*: the last 20 clips plus
+   pins, each expanded into extractable spans (emails, phones, URLs in a
+   multi-value clip each become their own option).
 3. One Jev call (`POST {base}/v1/systemone`) evaluates, in parallel:
-   - `pick` — choice over up to 40 recent clips
+   - `pick` — probability over the options plus `none`
    - `form` — is this a multi-field form? (triggers the Tab-walking auto-fill)
-   - `transform` — should the pick be adjusted? (trim / lowercase / digits-only / strip-utm)
    - `use_latest` / `form_field` — gating for ⌘V-intercept and mid-form steps
-4. Confidence ≥ threshold → paste directly. Below → your chosen fallback
-   (top-3 toast / full picker / paste best / paste latest).
+4. A decisive pick pastes directly. When the model reports real ambiguity —
+   several plausible candidates with no leader — a caret-anchored chooser
+   shows the top three (1/2/3 or arrows; Esc/⌘V = ordinary paste). `none`
+   only ends the paste when it's dominant. The fallback mode under low
+   confidence is yours (top-3 / full picker / paste best / paste latest).
+   A quiet three-dot indicator sits at the caret while the model works —
+   fast decisions never flash it.
 
 Every provider is the same client with a different `(url, model, key)` —
 pick in Settings or onboarding:
@@ -74,7 +82,7 @@ model; the real clip is what pastes.
 - Smart paste hotkey (`⌃⌥V`) or full ⌘V interception — your call during onboarding
 - Auto form-fill: paste → Tab → next field → repeat until the form is done
 - Queue mode: copies enqueue, pastes pop in FIFO order
-- Top-3 toast, filterable picker, per-app raw-paste hotkey (`⌃⌥⇧V`)
+- Caret-anchored chooser on real ambiguity (top-3 spans or clips), filterable picker, per-app raw-paste hotkey (`⌃⌥⇧V`)
 - Menu bar shows recent clips for one-click re-paste; history window can paste into the previous app
 - On-device PII redaction before any cloud call (auto-on remote, auto-off local, overridable)
 - Managed local models: install, weights download, start/stop, health, and uninstall from the picker — no terminal needed
@@ -87,13 +95,16 @@ model; the real clip is what pastes.
 ## Development
 
 ```sh
-swift test   # 48 tests: store, Jev contract, transforms, engine, redaction gating,
+swift test   # 89 tests: store, Jev contract, transforms, engine, redaction gating,
              # model catalog, pasteboard gate, settings migration, provider status
 ```
 
 `Scripts/eval_systemone.py <base>…` runs canned smart-paste cases against one
 or more endpoints and prints an accuracy/latency table — useful for comparing
-local weights.
+local weights. `CueEval --cases Evals/cases.jsonl --endpoint name=base,model`
+runs the 110-case synthetic benchmark end-to-end through the real decision
+engine; `Scripts/eval_servers.sh` brings up all installed local model
+servers detached under launchd so the sweep survives the shell.
 
 `Sources/CueKit/` is the whole app; `Sources/Cue/main.swift` is a
 trampoline. Menu bar → "Run self-check" drives a real end-to-end paste into a

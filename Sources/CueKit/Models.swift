@@ -104,8 +104,8 @@ public enum ModelCatalog {
     // MARK: Entries
 
     public static let kev = ModelSpec(
-        id: "kev", title: "Kev", rank: 2, reason: "Best local accuracy", defaultPort: 8009,
-        blurb: "Higher-capacity choices for tougher decisions; larger variants take more space and memory.",
+        id: "kev", title: "Kev", rank: 1, reason: "Most accurate", defaultPort: 8009,
+        blurb: "Fewest wrong pastes in Cue’s benchmark (1%), about 250 ms per decision.",
         kind: .repo(url: "https://github.com/jaredpalmer/kev.git",
                     syncExtras: ["serve"], installArgv: [],
                     serveArgv: ["python", "-m", "kev.serve", "--run", "{weights}", "--port", "{port}"],
@@ -113,7 +113,7 @@ public enum ModelCatalog {
         support: .supported,
         variants: [
             WeightSpec(id: "kev-0.8b", paramsLabel: "0.8B", diskLabel: "~2 GB", ramLabel: "~4 GB",
-                       recommended: true, accuracy: 0.6, speed: 0.8,
+                       recommended: true, accuracy: 0.85, speed: 0.85,
                        serveModel: "kev-latest", hfRepo: "jaredpalmer/kev-0.8b"),
             WeightSpec(id: "kev-4b", paramsLabel: "4B", diskLabel: "~9 GB", ramLabel: "~10 GB",
                        accuracy: 0.75, speed: 0.55,
@@ -127,13 +127,13 @@ public enum ModelCatalog {
         ])
 
     public static let laya = ModelSpec(
-        id: "laya", title: "Laya", rank: 3, reason: "Fastest", defaultPort: 8765,
-        blurb: "The quick, compact option, tuned for a single-pass decision.",
+        id: "laya", title: "Laya", rank: 2, reason: "Best balance", defaultPort: 8765,
+        blurb: "Under 1 GB, about 300 ms per decision, and rarely wrong (3% in Cue’s benchmark).",
         kind: .shim(packages: ["laya"]),
         support: .supported,
         variants: [
             WeightSpec(id: "laya-en", paramsLabel: "421M", diskLabel: "~900 MB", ramLabel: "~1 GB",
-                       recommended: true, accuracy: 0.7, speed: 0.95,
+                       recommended: true, accuracy: 0.8, speed: 0.8,
                        serveModel: "laya", hfRepo: "convaiinnovations/laya"),
             WeightSpec(id: "laya-multi", paramsLabel: "322M", diskLabel: "~700 MB", ramLabel: "~1 GB",
                        accuracy: 0.6, speed: 0.95,
@@ -144,14 +144,14 @@ public enum ModelCatalog {
         ])
 
     public static let von = ModelSpec(
-        id: "von", title: "Von", rank: 1, reason: "Best balance", defaultPort: 8766,
-        blurb: "Cue’s best balance of accuracy and speed across its clipboard decision tests.",
+        id: "von", title: "Von", rank: 3, reason: "Fastest", defaultPort: 8766,
+        blurb: "Quickest decisions, about 215 ms. Finds the most, but pastes the wrong thing more often (10%).",
         kind: .venv(packages: ["von-sdk"],
                     serveArgv: ["von", "serve", "--host", "127.0.0.1", "--port", "{port}"]),
         support: .supported,
         variants: [
             WeightSpec(id: "von-1.0", paramsLabel: "395M", diskLabel: "~1.5 GB", ramLabel: "~2 GB",
-                       recommended: true, accuracy: 0.85, speed: 0.9,
+                       recommended: true, accuracy: 0.7, speed: 0.95,
                        serveModel: "von-1.0", hfRepo: "wfzyx/von-1.0"),
         ])
 

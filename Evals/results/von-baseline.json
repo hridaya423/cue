@@ -1,0 +1,14 @@
+{
+  "von" : {
+    "cases" : 110,
+    "exact" : 38,
+    "lucky_guess" : 3,
+    "miss" : 6,
+    "p50_ms" : 326,
+    "p95_ms" : 518,
+    "resolved_chooser" : 38,
+    "resolved_pct" : 69,
+    "wrong" : 25,
+    "wrong_pct" : 23
+  }
+}

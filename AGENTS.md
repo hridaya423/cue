@@ -20,6 +20,9 @@ difference is only `(url, model, key)`:
 - `swift build` / `swift test` — compile and run the test suite (all logic tests live in `Tests/CueKitTests`)
 - `Scripts/bundle.sh` — builds `build/Cue.app` (ad-hoc signed, LSUIElement background app, ships `laya_server.py` in Resources)
 - `Scripts/eval_systemone.py <base>...` — accuracy/latency table for one or more endpoints
+- `Scripts/eval_servers.sh` — (re)starts installed model servers detached under launchd (labels `cue.eval.*`; `JEVLITE=1` to include jevlite, which starves the GPU while loading). `Scripts/eval_run.sh <tag> --endpoint ...` — one-shot detached CueEval run (a bare `launchctl submit` job is KeepAlive and re-runs forever). Results + roles rationale: `Evals/results/summary.md`
+- `swift build -c release --product CueEval` then `CueEval --cases Evals/cases.jsonl --endpoint name=base,model --repeats 3 --json <out>` — the smart-paste benchmark (110 synthetic cases: extraction, ambiguity→chooser, no-fit→plain). Run it under `launchctl submit` too if the invoking shell might go away.
+- `Scripts/ob_compare.py <0-5|all> --appearance light|dark --launch` — captures native onboarding windows and builds reference/app/blend comparisons into `output/onboarding/compare/`
 - `open build/Cue.app` — run it
 - `tccutil reset Accessibility com.local.cue` — clears the grant (cert-signed builds keep it across rebuilds; only needed after ad-hoc rebuilds or to re-test onboarding)
 

@@ -176,6 +176,15 @@ public struct DecisionEngine: Sendable {
     ) async -> PasteOutcome {
         let options = OptionBuilder.options(from: candidates)
         guard !options.isEmpty else { return .pasteLatest(.empty) }
+        let expects = FieldKind.infer(label: context.field.label,
+                                      placeholder: context.field.placeholder,
+                                      nearby: context.nearby)
+        // ⌘V: the popup only appears when the latest clip does NOT fit.
+        // When it does, skip the model entirely — the paste is instant.
+        if mode == .intercept, let latest = candidates.first,
+           expects.acceptsVerbatim(latest.text) {
+            return .pasteLatest(.useLatest)
+        }
         guard let provider else { return .pasteLatest(.noProvider) }
 
         let resp: JevResponse
@@ -197,13 +206,10 @@ public struct DecisionEngine: Sendable {
             // recency-ordered plausible options so a stalled paste still
             // offers the right things. Intercept stays silent.
             if mode == .hotkey {
-                let kind = FieldKind.infer(label: context.field.label,
-                                         placeholder: context.field.placeholder,
-                                         nearby: context.nearby)
                 // Only offer when the field has a type signal — a generic
                 // field + a dead model should paste c1 like nothing happened.
-                let fallback = kind == .generic ? []
-                    : options.filter { kind.matches($0) }
+                let fallback = expects == .generic ? []
+                    : options.filter { expects.matches($0) }
                 if fallback.count >= 2 {
                     return .choose(fallback.prefix(3).map {
                         ScoredOption(option: $0, probability: 0, confidence: 0)

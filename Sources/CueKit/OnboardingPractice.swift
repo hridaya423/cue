@@ -69,6 +69,7 @@ public final class OnboardingPractice {
     private var decisionTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
     private var startedAt: ContinuousClock.Instant?
+    private var lastCtx: ContextSnapshot?
 
     private let model: AppModel
 
@@ -133,6 +134,7 @@ public final class OnboardingPractice {
 
         phase = .deciding
         startedAt = .now
+        lastCtx = ctx
         lastWasExtraction = false
         epoch += 1
         let myEpoch = epoch
@@ -176,9 +178,20 @@ public final class OnboardingPractice {
             lastWasExtraction = false
             model.executor.pasteCurrent()
             scheduleObservation(epoch: myEpoch)
-        case .choose:
-            // The model asked for confirmation — a truthful non-success.
-            phase = .uncertain
+        case .choose(let opts):
+            // The model asked for confirmation — show the real chooser at
+            // the practice field; a pick pastes like production, Esc/⌘V is
+            // an ordinary paste. Observed via the same field path.
+            model.hud.showChooser(options: opts, near: lastCtx?.caretRect ?? lastCtx?.fieldRect) { [weak self] pick in
+                guard let self, self.epoch == myEpoch else { return }
+                self.lastWasExtraction = pick != nil
+                if let pick {
+                    self.model.executor.paste(pick.option.text)
+                } else {
+                    self.model.executor.pasteCurrent()
+                }
+                self.scheduleObservation(epoch: myEpoch)
+            }
         }
     }
 

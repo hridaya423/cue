@@ -160,7 +160,7 @@ public enum ContextCaptor {
         guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success,
               let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
         // CF type verified above — the bridged cast is safe.
-        return unsafeBitCast(v, to: AXUIElement.self)
+        return unsafeDowncast(v, to: AXUIElement.self)
     }
 
     private static func windowTitle(of app: NSRunningApplication?) -> String? {

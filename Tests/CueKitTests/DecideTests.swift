@@ -258,6 +258,27 @@ struct DecisionEngineTests {
         #expect(opts.count == 2)
     }
 
+    @Test func interceptLatestThatFitsSkipsTheModel() async {
+        // ⌘V with a fitting latest clip: plain paste, no provider call —
+        // even if the model would have pushed an older option.
+        let stub = StubProvider(response: pickResponse(
+            pick: "c2", conf: 0.99, probs: ["c1": 0.01, "c2": 0.99], useLatest: 0.0))
+        let engine = DecisionEngine(provider: stub)
+        let emailFirst = [Clip(text: "dana@acme.example.com", kind: .text),
+                          Clip(text: "me@example.com", kind: .text)]
+        for (label, cands) in [("Email", emailFirst), ("Search", clips), ("", clips)] {
+            let outcome = await engine.decide(context: makeContext(label: label),
+                                              candidates: cands, mode: .intercept)
+            guard case .pasteLatest(.useLatest) = outcome else {
+                Issue.record("\(label): expected plain paste, got \(outcome)"); continue
+            }
+        }
+        #expect(FieldKind.email.acceptsVerbatim(" a@b.example.com "))
+        #expect(!FieldKind.email.acceptsVerbatim("mail a@b.example.com"))
+        #expect(!FieldKind.name.acceptsVerbatim("a@b.example.com"))
+        #expect(FieldKind.url.acceptsVerbatim("https://example.com/x"))
+    }
+
     @Test func providerErrorPastesLatestOrChoosesFallback() async {
         // No heuristics: a dead/unreachable provider degrades to a normal
         // paste — or, on the hotkey with ≥2 kind-matching options, a chooser
