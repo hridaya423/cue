@@ -527,7 +527,10 @@ struct HighlightedParagraph: NSViewRepresentable {
                                                           actualCharacterRange: nil)
                 layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) {
                     lineRect, _, textContainer, fragGlyphRange, _ in
-                    let g = self.layoutManager.boundingRect(forGlyphRange: fragGlyphRange,
+                    // fragGlyphRange is the fragment's whole range — clip it
+                    // to the span's glyphs or the coral paints the full line.
+                    let spanInLine = NSIntersectionRange(glyphRange, fragGlyphRange)
+                    let g = self.layoutManager.boundingRect(forGlyphRange: spanInLine,
                                                             in: textContainer)
                     let baseline = lineRect.minY
                         + self.layoutManager.location(forGlyphAt: fragGlyphRange.location).y
