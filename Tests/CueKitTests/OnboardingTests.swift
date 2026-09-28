@@ -49,10 +49,19 @@ struct OnboardingSampleTests {
 struct PracticeClassifyTests {
     let expected = OnboardingSample.Target.email.expected
 
-    @Test func extractionPlusObservedIsSuccess() {
+    @Test func enginePickPlusObservedIsSuccess() {
         let p = OnboardingPractice.classify(
             observed: expected, expected: expected,
-            wasExtraction: true, trusted: true)
+            origin: .enginePick, trusted: true)
+        #expect(p == .succeeded(observed: expected))
+    }
+
+    @Test func chooserPickPlusObservedIsSuccess() {
+        // A chooser pick is engine-originated too — the model narrowed it to
+        // the top options and the user confirmed one.
+        let p = OnboardingPractice.classify(
+            observed: expected, expected: expected,
+            origin: .chooserPick, trusted: true)
         #expect(p == .succeeded(observed: expected))
     }
 
@@ -61,33 +70,58 @@ struct PracticeClassifyTests {
         // typed-in value) is an ordinary paste, not a smart one.
         let p = OnboardingPractice.classify(
             observed: expected, expected: expected,
-            wasExtraction: false, trusted: true)
+            origin: .none, trusted: true)
         #expect(p == .ordinaryPaste(observed: expected))
     }
 
     @Test func wholeParagraphPasteIsNotSuccess() {
         let p = OnboardingPractice.classify(
             observed: OnboardingSample.message, expected: expected,
-            wasExtraction: false, trusted: true)
+            origin: .none, trusted: true)
         #expect(p == .ordinaryPaste(observed: OnboardingSample.message))
     }
 
     @Test func unrelatedTextIsNotSuccess() {
         let p = OnboardingPractice.classify(
             observed: "hello", expected: expected,
-            wasExtraction: true, trusted: true)
+            origin: .enginePick, trusted: true)
         #expect(p == .ordinaryPaste(observed: "hello"))
     }
 
     @Test func emptyFieldIsFailureOrPermissionLoss() {
         let trusted = OnboardingPractice.classify(
-            observed: "", expected: expected, wasExtraction: true, trusted: true)
+            observed: "", expected: expected, origin: .enginePick, trusted: true)
         guard case .failed = trusted else {
             Issue.record("empty field while trusted should be a failed paste")
             return
         }
         let untrusted = OnboardingPractice.classify(
-            observed: "", expected: expected, wasExtraction: true, trusted: false)
+            observed: "", expected: expected, origin: .enginePick, trusted: false)
         #expect(untrusted == .lostPermission)
+    }
+}
+
+struct PracticeAnotherRoundTests {
+    @Test func secondSampleCarriesThreeEmails() {
+        // "Try another" gives the engine three plausible recipients.
+        #expect(SpanExtractor.emails(in: OnboardingSample.anotherMessage).count == 3)
+        for addr in ["priya@example.com", "mira@example.com", "billing@example.com"] {
+            #expect(OnboardingSample.anotherMessage.contains(addr))
+        }
+    }
+
+    @Test func secondRoundExpectedIsPriyaViaRealExtractor() {
+        // "Reply to Priya" → Priya's address, derived, never hard-coded.
+        // extractEmail returns the first detected span, so Priya must lead.
+        #expect(OnboardingSample.Target.email.expected(in: OnboardingSample.anotherMessage)
+                == "priya@example.com")
+    }
+
+    @Test func secondRoundChooserPickSucceeds() {
+        let expected = OnboardingSample.Target.email.expected(in: OnboardingSample.anotherMessage)
+        let p = OnboardingPractice.classify(
+            observed: expected, expected: expected,
+            origin: .chooserPick, trusted: true)
+        #expect(p == .succeeded(observed: expected))
     }
 }

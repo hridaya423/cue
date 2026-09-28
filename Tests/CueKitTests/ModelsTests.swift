@@ -125,6 +125,26 @@ struct ModelRolesTests {
     }
 }
 
+@MainActor
+struct ModelManagerTests {
+    @Test func startOnUninstalledSpecDoesNotThrowCwdError() async {
+        // A start() against a model dir that doesn't exist used to die in
+        // Process.run with a cwd error — the manifest guard must settle it
+        // as .notInstalled without launching anything.
+        let spec = ModelSpec(
+            id: "not-installed-\(UUID().uuidString)",
+            title: "Ghost", rank: 99, reason: "test", defaultPort: 0,
+            blurb: "", kind: .venv(packages: [], serveArgv: ["serve"]),
+            support: .supported,
+            variants: [WeightSpec(id: "w", paramsLabel: "0B", diskLabel: "0",
+                                  ramLabel: "0", serveModel: "m", hfRepo: "x")])
+        let manager = ModelManager()
+        await manager.start(.init(spec: spec, variant: spec.variants[0]))
+        #expect(manager.status(of: spec.id) == .notInstalled)
+        #expect(!manager.isRunning)
+    }
+}
+
 struct ModelTransferProgressTests {
     @Test func parsesTqdmPercentages() {
         #expect(ModelTransferProgress.parse("model.safetensors: 47%|████▋| 47/100")?.fraction == 0.47)

@@ -16,6 +16,13 @@ public enum OnboardingSample {
         "Reach Mira at mira@example.com or +44 7700 900123. " +
         "The project brief is at https://example.com/launch."
 
+    /// Second round ("Try another"): three plausible recipients, so the
+    /// engine — not the transform — decides. Priya leads so the
+    /// deterministic extractor picks hers.
+    public static let anotherMessage =
+        "Loop in Priya at priya@example.com for the launch, cc Mira " +
+        "at mira@example.com, and send the invoice to billing@example.com."
+
     public enum Target: String, CaseIterable, Sendable {
         case email = "Email"
         case website = "Website"
@@ -53,17 +60,34 @@ public final class OnboardingPractice {
         case unavailable                  // no provider configured (off/no key)
     }
 
+    /// Where a landed value came from — only engine-originated text counts
+    /// as a smart paste.
+    public enum PickOrigin: Sendable {
+        case none          // plain ⌘V / fallback / typed
+        case enginePick    // the engine returned .paste
+        case chooserPick   // the engine returned .choose and a row was picked
+    }
+
     public private(set) var phase: Phase = .intro
     public private(set) var elapsedMilliseconds: Int?
     public var target = OnboardingSample.Target.email
+    /// 0 = the first guided paste; 1 = the "Try another" round.
+    public private(set) var round = 0
     /// The observed practice-field text — kept in sync by the field bridge.
     public var fieldText = ""
+
+    /// Round 2's field is a reply box, not a bare "Email" label.
+    public var fieldLabel: String { round == 0 ? target.rawValue : "Reply to Priya" }
+    /// The message this round copies to the pasteboard.
+    public var sampleText: String {
+        round == 0 ? OnboardingSample.practiceMessage : OnboardingSample.anotherMessage
+    }
 
     /// The practice field — set by the view bridge; used for focus + reads.
     public weak var field: NSTextField?
 
-    /// Whether the last engine outcome was a real pick (vs plain paste).
-    private var lastWasExtraction = false
+    /// Where the last landed value came from (vs plain paste).
+    private var lastOrigin: PickOrigin = .none
     /// Bumps on every attempt — stale async results check it before landing.
     private var epoch = 0
     private var decisionTask: Task<Void, Never>?
@@ -78,7 +102,7 @@ public final class OnboardingPractice {
         if model.makeProvider() == nil { phase = .unavailable }
     }
 
-    public var expected: String { target.expected(in: OnboardingSample.practiceMessage) }
+    public var expected: String { target.expected(in: sampleText) }
 
     /// The trigger hint shown in "Now press …" — the user's real binding.
     public var triggerHint: String {
@@ -92,7 +116,7 @@ public final class OnboardingPractice {
     /// still only sees this one sample clip.
     public func copySample() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(OnboardingSample.practiceMessage, forType: .string)
+        NSPasteboard.general.setString(sampleText, forType: .string)
         focus()
         phase = model.makeProvider() == nil ? .unavailable : .armed
     }
@@ -100,7 +124,7 @@ public final class OnboardingPractice {
     public func reset(target newTarget: OnboardingSample.Target? = nil) {
         cancel()
         elapsedMilliseconds = nil
-        lastWasExtraction = false
+        lastOrigin = .none
         if let newTarget { target = newTarget }
         field?.stringValue = ""
         fieldText = ""
@@ -109,6 +133,14 @@ public final class OnboardingPractice {
         } else {
             copySample()
         }
+    }
+
+    /// "Try another": a second guided round against the three-email sample.
+    /// Success is still observed — same engine, same field check.
+    public func tryAnother() {
+        round += 1
+        target = .email
+        reset(target: .email)
     }
 
     /// SmartPasteController's dispatch seam: returns true if the practice
@@ -127,15 +159,15 @@ public final class OnboardingPractice {
         }
         let ctx = ContextCaptor.capture()
         // The practice field must be the focused element — frontmost app is
-        // Cue and the field carries the target's AX label.
+        // Cue and the field carries the round's AX label.
         guard ctx.bundleID == Bundle.main.bundleIdentifier || ctx.appName == "Cue",
-              ctx.field.label == target.rawValue
+              ctx.field.label == fieldLabel
         else { return false }
 
         phase = .deciding
         startedAt = .now
         lastCtx = ctx
-        lastWasExtraction = false
+        lastOrigin = .none
         epoch += 1
         let myEpoch = epoch
         let candidates = [sampleClip()]
@@ -169,13 +201,13 @@ public final class OnboardingPractice {
             // A real pick — possibly with an extraction transform. Deliver it
             // like production does: pasteboard write + synthetic ⌘V into the
             // focused field, then observe what actually arrived.
-            lastWasExtraction = true
+            lastOrigin = .enginePick
             model.executor.paste(d.text)
             scheduleObservation(epoch: myEpoch)
         case .pasteLatest:
             // Engine fell back — the paste delivers the whole sample. That's
             // an honest "ordinary paste" result, not a failure.
-            lastWasExtraction = false
+            lastOrigin = .none
             model.executor.pasteCurrent()
             scheduleObservation(epoch: myEpoch)
         case .choose(let opts):
@@ -184,7 +216,7 @@ public final class OnboardingPractice {
             // an ordinary paste. Observed via the same field path.
             model.hud.showChooser(options: opts, near: lastCtx?.caretRect ?? lastCtx?.fieldRect) { [weak self] pick in
                 guard let self, self.epoch == myEpoch else { return }
-                self.lastWasExtraction = pick != nil
+                self.lastOrigin = pick != nil ? .chooserPick : .none
                 if let pick {
                     self.model.executor.paste(pick.option.text)
                 } else {
@@ -221,18 +253,19 @@ public final class OnboardingPractice {
             elapsedMilliseconds = Int(elapsed.seconds * 1000 + elapsed.attoseconds / 1_000_000_000_000_000)
         }
         phase = Self.classify(observed: observed, expected: expected,
-                              wasExtraction: lastWasExtraction,
+                              origin: lastOrigin,
                               trusted: ContextCaptor.isTrusted)
     }
 
     /// The pass/fail rule, pure so tests can pin it: success requires the
-    /// observed text to equal the extraction AND the engine to have made a
-    /// pick — a verbatim landing of the sample is an ordinary paste.
+    /// observed text to equal the extraction AND the value to have come from
+    /// the engine — a direct pick or a chooser pick. A verbatim landing of
+    /// the sample is an ordinary paste.
     nonisolated static func classify(observed: String, expected: String,
-                         wasExtraction: Bool, trusted: Bool) -> Phase {
+                         origin: PickOrigin, trusted: Bool) -> Phase {
         if observed == expected {
-            return wasExtraction ? .succeeded(observed: observed)
-                                 : .ordinaryPaste(observed: observed)
+            return origin == .none ? .ordinaryPaste(observed: observed)
+                                   : .succeeded(observed: observed)
         }
         if observed.isEmpty {
             return trusted
@@ -243,7 +276,7 @@ public final class OnboardingPractice {
     }
 
     private func sampleClip() -> Clip {
-        Clip(text: OnboardingSample.practiceMessage, kind: .text, sourceApp: "Cue")
+        Clip(text: sampleText, kind: .text, sourceApp: "Cue")
     }
 
     public func focus() {

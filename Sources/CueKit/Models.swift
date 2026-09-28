@@ -295,6 +295,12 @@ public final class ModelManager {
     /// weights (GBs) — the phase label says so and the timeout is generous.
     public func start(_ resolved: ModelSpec.Resolved) async {
         let spec = resolved.spec
+        // Never launch from a missing install dir — the process would fail
+        // with a cwd error. Uninstalled specs settle as .notInstalled.
+        guard manifestExists(spec.id) else {
+            setState(spec.id, .notInstalled)
+            return
+        }
         if serverModelID == spec.id, server?.isRunning == true {
             switch status(of: spec.id) {
             case .running, .starting: return

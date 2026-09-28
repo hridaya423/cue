@@ -21,7 +21,17 @@ public final class HUDController {
     public func showChooser(options: [ScoredOption], near rect: CGRect?,
                             onPick: @escaping (ScoredOption?) -> Void) {
         let state = ChooserState(options: options)
+        state.onPick = { [weak self] i in
+            guard let self else { return }
+            self.dismiss()
+            onPick(state.options[i])
+        }
         show(view: ChooserView(state: state), near: rect, dismissOnResign: true)
+        // The entrance scales out of the edge nearest the caret: flipped
+        // panels grow from their bottom edge.
+        if let rect, let panel, panel.frame.minY > rect.maxY {
+            state.anchor = .bottom
+        }
         NSAccessibility.post(element: NSApp as Any,
                              notification: .announcementRequested,
                              userInfo: [.announcement: "Paste options available. Press a number to choose, Escape for a plain paste."])
@@ -36,7 +46,7 @@ public final class HUDController {
             case kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4,
                  kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9:
                 let i = Int(e.keyCode) - kVK_ANSI_1
-                if i < state.options.count { self.dismiss(); onPick(state.options[i]) }
+                if i < state.options.count { state.pick(i) }
                 return true
             case kVK_DownArrow: state.move(1); return true
             case kVK_UpArrow: state.move(-1); return true
@@ -163,10 +173,21 @@ public final class HUDController {
 @Observable
 final class ChooserState {
     var selection = 0
+    /// Edge the entrance scales from — set by the controller once the
+    /// panel's anchor point is known.
+    var anchor: UnitPoint = .top
+    /// Row click handler; dismisses then reports the picked index.
+    var onPick: ((Int) -> Void)?
+    /// bundleID → resolved icon, so a repeated app doesn't re-hit NSWorkspace.
+    var iconCache: [String: NSImage] = [:]
     let options: [ScoredOption]
     init(options: [ScoredOption]) { self.options = options }
     func move(_ delta: Int) {
         selection = min(max(selection + delta, 0), max(options.count - 1, 0))
+    }
+    func pick(_ i: Int) {
+        guard options.indices.contains(i) else { return }
+        onPick?(i)
     }
 }
 
@@ -206,6 +227,9 @@ private extension Clip {
 struct ChooserView: View {
     var state: ChooserState
 
+    @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Which one?")
@@ -215,33 +239,43 @@ struct ChooserView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 4)
             ForEach(Array(state.options.enumerated()), id: \.offset) { i, so in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("\(i + 1)")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 17, height: 17)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(so.option.text)
-                            .font(.system(size: 13, weight: .medium))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Text(contextLine(for: so.option))
-                            .font(.system(size: 11))
+                Button {
+                    state.pick(i)
+                } label: {
+                    HStack(alignment: .center, spacing: 10) {
+                        appIcon(for: so.option.clip)
+                        Text("\(i + 1)")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                            .frame(width: 17, height: 17)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(so.option.text)
+                                .font(.system(size: 13, weight: .medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Text(contextLine(for: so.option))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        Spacer(minLength: 8)
                     }
-                    Spacer(minLength: 8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(i == state.selection
+                                ? Color.accentColor.opacity(0.15)
+                                : .clear,
+                                in: RoundedRectangle(cornerRadius: 6))
+                    .contentShape(RoundedRectangle(cornerRadius: 6))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(i == state.selection
-                            ? Color.accentColor.opacity(0.15)
-                            : .clear,
-                            in: RoundedRectangle(cornerRadius: 6))
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Paste \(so.option.text), \(contextLine(for: so.option))")
+                .buttonStyle(.plain)
+                .onHover { inside in
+                    if inside { state.selection = i }
+                }
+                .accessibilityLabel(rowLabel(for: so.option))
+                .accessibilityAddTraits(i == state.selection ? .isSelected : [])
             }
             Text("1–3 to paste · esc for plain paste")
                 .font(.system(size: 10))
@@ -254,7 +288,44 @@ struct ChooserView: View {
         .fixedSize(horizontal: true, vertical: true)
         .frame(maxWidth: 420)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
+        // 120ms in: fade plus a 0.98→1 scale out of the caret-facing edge.
+        // Reduce Motion keeps the fade only.
+        .opacity(appeared ? 1 : 0)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.98, anchor: state.anchor)
+        .task {
+            try? await Task.sleep(for: .milliseconds(20)) // let the panel order in
+            withAnimation(.easeOut(duration: 0.12)) { appeared = true }
+        }
+    }
+
+    /// "Paste {value}, from {app}" — the app name only when we have one.
+    private func rowLabel(for o: PasteOption) -> String {
+        o.clip.sourceApp.isEmpty
+            ? "Paste \(o.text)"
+            : "Paste \(o.text), from \(o.clip.sourceApp)"
+    }
+
+    /// The source app's icon, resolved only when the clip recorded a bundle
+    /// id — never guessed from a name.
+    @ViewBuilder
+    private func appIcon(for clip: Clip) -> some View {
+        if let image = icon(for: clip.sourceBundleID) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        }
+    }
+
+    private func icon(for bundleID: String?) -> NSImage? {
+        guard let bundleID else { return nil }
+        if let cached = state.iconCache[bundleID] { return cached }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        else { return nil }
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        icon.size = NSSize(width: 32, height: 32)
+        state.iconCache[bundleID] = icon
+        return icon
     }
 
     /// "Mail · 2m ago · copied from Slack", preferring the app + age; falls

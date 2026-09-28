@@ -197,7 +197,7 @@ public final class AppModel {
         let size: NSSize = switch id {
         case "history": NSSize(width: 480, height: 420)
         case "settings": NSSize(width: 480, height: 560)
-        default: NSSize(width: 760, height: 620)
+        default: NSSize(width: 760, height: 580)
         }
         win.setContentSize(size)
         return win

@@ -6,6 +6,8 @@ Usage:
     python3 Scripts/ob_compare.py <step-index|all> [--appearance light|dark] [--launch]
 
   step-index   0 welcome · 1 accessibility · 2 trigger · 3 models · 4 privacy · 5 practice
+               'another' captures the practice "Try another" round
+               (OB_PRACTICE=another) and compares it against 06.
   --launch     kill any running debug Cue, relaunch .build/debug/Cue with
                OB_STEP/OB_APPEARANCE set, screenshot the onboarding window to
                output/onboarding/compare/<step>-<appearance>-app.png, then quit it.
@@ -115,7 +117,7 @@ def find_window(pid: int) -> tuple[int, str]:
 JOB_LABEL = "com.cue.obcompare"
 
 
-def launch_app(step: int, appearance: str) -> int:
+def launch_app(step: int, appearance: str, variant: str = "") -> int:
     """Launch the debug binary at `step` via launchctl submit, return its pid.
 
     launchd, not Popen: TCC attributes an unbundled binary to its responsible
@@ -129,6 +131,7 @@ def launch_app(step: int, appearance: str) -> int:
     r = subprocess.run(
         ["launchctl", "submit", "-l", JOB_LABEL, "--",
          "/usr/bin/env", f"OB_STEP={step}", f"OB_APPEARANCE={appearance}",
+         f"OB_PRACTICE={variant}" if variant else "OB_PRACTICE=",
          str(BIN),
          # NSArgumentDomain overrides only (in-memory, nothing persisted):
          # force onboarding open even where onboardingDone was left true.
@@ -146,7 +149,7 @@ def launch_app(step: int, appearance: str) -> int:
     fail(f"launchctl job {JOB_LABEL} never reported a pid\n{lst}")
 
 
-def capture(step: int, appearance: str, out_png: Path) -> str:
+def capture(step: int, appearance: str, out_png: Path, variant: str = "") -> str:
     """Launch the debug app at `step`, screenshot its window to `out_png`.
     Returns a short description of what was captured."""
     if not BIN.exists():
@@ -155,7 +158,7 @@ def capture(step: int, appearance: str, out_png: Path) -> str:
     # and absolute argv[0]); bundled Cue.app lives elsewhere.
     subprocess.run(["pkill", "-9", "-f", "debug/Cue"], capture_output=True)
 
-    pid = launch_app(step, appearance)
+    pid = launch_app(step, appearance, variant)
     try:
         wid, title = find_window(pid)
         time.sleep(0.8)  # let SwiftUI finish its first layout + transition
@@ -252,13 +255,18 @@ def main() -> None:
                     help="launch .build/debug/Cue and capture its window first")
     args = ap.parse_args()
 
+    # step -> variant ("another" is the practice screen's second round)
+    variants: dict[int, str] = {}
     if args.step == "all":
         steps = list(range(len(REFERENCES)))
+    elif args.step == "another":
+        steps = [5]
+        variants[5] = "another"
     else:
         try:
             steps = [int(args.step)]
         except ValueError:
-            fail(f"bad step {args.step!r}: use 0-5 or 'all'")
+            fail(f"bad step {args.step!r}: use 0-5, 'another' or 'all'")
         if not 0 <= steps[0] < len(REFERENCES):
             fail(f"step {steps[0]} out of range 0-{len(REFERENCES) - 1}")
 
@@ -267,13 +275,15 @@ def main() -> None:
               "dark captures will differ by design.", file=sys.stderr)
 
     for step in steps:
-        app_png = OUT_DIR / f"{step}-{args.appearance}-app.png"
-        cmp_png = OUT_DIR / f"{step}-{args.appearance}-compare.png"
+        variant = variants.get(step, "")
+        tag = f"{step}-{variant}" if variant else str(step)
+        app_png = OUT_DIR / f"{tag}-{args.appearance}-app.png"
+        cmp_png = OUT_DIR / f"{tag}-{args.appearance}-compare.png"
         if args.launch:
-            info = capture(step, args.appearance, app_png)
+            info = capture(step, args.appearance, app_png, variant)
             print(f"captured {info} -> {app_png}")
         compare(step, args.appearance, app_png, cmp_png)
-        print(f"compare[{step} {STEP_NAMES[step]}] -> {cmp_png}")
+        print(f"compare[{tag} {STEP_NAMES[step]}] -> {cmp_png}")
 
 
 if __name__ == "__main__":

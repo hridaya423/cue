@@ -20,21 +20,22 @@ Use one SwiftUI token namespace with explicit light/dark values. Suggested imple
 
 | Token | Light | Dark | Role |
 | --- | --- | --- | --- |
-| canvas | #F7F8FA | #202226 | Main content background |
-| sheet | #FFFFFF | #2B2E33 | Upper elevated surface |
-| unfoldedSheet | #FCFCFD | #26292E | Lower receiving surface |
+| canvas | #FDFDFB | #202226 | Main content background |
+| sheet | #FBFAF8 | #2B2E33 | Upper elevated surface |
+| unfoldedSheet | #FDFDFC | #26292E | Lower receiving surface |
+| insetFill | #F3F2F0 | #2A2C31 | Grey inset boxes (app row, copied-message box) |
 | textPrimary | #17191D | #F4F5F7 | Titles, body and values |
 | textSecondary | #626873 | #B3B8C2 | Explanations and field labels |
 | textTertiary | #646B76 | #A1A8B3 | Necessary metadata; never simply lower opacity |
-| separator | #DFE2E7 | #454A53 | Structural divisions |
+| separator | #E7E5E2 | #454A53 | Structural divisions |
 | inputFill | #FFFFFF | #22252A | Editable field interior |
-| inputStroke | #B9C0CB | #747D8B | Field boundary |
-| action | #0067E6 | #0067E6 | Default blue primary button; white label |
+| inputStroke | #C9C6C1 | #747D8B | Field boundary |
+| action | #1463EC | #1463EC | Primary blue; button fills run #2A7FF6→#0F5FEA vertically |
 | selectionFill | #EDF4FF | #25374F | Selected model row background |
 | selectionStroke | #BED5FA | #4E719D | Selected model row edge |
-| highlight | #FFD0C8 | #EBA395 | Selected sample substring |
+| highlight | #F8C0B6 | #EBA395 | Selected sample substring |
 | highlightText | #242124 | #242124 | Text on coral highlight |
-| foldEdge | #F28F7E | #C77869 | Thin lip of fold; decorative only |
+| foldEdge | #F5735F | #C77869 | Curl lip of fold; decorative only |
 
 Prefer native semantic error/success colors with a symbol and text. Use the platform focus ring for editable controls. Blue selection does not replace a radio indicator. Coral is not an error color. Avoid white text on coral; it is a highlight surface, not the primary action fill.
 
@@ -79,7 +80,7 @@ Use real AppKit window chrome and window shadow. Never draw fake traffic-light c
 
 Upper sheet light shadow: black at 0.06 opacity, radius 2, y 1; second shadow black at 0.09, radius 10, y 6. Lower sheet: black at 0.06, radius 8, y 4. Dark sheets use a white 0.08-opacity 0.5-point edge and black 0.18 shadow, radius 8, y 4. Inspect stacking so shadows do not become a thick gray seam.
 
-Upper sheet overlaps the lower sheet by 12 points. Lower content begins 28 points below its top, leaving 16 visible points after overlap. Render lower sheet first, then upper. Reserve a 24 × 20-point fold lip near the horizontal center or aligned with the highlighted span. Use a small curved filled Shape with a coral edge and subtle neutral shading. The lip must not obscure text or imitate an arrow.
+Upper sheet overlaps the lower sheet by 12 points. Lower content begins 28 points below its top, leaving 16 visible points after overlap. Render lower sheet first, then upper. The lower sheet's top edge flares ~6 points past each nominal corner and tapers back over ~14 points — the trapezoid tabs that read as the fold's peeled edge — with a soft shadow band tucked under the seam. Where a highlighted span explains the fold, a 1.5-point coral curl drops ~22 points from the seam at the span's mid-x, bending right and fading out; no arrowhead. Plain setup screens show the flares only.
 
 Only the demo extraction needs a moving highlight. Plain setup screens can use the structural fold without animation or coral decoration. Do not bend text or an entire form to imitate perspective in the generated reference.
 
@@ -88,10 +89,10 @@ Only the demo extraction needs a moving highlight. Plain setup screens can use t
 - Shell: shared wordmark, heading, support, content area and footer. It owns spacing and navigation, not network requests.
 - Fold-out surface: two content slots with shared geometry. It owns shape and elevation, not screen state. A full generic card library is unnecessary.
 - Primary action: one filled button per screen, minimum 140 × 38, maximum 240 unless localized text needs more. Disabled/pending states preserve width and readable label.
-- Back: native plain button with `chevron.left`, 64 × 38 hit region, bottom-left. Visible except on Welcome. Its position does not move between screens.
+- Back: bordered rounded rect (input fill, input-stroke edge, radius 10), 64 × 36 minimum, bottom-left or inside the lower sheet where the reference puts it. "‹ Back" on Accessibility/Models/Privacy, plain "Back" on Trigger/Practice. Not on Welcome.
 - Inputs: native TextField/SecureField or narrow NSTextField bridge where AX labeling/focus requires it; 36-point minimum visual height, labels above or alongside as specified.
 - Model choice: native radio semantics and full-row hit target, minimum 60-point row. Details and variants live below the list; avoid nested interactive controls inside a row button.
-- Segmented control: native picker, minimum 32-point height. It changes a view within a screen, not the onboarding route.
+- Segmented control: custom pill control — a white pill on a light track, 24-point rows, per the references (native .segmented style does not match). It changes a view within a screen, not the onboarding route.
 - Instruction preview: noninteractive illustration, accessibility-hidden if surrounding text explains it. A pictured OS toggle cannot be clicked to grant permission.
 - Error: inline message with recovery action in the same panel. Preserve user input and selected model.
 

@@ -19,12 +19,17 @@ struct OnboardingModels: View {
     @State private var selectedID: String = ""
 
     var onAdvance: () -> Void = {}
+    /// Ref 04 puts Back inside the lower sheet, beside the primary.
+    var onBack: () -> Void = {}
 
     private var settings: AppSettings { model.settings }
 
-    init(model: AppModel, primary: Binding<OBPrimary?>, onAdvance: @escaping () -> Void) {
+    init(model: AppModel, primary: Binding<OBPrimary?>,
+         onBack: @escaping () -> Void = {},
+         onAdvance: @escaping () -> Void) {
         self.model = model
         self._primary = primary
+        self.onBack = onBack
         self.onAdvance = onAdvance
     }
 
@@ -57,21 +62,28 @@ struct OnboardingModels: View {
 
     @ViewBuilder
     private var activeFold: some View {
-        FoldOut(showsFold: false, verticalPadding: 12, lowerTopPadding: 16) {
+        FoldOut(verticalPadding: 12, lowerTopPadding: 16) {
             VStack(alignment: .leading, spacing: 16) {
-                Picker("", selection: $hosted) {
-                    Text("Hosted").tag(true)
-                    Text("On this Mac").tag(false)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 240)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 0)
+                OBSegmented(items: [(true, "Hosted"), (false, "On this Mac")],
+                            selection: $hosted)
+                    .frame(width: 240)
+                    .frame(maxWidth: .infinity)
                 if hosted { hostedUpper } else { localUpper }
             }
         } lower: {
-            if hosted { hostedLower } else { localLower }
+            VStack(alignment: .leading, spacing: 10) {
+                if hosted { hostedLower } else { localLower }
+                // Ref 04: Back + primary ride inside the lower sheet.
+                HStack {
+                    OBBackButton(chevron: true, action: onBack)
+                    Spacer()
+                    if let primary {
+                        OBPrimaryButton(title: primary.title, enabled: primary.enabled,
+                                        action: primary.action)
+                    }
+                }
+                .padding(.top, 4)
+            }
         }
     }
 

@@ -59,7 +59,8 @@ public struct OnboardingView: View {
                     .padding(.top, 24)
 
                 Text(title)
-                    .font(.system(size: 28, weight: .medium))
+                    .font(.system(size: 28, weight: .semibold))
+                    .tracking(-0.4)
                     .foregroundStyle(OBTheme.textPrimary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 680)
@@ -99,7 +100,7 @@ public struct OnboardingView: View {
                 footer
             }
         }
-        .frame(width: 760, height: 620)
+        .frame(width: 760, height: 580)
         .ignoresSafeArea()
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: step)
         .onAppear {
@@ -108,7 +109,12 @@ public struct OnboardingView: View {
             if let s = ProcessInfo.processInfo.environment["OB_STEP"],
                let i = Int(s), Step.allCases.indices.contains(i) {
                 step = Step.allCases[i]
-                if step == .practice { enterPractice() }
+                if step == .practice {
+                    enterPractice()
+                    if ProcessInfo.processInfo.environment["OB_PRACTICE"] == "another" {
+                        practice?.tryAnother()
+                    }
+                }
             }
             #endif
             escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
@@ -164,12 +170,22 @@ public struct OnboardingView: View {
         }
     }
 
+    /// The references put the footer inside the lower sheet on Accessibility
+    /// (primary, centered) and Models (Back left, primary right); every other
+    /// screen keeps Back + centered primary outside the panels.
+    private var footerInsideSheet: Bool { step == .accessibility || step == .models }
+
+    /// Refs 02/04/05 draw "‹ Back"; 03/06 a plain "Back".
+    private var backChevron: Bool { step == .accessibility || step == .privacy }
+
     private var footer: some View {
         ZStack {
-            HStack { primaryCluster }.frame(maxWidth: .infinity)
+            if !footerInsideSheet {
+                HStack { primaryCluster }.frame(maxWidth: .infinity)
+            }
             HStack {
-                if step != .welcome {
-                    OBBackButton(action: goBack)
+                if step != .welcome && step != .models {
+                    OBBackButton(chevron: backChevron, action: goBack)
                 }
                 Spacer()
                 if showsFinishLater {
@@ -261,7 +277,7 @@ public struct OnboardingView: View {
     // MARK: - Screen 2: Accessibility
 
     private var permissionStep: some View {
-        FoldOut(showsFold: false, verticalPadding: 16, lowerTopPadding: 14) {
+        FoldOut(verticalPadding: 16, lowerTopPadding: 14) {
             VStack(alignment: .leading, spacing: 0) {
                 OBCaption("In System Settings")
                 Text("Privacy & Security › Accessibility")
@@ -269,19 +285,23 @@ public struct OnboardingView: View {
                     .foregroundStyle(OBTheme.textPrimary)
                     .padding(.top, 12)
                 HStack(spacing: 12) {
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(OBTheme.textSecondary)
-                        .frame(width: 32, height: 32)
-                        .background(OBTheme.textTertiary.opacity(0.14),
-                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    Group {
+                        if let icon = NSApp.applicationIconImage {
+                            Image(nsImage: icon).resizable().scaledToFit()
+                        } else {
+                            Image(systemName: "paperclip")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundStyle(OBTheme.textSecondary)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
                     Text("Cue").font(.system(size: 15)).foregroundStyle(OBTheme.textPrimary)
                     Spacer()
                     PermissionSwitchDemo(granted: trusted)
                 }
                 .padding(.horizontal, 14)
                 .frame(height: 54)
-                .background(OBTheme.inputFill, in: RoundedRectangle(cornerRadius: 9))
+                .background(OBTheme.insetFill, in: RoundedRectangle(cornerRadius: 9))
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(OBTheme.separator, lineWidth: 0.7))
                 .padding(.top, 12)
             }
@@ -307,6 +327,11 @@ public struct OnboardingView: View {
                 .foregroundStyle(trusted ? .green : OBTheme.textTertiary)
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity)
+                // Ref 02: the primary lives inside the lower sheet, centered.
+                OBPrimaryButton(title: primarySpec.title, enabled: primarySpec.enabled,
+                                action: primarySpec.action)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 14)
             }
             .frame(maxWidth: .infinity)
         }
@@ -351,7 +376,7 @@ public struct OnboardingView: View {
     @State private var recorderConflict: String?
 
     private var triggerStep: some View {
-        FoldOut(showsFold: false, verticalPadding: 16, lowerTopPadding: 16) {
+        FoldOut(verticalPadding: 16, lowerTopPadding: 16) {
             VStack(alignment: .leading, spacing: 0) {
                 triggerRow(
                     title: "Dedicated shortcut",
@@ -396,20 +421,21 @@ public struct OnboardingView: View {
                 }
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 4) {
+                        // Caption above the grey inset box (ref 03).
                         Text("Copied message")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(OBTheme.textTertiary)
                         HighlightedParagraph(
                             text: "Reach Mira at mira@example.com or +44 7700 900123.",
                             highlights: [OnboardingSample.Target.email.expected],
-                            fontSize: 12, width: 224)
+                            fontSize: 12, width: 200)
+                            .padding(10)
+                            .background(OBTheme.insetFill,
+                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(OBTheme.separator, lineWidth: 0.5))
                     }
                     .frame(width: 224, alignment: .leading)
-                    .padding(10)
-                    .background(OBTheme.inputFill,
-                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(OBTheme.inputStroke, lineWidth: 0.5))
                     Image(systemName: "arrow.right")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(OBTheme.textTertiary)
@@ -483,7 +509,8 @@ public struct OnboardingView: View {
     // MARK: - Screen 4: Models
 
     private var modelsStep: some View {
-        OnboardingModels(model: model, primary: $stepPrimary) {
+        OnboardingModels(model: model, primary: $stepPrimary,
+                         onBack: { goBack() }) {
             advance()
         }
     }
@@ -524,9 +551,12 @@ public struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     OBCaption(settings.effectivePIIRedaction
                               ? "Example sent to the model" : "Example sent without redaction")
-                    Text(scrubbedSample)
-                        .font(.system(size: 16))
-                        .foregroundStyle(OBTheme.textPrimary)
+                    // [NAME]/[EMAIL] style tokens render as coral chips, in
+                    // the static example or live redactor output alike.
+                    HighlightedParagraph(
+                        text: scrubbedSample,
+                        highlights: Self.placeholderTokens(in: scrubbedSample),
+                        fontSize: 16, width: 552)
                 }
             }
 
@@ -563,6 +593,17 @@ public struct OnboardingView: View {
                     "Send the launch brief to Mira at mira@example.com.")
             }
         }
+    }
+
+    /// Bracketed placeholders like `[NAME]`/`[EMAIL_1]` — whatever the real
+    /// redactor emits, plus the static example's tokens.
+    private static func placeholderTokens(in text: String) -> [String] {
+        var out: [String] = []
+        for m in text.matches(of: /\[[A-Z0-9_]+\]/) {
+            let t = String(m.output)
+            if !out.contains(t) { out.append(t) }
+        }
+        return out
     }
 
     /// Live redactor output when ready, else the labeled static example.
@@ -701,7 +742,7 @@ private struct WelcomeDemo: View {
     var body: some View {
         FoldOut(arrowX: arrowX) {
             VStack(alignment: .leading, spacing: 16) {
-                OBCaption("Copied message")
+                OBCaption("Example copied message")
                 HighlightedParagraph(
                     text: OnboardingSample.message,
                     highlights: [span],
@@ -726,14 +767,9 @@ private struct WelcomeDemo: View {
                     Text("Try a different field:")
                         .font(.system(size: 11))
                         .foregroundStyle(OBTheme.textSecondary)
-                    Picker("", selection: $target) {
-                        ForEach(OnboardingSample.Target.allCases, id: \.self) {
-                            Text($0.rawValue).tag($0)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 126)
+                    OBSegmented(items: OnboardingSample.Target.allCases.map { ($0, $0.rawValue) },
+                                selection: $target)
+                        .frame(width: 150)
                 }
                 OBFieldPreview(label: target.rawValue, value: shownValue)
                     .background(
@@ -840,7 +876,7 @@ private struct PracticeScreen: View {
                         .foregroundStyle(OBTheme.textSecondary)
                 }
                 HighlightedParagraph(
-                    text: OnboardingSample.practiceMessage,
+                    text: practice.sampleText,
                     highlights: [practice.expected],
                     fontSize: 16, width: 552) { rects in
                     paraRects = rects
@@ -848,25 +884,31 @@ private struct PracticeScreen: View {
             }
         } lower: {
             VStack(alignment: .leading, spacing: 10) {
-                Text(practice.target.rawValue)
+                Text(practice.fieldLabel)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(OBTheme.textPrimary)
                 HStack(spacing: 10) {
-                    PracticeField(label: practice.target.rawValue,
+                    PracticeField(label: practice.fieldLabel,
                                   placeholder: practice.target == .email
                                     ? "name@example.com" : "https://…",
                                   practice: practice)
                         .frame(height: 36)
-                    if case .succeeded = practice.phase {
-                        Label("\(practice.target.rawValue) pasted",
-                              systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.green)
-                            .fixedSize()
-                        Button(practice.target == .website ? "Try Email" : "Try Website") {
+                        .overlay(alignment: .trailing) {
+                            // Ref 06: the confirmation sits inside the field.
+                            if case .succeeded = practice.phase {
+                                Text("✓ \(practice.target.rawValue) pasted")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.green)
+                                    .padding(.trailing, 10)
+                            }
+                        }
+                    if case .succeeded = practice.phase, practice.round == 0 {
+                        OBBorderedButton(
+                            title: practice.target == .website ? "Try Email" : "Try Website"
+                        ) {
                             practice.reset(target: practice.target == .website ? .email : .website)
                         }
-                        .controlSize(.regular)
+                        OBBorderedButton(title: "Try another") { practice.tryAnother() }
                     }
                 }
                 statusLine
@@ -896,10 +938,11 @@ private struct PracticeScreen: View {
                     .foregroundStyle(OBTheme.textSecondary)
             }
         case .succeeded:
-            Text(practice.elapsedMilliseconds.map { "Pasted in \($0) ms. Find Cue in your menu bar." }
+            Text(practice.elapsedMilliseconds.map { "Pasted in \($0) ms · Find Cue in your Mac's menu bar." }
                  ?? "Find Cue in your Mac's menu bar.")
                 .font(.system(size: 12))
                 .foregroundStyle(OBTheme.textTertiary)
+                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
         case .ordinaryPaste(let observed):
             VStack(alignment: .leading, spacing: 6) {

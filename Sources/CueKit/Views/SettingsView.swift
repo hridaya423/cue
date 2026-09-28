@@ -27,13 +27,22 @@ struct HotkeyRecorder: NSViewRepresentable {
         override var acceptsFirstResponder: Bool { true }
         override var intrinsicContentSize: NSSize { NSSize(width: 96, height: 22) }
 
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            // The onboarding reference shows no ring until the recorder is
+            // armed; AppKit's automatic ring would fire on first focus.
+            focusRingType = .none
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
         override func draw(_ dirtyRect: NSRect) {
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
             (recording ? NSColor.controlAccentColor.withAlphaComponent(0.2) : NSColor.controlBackgroundColor).setFill()
             path.fill()
             NSColor.separatorColor.setStroke()
             path.stroke()
-            if window?.firstResponder === self {
+            // Ring only while armed — a passive focus must not light it up.
+            if recording {
                 NSColor.controlAccentColor.withAlphaComponent(0.6).setStroke()
                 let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: -2.5, dy: -2.5), xRadius: 7, yRadius: 7)
                 ring.lineWidth = 2

@@ -175,7 +175,7 @@ public final class SmartPasteController {
         }
         // Queue mode: deterministic FIFO, no model call.
         if settings.queueMode, let clip = store.popQueue() {
-            lastAction = "queued paste · \"\(clip.preview)\""
+            lastAction = "queued paste" // never log clip contents
             paste(clip.text, clip: clip, ctx: ctx)
             return
         }
@@ -186,9 +186,10 @@ public final class SmartPasteController {
         }
 
         busy = true
+        let startedAt = ContinuousClock.now
         Task {
             let indicator = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(400))
+                try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled, let self, self.busy else { return }
                 self.hud.showDeciding(near: ctx.caretRect ?? ctx.fieldRect)
             }
@@ -204,7 +205,7 @@ public final class SmartPasteController {
                 mode: mode,
                 feedback: feedback.multipliers(for: ctx)
             )
-            await handle(outcome, ctx: ctx)
+            await handle(outcome, ctx: ctx, since: startedAt)
         }
     }
 
@@ -234,24 +235,32 @@ public final class SmartPasteController {
         }
     }
 
-    private func handle(_ outcome: PasteOutcome, ctx: ContextSnapshot) async {
+    private func handle(_ outcome: PasteOutcome, ctx: ContextSnapshot,
+                        since startedAt: ContinuousClock.Instant) async {
+        let e = startedAt.duration(to: .now).components
+        let ms = " · \(Int(e.seconds * 1000 + e.attoseconds / 1_000_000_000_000_000)) ms"
+        // lastAction is a status line: action + kind + latency, never content.
         switch outcome {
         case .paste(let d):
-            lastAction = "pasted \"\(d.clip.preview)\"" + (d.detail.map { " · \($0)" } ?? "")
+            lastAction = "pasted" + (d.detail.map { " · \($0)" } ?? "") + ms
             paste(d.text, clip: d.clip, ctx: ctx, note: d.detail)
             if d.isForm { await formFiller?.run() }
         case .choose(let opts):
-            lastAction = "showed chooser"
+            lastAction = "showed chooser" + ms
             hud.showChooser(options: opts, near: ctx.caretRect ?? ctx.fieldRect) { [weak self] pick in
                 guard let self else { return }
                 // Esc/⌘V means "plain paste" — the chooser promises it.
                 guard let pick else { self.lastAction = "plain paste · declined options"; self.pasteLatest(); return }
-                self.lastAction = "pasted \"\(pick.option.text.prefix(40))\" · picked"
+                self.lastAction = "pasted picked option"
                 self.paste(pick.option.text, clip: pick.option.clip, ctx: ctx)
             }
         case .pasteLatest(let reason):
-            lastAction = "plain paste · \(reason.label)"
+            lastAction = "plain paste · \(reason.label)" + ms
             hud.dismiss() // a shown deciding indicator must not linger
+            // Hotkey mode only — intercept is the user's normal ⌘V and stays silent.
+            if case .nothingFits = reason, settings.triggerMode != .intercept {
+                hud.showStatus("Nothing here fits this field")
+            }
             pasteLatest()
         }
     }
