@@ -58,6 +58,37 @@ Open weaknesses: **noisy** (20-clip histories with one right answer) is weak
 for every model; **von on `none`** pops a chooser on fields nothing fits
 (verification codes, age) — mostly popups, not pastes, but still noise.
 
+## Final policy (committed) + the chooser-friction gate
+
+Recorded answers re-scored through the committed policy
+(`--replay`, deterministic — latency columns below stay live-measured):
+
+| | resolved | wrong | chooser-on-clear |
+|---|---|---|---|
+| kev | 91% | 1% | 45% |
+| laya | 81% | 5% | 50% |
+| von | 88% | 8% | 78% |
+
+**The plan's chooser-on-unambiguous ≤ 20% gate is NOT met at 0.8B** — and
+the evidence says it can't be met with these weights:
+
+- Threshold/margin sweep (replay): friction 20% appears only at
+  t≈0.4/m≈0.05, where wrong-paste rises to 6%. Every wrong-free point
+  sits at ≥33% friction. The wall is a tradeoff curve, not a tunable gap.
+- The residual friction is `no-*`/`nz-*` cases where Kev spreads mass
+  thinly (`none`≈0.4–0.6, options 0.1–0.2 each) — genuine model
+  uncertainty, and the chooser is the *designed* answer for it.
+- ContextSignal ∩ model-leader agreement was tested as an auto-paste
+  trigger: `--diag` shows it would paste **wrong 4 of 13 times** — unsafe.
+- A criteria-line hint ("mentions something from the window") was tried
+  live (`hint1` run): +4 resolved but new confident wrong-route pastes
+  (e.g. an email pasted into a Slack *message* field) — reverted.
+
+Product call, per plan: a wrong confident paste is worse than one chooser
+interaction. Current policy keeps wrong at ~1% and spends chooser friction
+on it. Closing the ≤20% gate needs a more decisive model (hosted Jev —
+unbenchmarked here, needs a key — or bigger local weights).
+
 ## Model roles (onboarding + settings)
 
 - **Kev 0.8B — Most accurate (Recommended)**: 1% wrong, 84% resolved, 248 ms.

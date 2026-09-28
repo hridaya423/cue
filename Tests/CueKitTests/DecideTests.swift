@@ -171,9 +171,10 @@ private func pickResponse(pick: String, conf: Double,
 }
 
 struct DecisionEngineTests {
-    private func makeContext(label: String = "Email") -> ContextSnapshot {
+    private func makeContext(label: String = "Email", window: String = "") -> ContextSnapshot {
         var c = ContextSnapshot()
         c.appName = "Safari"
+        c.windowTitle = window
         c.field.label = label
         c.field.role = "AXTextField"
         return c

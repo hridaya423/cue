@@ -95,16 +95,17 @@ model; the real clip is what pastes.
 ## Development
 
 ```sh
-swift test   # 89 tests: store, Jev contract, transforms, engine, redaction gating,
-             # model catalog, pasteboard gate, settings migration, provider status
+swift test   # 105 tests: store, Jev contract, transforms, engine + policy,
+             # model catalog + roles, pasteboard gate, settings, provider status
 ```
 
-`Scripts/eval_systemone.py <base>…` runs canned smart-paste cases against one
-or more endpoints and prints an accuracy/latency table — useful for comparing
-local weights. `CueEval --cases Evals/cases.jsonl --endpoint name=base,model`
-runs the 110-case synthetic benchmark end-to-end through the real decision
-engine; `Scripts/eval_servers.sh` brings up all installed local model
-servers detached under launchd so the sweep survives the shell.
+`CueEval --cases Evals/cases.jsonl --endpoint name=base,model` runs the
+110-case synthetic benchmark end-to-end through the real decision engine;
+`--replay <raw.jsonl>` re-scores recorded answers through the current policy
+(no server needed) and `--diag` prints model-leader vs context-signal
+agreement per case. `Scripts/eval_servers.sh` brings up all installed local
+model servers detached under launchd so the sweep survives the shell;
+`Scripts/eval_run.sh <tag> --endpoint …` runs one detached pass.
 
 `Sources/CueKit/` is the whole app; `Sources/Cue/main.swift` is a
 trampoline. Menu bar → "Run self-check" drives a real end-to-end paste into a

@@ -31,6 +31,9 @@ struct Args {
     var replay: String?
     var threshold = 0.7
     var margin = 0.25
+    /// Prints per-case model-leader vs ContextSignal agreement and what a
+    /// forced leader-paste would have scored — for policy experiments.
+    var diag = false
 
     static func parse() throws -> Args {
         var a = Args()
@@ -51,6 +54,7 @@ struct Args {
             case "--replay": a.replay = try need(&it, "--replay")
             case "--threshold": a.threshold = Double(try need(&it, "--threshold")) ?? 0.7
             case "--margin": a.margin = Double(try need(&it, "--margin")) ?? 0.25
+            case "--diag": a.diag = true
             default: throw Err("unknown arg \(arg)")
             }
         }
@@ -186,6 +190,17 @@ func run() async throws -> Int {
     var recordLines: [String] = []
     var summary: [String: [String: Any]] = [:]
 
+    // --diag: caseID -> recorded answer strings (same --record format).
+    var replayAnswers: [String: [String: String]] = [:]
+    if args.diag, let path = args.replay {
+        for line in try String(contentsOfFile: path, encoding: .utf8).split(whereSeparator: \.isNewline) {
+            guard let o = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let id = o["case"] as? String, replayAnswers[id] == nil,
+                  let ans = o["answers"] as? [String: String] else { continue }
+            replayAnswers[id] = ans
+        }
+    }
+
     func pad(_ s: String, _ w: Int) -> String {
         s.count >= w ? String(s.prefix(w)) : s + String(repeating: " ", count: w - s.count)
     }
@@ -238,6 +253,20 @@ func run() async throws -> Int {
                                       unambiguous: { if case .paste = c.expect { return true }; return false }()))
             let msAvg = latencies.reduce(0, +) / Double(latencies.count)
             print("\(pad(ep.name, 16)) \(pad(c.id, 34)) \(pad(verdict.rawValue, 18)) \(pad(o.kind.rawValue, 7)) \(pad(String((o.texts.first ?? "-").prefix(32)), 32)) \(Int(msAvg.rounded()))")
+            if args.diag, let ans = replayAnswers[c.id], let raw = ans["pick"],
+               case .choice(_, _, let probs) = ReplayProvider.parse(raw) {
+                let opts = OptionBuilder.options(from: c.clipList)
+                let topKey = probs.filter { $0.key != "none" }.max { $0.value < $1.value }?.key
+                let sigID = ContextSignal.uniquePick(
+                    opts, label: c.contextSnapshot.field.label,
+                    window: c.contextSnapshot.windowTitle,
+                    nearby: c.contextSnapshot.nearby)?.id
+                let topText = opts.first { $0.id == topKey }?.text ?? ""
+                let topVerdict = EvalScore.score(
+                    .init(kind: .paste, texts: topText.isEmpty ? [] : [topText]),
+                    expect: c.expect, latestText: latest)
+                print("\(pad("", 16)) \(pad("", 34)) diag top=\(topKey ?? "-") sig=\(sigID ?? "-") agree=\(topKey == sigID) pasteTop=\(topVerdict.rawValue)")
+            }
         }
         // Aggregate
         let n = Double(results.count)

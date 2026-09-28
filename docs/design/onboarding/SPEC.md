@@ -9,7 +9,7 @@ Status: approved visual direction translated into an implementation contract, 20
 3. Follow [the implementation plan](../../plans/2026-09-22-onboarding-redesign.md). It identifies existing APIs, changes and verification gates.
 4. Record progress and remaining issues in [HANDOFF.md](HANDOFF.md). Do not treat rendered concept images as evidence that application behavior works.
 
-Precedence: explicit user requirements > this specification's corrections > approved image composition > existing cosmetic implementation. Existing security, paste fallback and provider contracts remain binding. If code has drifted, re-read the named symbols rather than trusting line numbers.
+Precedence: explicit user requirements > this specification's corrections > approved image composition > existing cosmetic implementation. In short: **the images win on looks** — when a rendered control and an approved reference disagree on appearance alone, follow the reference. Existing security, paste fallback and provider contracts remain binding. If code has drifted, re-read the named symbols rather than trusting line numbers.
 
 ## Goal and boundaries
 

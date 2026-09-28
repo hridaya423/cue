@@ -49,6 +49,43 @@ See [documentation validation](VALIDATION.md) for package checks and proposed to
 
 Update this table as work proceeds. Add evidence links rather than “done” without a check.
 
+### v3 reference-fidelity pass (2026-09-28)
+
+Second implementation round against the same approved references — the
+images still win on looks (SPEC precedence). Landed:
+
+- Tokens resampled from the PNGs: warm canvas `#FDFDFB`, sheet `#FBFAF8`,
+  action `#1463EC` with a `#2A7FF6→#0F5FEA` vertical gradient on the
+  primary; inset `#F3F2F0` boxes; separator/input-stroke warmed.
+- Fold treatment rebuilt: `FoldSeam`/`SeamBand`/`FoldCurl` replace
+  `FoldArrowShape` — trapezoid tabs flare ~6 pt past the lower sheet's
+  corners, shadow band under the seam, a 1.5-pt coral curl drops ~22 pt
+  from the seam at the highlighted span's mid-x and fades; no arrowhead.
+- Highlights trace glyph bounds (baseline − ascender … − descender,
+  padded 3×2) instead of line boxes; paragraph line-height 1.3.
+- Type: title 28 semibold, tracking −0.4; primary disabled = same blue
+  at 40% opacity, never grey.
+- Custom controls matching refs: `OBSegmented` (sliding white pill on a
+  light track), filled-disc `OBRadio` (blue disc + white dot), bordered
+  `OBBackButton` (“‹ Back” on Accessibility/Models/Privacy, plain “Back”
+  on Trigger/Practice), `OBBorderedButton` secondaries.
+- Footer placement follows the refs per screen: inside the lower sheet
+  on Accessibility (centered primary) and Models (“‹ Back” left,
+  primary right); outside the panels elsewhere. Window 760×580.
+- Practice: Mira sample shared with Welcome; starts on Email; “✓ pasted”
+  confirmation inside the field's trailing edge; “Try Website” +
+  “Try another” bordered secondaries — round two loads a three-recipient
+  sample against a “Reply to Priya” field and exercises the real chooser
+  (a chooser pick counts as engine-originated success).
+- `ModelManager.start` guards missing installs → `.notInstalled` instead
+  of a cwd error (regression test in `ModelManagerTests`).
+- `Scripts/ob_compare.py` gained an `another` variant capturing the
+  round-two practice screen (`OB_PRACTICE=another`).
+
+Evidence: `output/onboarding/compare/` captures, 105-test suite green.
+
+### v2 implementation ledger
+
 | Milestone | State | Evidence |
 | --- | --- | --- |
 | Baseline build/test and screenshot | Done | 61/61 tests green pre-change; prior onboarding captured before rewrite |

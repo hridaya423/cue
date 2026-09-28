@@ -92,6 +92,15 @@ public enum ModelRoles {
             } else if let j = rest.firstIndex(of: spec.id) {
                 s.rank = roles.count + j + 1
             }
+            // Meters are measured, not editorial: accuracy = quality
+            // (resolved − 2·wrong), speed = p50 against the 2.6 s ceiling.
+            if let b = data.first(where: { $0.model == spec.id }) {
+                let acc = min(max(b.quality, 0), 1)
+                let spd = min(max(1 - b.p50 / 2600, 0.05), 1)
+                s.variants = s.variants.map { v in
+                    var v = v; v.accuracy = acc; v.speed = spd; return v
+                }
+            }
             return s
         }
     }

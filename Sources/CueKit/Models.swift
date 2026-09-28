@@ -9,8 +9,8 @@ public struct WeightSpec: Sendable, Equatable, Identifiable {
     public var diskLabel: String     // "~9 GB"
     public var ramLabel: String      // "~10 GB"
     public var recommended = false
-    /// Meter bars in the picker, 0…1. Editorial estimates — replace with
-    /// eval_systemone.py numbers when we have real benchmark data.
+    /// Meter bars in the picker, 0…1. Fallback defaults — `ModelRoles.apply`
+    /// overwrites them with the frozen benchmark row where one exists.
     public var accuracy: Double
     public var speed: Double
     /// The `model` field sent in requests (e.g. kev-latest, multilingual).

@@ -54,7 +54,8 @@ public struct ProviderPicker: View {
                         }
                     }
                     Spacer()
-                    meters(accuracy: 0.95, speed: 0.65)
+                    // No meters: hosted Jev has no benchmark here — a bar
+                    // would be an invented number.
                 }
                 Text("TypeSafe's hosted decision model — strongest picks, ~100ms, needs an API key. Via TypeSafe direct or Vercel AI Gateway.")
                     .font(.system(size: 11))
@@ -104,7 +105,10 @@ public struct ProviderPicker: View {
                         }
                     }
                     Spacer()
-                    if let v { meters(accuracy: v.accuracy, speed: v.speed) }
+                    // Meters only exist where a benchmark does.
+                    if let v, ModelRoles.benchmark(of: spec.id) != nil {
+                        meters(accuracy: v.accuracy, speed: v.speed)
+                    }
                 }
                 Text(spec.blurb)
                     .font(.system(size: 11))
