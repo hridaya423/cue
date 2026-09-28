@@ -18,7 +18,9 @@ cp ".build/$CONFIG/Cue" "$APP/Contents/MacOS/"
 
 # SPM resource bundles (e.g. the Redact tokenizer vectors) — Bundle.module
 # resolves them from Contents/Resources inside a .app.
-find ".build/$CONFIG" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
+# -H: .build/$CONFIG is a symlink to .build/<triple>/$CONFIG — without it
+# find never descends and the resource bundle silently doesn't ship.
+find -H ".build/$CONFIG" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
 
 # The Laya server shim — the managed-model installer runs this inside the
 # model's venv to speak /v1/systemone.
