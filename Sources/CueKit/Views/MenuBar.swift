@@ -68,6 +68,7 @@ public struct MenuBarView: View {
     }
 
     private var statusColor: Color {
+        if !model.monitor.running { return .gray }
         if !model.trusted { return .orange }
         switch model.providerStatus.state {
         case .ok: return .green
@@ -271,7 +272,9 @@ public struct MenuBarView: View {
     }
 
     private var statusLine: String {
-        var parts = [model.trusted ? "ready" : "needs Accessibility"]
+        var parts = [model.monitor.running
+                     ? (model.trusted ? "ready" : "needs Accessibility")
+                     : "paused"]
         switch model.settings.provider {
         case .jevDirect: parts.append("jev direct")
         case .jevGateway: parts.append("jev via gateway")
