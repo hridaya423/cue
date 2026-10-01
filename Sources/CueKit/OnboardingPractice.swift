@@ -145,24 +145,26 @@ public final class OnboardingPractice {
 
     /// SmartPasteController's dispatch seam: returns true if the practice
     /// consumed this trigger. Consumes only when armed and the practice field
-    /// is the focused element — anything else falls through to normal smart
-    /// paste untouched.
+    /// is being edited — a live field editor is a stronger signal than AX
+    /// frontmost/label for our own LSUIElement window, and cheaper.
     public func handleTrigger() -> Bool {
         switch phase {
         case .deciding: return true // swallow repeats while a call is in flight
         case .armed: break
         default: return false
         }
+        guard field?.currentEditor() != nil else { return false }
         guard ContextCaptor.isTrusted else {
             phase = .lostPermission
             return true
         }
-        let ctx = ContextCaptor.capture()
-        // The practice field must be the focused element — frontmost app is
-        // Cue and the field carries the round's AX label.
-        guard ctx.bundleID == Bundle.main.bundleIdentifier || ctx.appName == "Cue",
-              ctx.field.label == fieldLabel
-        else { return false }
+        var ctx = ContextCaptor.capture()
+        // The practice knows its target field — don't rely on the field's
+        // AXTitle propagating through the text editor the captor reads.
+        if ctx.field.label.isEmpty { ctx.field.label = fieldLabel }
+        if ctx.field.placeholder.isEmpty {
+            ctx.field.placeholder = target == .email ? "name@example.com" : "https://…"
+        }
 
         phase = .deciding
         startedAt = .now
@@ -192,23 +194,21 @@ public final class OnboardingPractice {
     private func resolve(_ outcome: PasteOutcome, epoch myEpoch: Int) {
         guard epoch == myEpoch, phase == .deciding else { return }
         timeoutTask?.cancel()
-        guard field?.currentEditor() != nil, field?.window?.isKeyWindow == true else {
+        guard field?.currentEditor() != nil else {
             phase = .failed("Click the field and try your shortcut again.")
             return
         }
         switch outcome {
         case .paste(let d):
-            // A real pick — possibly with an extraction transform. Deliver it
-            // like production does: pasteboard write + synthetic ⌘V into the
-            // focused field, then observe what actually arrived.
+            // A real pick — possibly with an extraction transform.
             lastOrigin = .enginePick
-            model.executor.paste(d.text)
+            deliver(d.text)
             scheduleObservation(epoch: myEpoch)
         case .pasteLatest:
             // Engine fell back — the paste delivers the whole sample. That's
             // an honest "ordinary paste" result, not a failure.
             lastOrigin = .none
-            model.executor.pasteCurrent()
+            deliver(nil)
             scheduleObservation(epoch: myEpoch)
         case .choose(let opts):
             // The model asked for confirmation — show the real chooser at
@@ -217,14 +217,22 @@ public final class OnboardingPractice {
             model.hud.showChooser(options: opts, near: lastCtx?.caretRect ?? lastCtx?.fieldRect) { [weak self] pick in
                 guard let self, self.epoch == myEpoch else { return }
                 self.lastOrigin = pick != nil ? .chooserPick : .none
-                if let pick {
-                    self.model.executor.paste(pick.option.text)
-                } else {
-                    self.model.executor.pasteCurrent()
-                }
+                self.deliver(pick?.option.text)
                 self.scheduleObservation(epoch: myEpoch)
             }
         }
+    }
+
+    /// Deliver the result into the practice field through its field editor —
+    /// the same seam SelfCheck uses. The executor still does its real work
+    /// (pasteboard write, intercept suspend/resume); only the keystroke leg
+    /// is redirected, because a synthetic ⌘V only ever reaches the
+    /// system-frontmost app — which is not reliably our own window.
+    private func deliver(_ text: String?) {
+        guard let editor = field?.currentEditor() else { return }
+        model.executor.onWouldPost = { s in editor.insertText(s) }
+        if let text { model.executor.paste(text) } else { model.executor.pasteCurrent() }
+        model.executor.onWouldPost = nil
     }
 
     /// The synthetic ⌘V lands on the next runloop turns; check what the
@@ -243,7 +251,25 @@ public final class OnboardingPractice {
     /// paste that never arrives still resolves via the timeout above.
     public func observeFieldText(_ text: String) {
         fieldText = text
-        if phase == .deciding && !text.isEmpty { classifyField() }
+        if phase == .deciding, !text.isEmpty { classifyField(); return }
+        // An unintercepted ⌘V (no Accessibility, or plain ⌘V in hotkey mode)
+        // lands the clipboard verbatim while we're armed — classify it as an
+        // honest ordinary paste instead of leaving "Now press ⌘V" forever.
+        // Gated on the landed text actually being the pasteboard's content,
+        // so ordinary typing doesn't trip it.
+        guard phase == .armed, !text.isEmpty else { return }
+        let pb = NSPasteboard.general.string(forType: .string) ?? ""
+        if Self.landedViaPaste(fieldText: text, pasteboard: pb, expected: expected) {
+            classifyField()
+        }
+    }
+
+    /// The armed-phase paste test, pure so tests pin it: the field's new
+    /// content counts as a paste when it equals the live pasteboard (or the
+    /// expected extraction); anything else is typing, not a paste.
+    nonisolated static func landedViaPaste(fieldText: String, pasteboard: String,
+                                           expected: String) -> Bool {
+        fieldText == pasteboard || fieldText == expected
     }
 
     private func classifyField() {

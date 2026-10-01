@@ -114,6 +114,19 @@ public struct OnboardingView: View {
                     if ProcessInfo.processInfo.environment["OB_PRACTICE"] == "another" {
                         practice?.tryAnother()
                     }
+                    // `OB_PRACTICE_E2E=1` self-drives one real trigger once the
+                    // window is key: real engine decision + editor delivery,
+                    // exactly what a physical ⌘V would start.
+                    if ProcessInfo.processInfo.environment["OB_PRACTICE_E2E"] != nil {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(800))
+                            FileHandle.standardError.write(Data(
+                                "E2E provider=\(model.settings.provider) local=\(model.settings.localModelID)/\(model.settings.localVariantID) client=\(model.makeProvider() == nil ? "nil" : "ok") phase=\(String(describing: practice?.phase)) trusted=\(ContextCaptor.isTrusted)\n".utf8))
+                            practice?.focus()
+                            _ = practice?.handleTrigger()
+                            FileHandle.standardError.write(Data("E2E after trigger phase=\(String(describing: practice?.phase))\n".utf8))
+                        }
+                    }
                 }
             }
             #endif

@@ -101,6 +101,33 @@ struct PracticeClassifyTests {
     }
 }
 
+struct ArmedLandingTests {
+    let expected = OnboardingSample.Target.email.expected
+
+    @Test func pasteboardLandingCounts() {
+        // The unintercepted-⌘V path: field ends up holding exactly what the
+        // pasteboard holds — that's a plain paste and must be classified.
+        #expect(OnboardingPractice.landedViaPaste(
+            fieldText: OnboardingSample.practiceMessage,
+            pasteboard: OnboardingSample.practiceMessage,
+            expected: expected))
+    }
+
+    @Test func extractionLandingCounts() {
+        // A correct extraction landing by any path is worth classifying.
+        #expect(OnboardingPractice.landedViaPaste(
+            fieldText: expected, pasteboard: "unrelated", expected: expected))
+    }
+
+    @Test func typingDoesNotCount() {
+        // Keystrokes produce text that isn't the pasteboard — must not
+        // misclassify as a paste.
+        #expect(!OnboardingPractice.landedViaPaste(
+            fieldText: "h", pasteboard: OnboardingSample.practiceMessage,
+            expected: expected))
+    }
+}
+
 struct PracticeAnotherRoundTests {
     @Test func secondSampleCarriesThreeEmails() {
         // "Try another" gives the engine three plausible recipients.
