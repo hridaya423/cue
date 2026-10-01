@@ -18,9 +18,12 @@ public final class HUDController {
 
     /// Caret-anchored disambiguation: the model's top options, 1/2/3 or
     /// arrows+Return to pick, Esc/⌘V = plain paste. Non-activating.
+    /// `fieldLabel` names the destination ("Paste into To:") when known.
     public func showChooser(options: [ScoredOption], near rect: CGRect?,
+                            fieldLabel: String? = nil,
                             onPick: @escaping (ScoredOption?) -> Void) {
         let state = ChooserState(options: options)
+        state.fieldLabel = fieldLabel ?? ""
         state.onPick = { [weak self] i in
             guard let self else { return }
             self.dismiss()
@@ -178,8 +181,8 @@ final class ChooserState {
     var anchor: UnitPoint = .top
     /// Row click handler; dismisses then reports the picked index.
     var onPick: ((Int) -> Void)?
-    /// bundleID → resolved icon, so a repeated app doesn't re-hit NSWorkspace.
-    var iconCache: [String: NSImage] = [:]
+    /// Destination field label for the header ("Paste into To:").
+    var fieldLabel = ""
     let options: [ScoredOption]
     init(options: [ScoredOption]) { self.options = options }
     func move(_ delta: Int) {
@@ -231,71 +234,108 @@ struct ChooserView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Which one?")
-                .font(.system(size: 11, weight: .medium))
+        VStack(alignment: .leading, spacing: 0) {
+            Text(state.fieldLabel.isEmpty ? "Which one?" : "Paste into \(state.fieldLabel)")
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
-            ForEach(Array(state.options.enumerated()), id: \.offset) { i, so in
-                Button {
-                    state.pick(i)
-                } label: {
-                    HStack(alignment: .center, spacing: 10) {
-                        appIcon(for: so.option.clip)
-                        Text("\(i + 1)")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 17, height: 17)
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(so.option.text)
-                                .font(.system(size: 13, weight: .medium))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Text(contextLine(for: so.option))
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                        Spacer(minLength: 8)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(i == state.selection
-                                ? Color.accentColor.opacity(0.15)
-                                : .clear,
-                                in: RoundedRectangle(cornerRadius: 6))
-                    .contentShape(RoundedRectangle(cornerRadius: 6))
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(state.options.enumerated()), id: \.offset) { i, so in
+                    row(i, so)
                 }
-                .buttonStyle(.plain)
-                .onHover { inside in
-                    if inside { state.selection = i }
-                }
-                .accessibilityLabel(rowLabel(for: so.option))
-                .accessibilityAddTraits(i == state.selection ? .isSelected : [])
             }
-            Text("1–3 to paste · esc for plain paste")
-                .font(.system(size: 10))
-                .foregroundStyle(.quaternary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+            .padding(.horizontal, 6)
+            Divider().opacity(0.5).padding(.top, 4)
+            HStack(spacing: 4) {
+                hintKey("1–\(state.options.count)")
+                Text("choose")
+                Spacer()
+                hintKey("esc")
+                Text("plain paste")
+            }
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
         }
-        .padding(.vertical, 2)
         .frame(minWidth: 280, maxWidth: 420)
         .fixedSize(horizontal: true, vertical: true)
         .frame(maxWidth: 420)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        // 120ms in: fade plus a 0.98→1 scale out of the caret-facing edge.
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(nsColor: OBTheme.separatorNS).opacity(0.8), lineWidth: 0.5)
+        )
+        // Fade + a 0.97→1 spring out of the caret-facing edge.
         // Reduce Motion keeps the fade only.
         .opacity(appeared ? 1 : 0)
-        .scaleEffect(appeared || reduceMotion ? 1 : 0.98, anchor: state.anchor)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.97, anchor: state.anchor)
         .task {
             try? await Task.sleep(for: .milliseconds(20)) // let the panel order in
-            withAnimation(.easeOut(duration: 0.12)) { appeared = true }
+            withAnimation(.spring(duration: 0.2, bounce: 0.12)) { appeared = true }
         }
+    }
+
+    private func row(_ i: Int, _ so: ScoredOption) -> some View {
+        let selected = i == state.selection
+        return Button {
+            state.pick(i)
+        } label: {
+            HStack(alignment: .center, spacing: 9) {
+                SourceAppIcon(clip: so.option.clip, size: 16)
+                    .frame(width: 16)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(so.option.text)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(selected ? OBTheme.highlightText : .primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(contextLine(for: so.option))
+                        .font(.system(size: 10))
+                        .foregroundStyle(selected
+                            ? OBTheme.highlightText.opacity(0.65)
+                            : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                Spacer(minLength: 8)
+                Text("\(i + 1)")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(selected ? OBTheme.highlightText.opacity(0.7) : .secondary)
+                    .frame(width: 18, height: 18)
+                    .background(
+                        selected ? Color.white.opacity(0.45) : Color(nsColor: .controlBackgroundColor),
+                        in: RoundedRectangle(cornerRadius: 4.5, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                            .strokeBorder(.black.opacity(selected ? 0.12 : 0.18), lineWidth: 0.5))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(selected ? OBTheme.highlight : .clear,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { state.selection = i }
+        }
+        .accessibilityLabel(rowLabel(for: so.option))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// kbd-styled hint key cap.
+    private func hintKey(_ s: String) -> some View {
+        Text(s)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1.5)
+            .background(.quaternary.opacity(0.6),
+                        in: RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                    .strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
     }
 
     /// "Paste {value}, from {app}" — the app name only when we have one.
@@ -303,29 +343,6 @@ struct ChooserView: View {
         o.clip.sourceApp.isEmpty
             ? "Paste \(o.text)"
             : "Paste \(o.text), from \(o.clip.sourceApp)"
-    }
-
-    /// The source app's icon, resolved only when the clip recorded a bundle
-    /// id — never guessed from a name.
-    @ViewBuilder
-    private func appIcon(for clip: Clip) -> some View {
-        if let image = icon(for: clip.sourceBundleID) {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 16, height: 16)
-        }
-    }
-
-    private func icon(for bundleID: String?) -> NSImage? {
-        guard let bundleID else { return nil }
-        if let cached = state.iconCache[bundleID] { return cached }
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-        else { return nil }
-        let icon = NSWorkspace.shared.icon(forFile: url.path)
-        icon.size = NSSize(width: 32, height: 32)
-        state.iconCache[bundleID] = icon
-        return icon
     }
 
     /// "Mail · 2m ago · copied from Slack", preferring the app + age; falls
@@ -406,7 +423,11 @@ struct PickerView: View {
                 .padding(.vertical, 6)
         }
         .frame(width: 420)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(nsColor: OBTheme.separatorNS).opacity(0.8), lineWidth: 0.5)
+        )
     }
 }
 
@@ -428,6 +449,10 @@ struct DecidingView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(.regularMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(Color(nsColor: OBTheme.separatorNS).opacity(0.8), lineWidth: 0.5)
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Deciding what to paste")
     }
@@ -445,5 +470,9 @@ struct StatusToastView: View {
             .padding(.vertical, 7)
             .frame(maxWidth: 420)
             .background(.regularMaterial, in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color(nsColor: OBTheme.separatorNS).opacity(0.8), lineWidth: 0.5)
+            )
     }
 }

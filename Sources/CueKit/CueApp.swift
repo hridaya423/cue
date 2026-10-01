@@ -58,6 +58,41 @@ public final class AppModel {
         hotkeys.on(.settings) { [weak self] in self?.open(id: "settings") }
 
         monitor.start()
+        #if DEBUG
+        // `CUE_DEMO_WINDOW=history|settings` opens that window at launch —
+        // a visual-verification hook alongside CUE_DEMO_CHOOSER.
+        if let w = ProcessInfo.processInfo.environment["CUE_DEMO_WINDOW"], !w.isEmpty {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                self.open(id: w)
+            }
+        }
+        // `CUE_DEMO_CHOOSER=1` shows the chooser once near the mouse — a
+        // visual-verification hook; practice exercises the same view.
+        if ProcessInfo.processInfo.environment["CUE_DEMO_CHOOSER"] != nil {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(800))
+                let loc = NSEvent.mouseLocation
+                let clips = [
+                    Clip(text: "mira@example.com", kind: .text, sourceApp: "Mail",
+                         copiedAt: Date().addingTimeInterval(-420)),
+                    Clip(text: "priya@acme.com", kind: .text, sourceApp: "Safari",
+                         copiedAt: Date().addingTimeInterval(-3600)),
+                    Clip(text: "hello@work.dev", kind: .text, sourceApp: "Slack",
+                         copiedAt: Date().addingTimeInterval(-7200)),
+                ]
+                let opts = clips.enumerated().map { i, c in
+                    ScoredOption(option: PasteOption(
+                        id: "demo-\(i)", text: c.text, kind: .email,
+                        clip: c, snippet: c.text),
+                        probability: [0.45, 0.35, 0.2][i], confidence: 0.6)
+                }
+                hud.showChooser(options: opts,
+                                near: CGRect(origin: loc, size: CGSize(width: 2, height: 18)),
+                                fieldLabel: "Email") { _ in }
+            }
+        }
+        #endif
         // Warm the redaction model in the background so the first paste
         // doesn't pay the download latency.
         if settings.effectivePIIRedaction { Task { await redactor.prepare() } }
@@ -120,10 +155,11 @@ public final class AppModel {
         windows[id]?.close()
     }
 
-    /// History action: close our window, let focus return to the previous
-    /// app, then paste the chosen clip into it.
+    /// History/menu action: close our surfaces and return focus to the
+    /// previous app, then paste the chosen clip into it.
     public func pasteIntoFrontApp(_ clip: Clip) {
         close(id: "history")
+        NSApp.hide(nil)
         Task {
             try? await Task.sleep(for: .milliseconds(300))
             controller.pasteClip(clip)
@@ -219,5 +255,6 @@ public struct CueApp: App {
             // which is where AppModel builds the whole object graph.
             MenuBarView(model: AppModel.shared)
         }
+        .menuBarExtraStyle(.window)
     }
 }

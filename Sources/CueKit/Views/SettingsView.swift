@@ -177,6 +177,18 @@ public struct SettingsView: View {
                     Spacer()
                     Button("Run onboarding again") { model.open(id: "onboarding") }
                 }
+                LabeledContent("Self-check") {
+                    HStack(spacing: 8) {
+                        if let result = model.selfCheckResult {
+                            Text(result)
+                                .font(.system(size: 11))
+                                .foregroundStyle(result.hasPrefix("PASS") ? Color.secondary : Color.red)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Button("Run") { Task { await model.runSelfCheck() } }
+                    }
+                }
             }
         }
         .formStyle(.grouped)

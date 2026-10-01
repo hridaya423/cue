@@ -307,6 +307,13 @@ public final class ModelManager {
             default: break
             }
         }
+        // A server already answering on this model's port — an orphan from
+        // a prior launch or an eval job — is a working endpoint, not a
+        // failure to start. Adopt it rather than spawn-and-crash.
+        if await portAnswers(spec.defaultPort) {
+            setState(spec.id, .running)
+            return
+        }
         stop()
         setState(spec.id, .starting)
         transfers[spec.id] = nil
@@ -465,6 +472,17 @@ public final class ModelManager {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Scripts/laya_server.py")
         return dev.path
+    }
+
+    /// One-shot: does *anything* HTTP answer on this port? Any response
+    /// (even 404) means a server is bound; only a refused/failed connect
+    /// means the port is free. Lets `start` adopt a live endpoint.
+    private func portAnswers(_ port: Int) async -> Bool {
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/health")!)
+        req.timeoutInterval = 0.8
+        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse else { return false }
+        return (200..<500).contains(http.statusCode)
     }
 
     private func waitForHealth(port: Int, timeout: TimeInterval) async -> Bool {

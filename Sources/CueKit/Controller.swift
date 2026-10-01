@@ -247,7 +247,8 @@ public final class SmartPasteController {
             if d.isForm { await formFiller?.run() }
         case .choose(let opts):
             lastAction = "showed chooser" + ms
-            hud.showChooser(options: opts, near: ctx.caretRect ?? ctx.fieldRect) { [weak self] pick in
+            hud.showChooser(options: opts, near: ctx.caretRect ?? ctx.fieldRect,
+                            fieldLabel: ctx.field.label) { [weak self] pick in
                 guard let self else { return }
                 // Esc/⌘V means "plain paste" — the chooser promises it.
                 guard let pick else { self.lastAction = "plain paste · declined options"; self.pasteLatest(); return }
