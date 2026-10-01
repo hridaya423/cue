@@ -4,7 +4,8 @@ import SwiftUI
 public struct HistoryView: View {
     var model: AppModel
     @State private var filter = ""
-    @State private var hovered: Clip.ID?
+    /// Shared hover/arrow-key selection, same convention as the menu panel.
+    @State private var selection: Clip.ID?
 
     private var visible: [Clip] {
         guard !filter.isEmpty else { return model.store.clips }
@@ -13,6 +14,8 @@ public struct HistoryView: View {
 
     private var pinned: [Clip] { visible.filter(\.pinned) }
     private var recent: [Clip] { visible.filter { !$0.pinned } }
+    /// Display order flattened — arrow nav walks this list.
+    private var navList: [Clip] { pinned + recent }
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -50,21 +53,50 @@ public struct HistoryView: View {
                         : "Try a different search.")
                 )
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 1, pinnedViews: .sectionHeaders) {
-                        if !pinned.isEmpty {
-                            clipSection("Pinned", pinned)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 1, pinnedViews: .sectionHeaders) {
+                            if !pinned.isEmpty {
+                                clipSection("Pinned", pinned)
+                            }
+                            if !recent.isEmpty {
+                                clipSection(pinned.isEmpty ? nil : "Recent", recent)
+                            }
                         }
-                        if !recent.isEmpty {
-                            clipSection(pinned.isEmpty ? nil : "Recent", recent)
-                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .onChange(of: selection) { _, sel in
+                        if let sel { proxy.scrollTo(sel, anchor: .center) }
+                    }
                 }
             }
         }
         .frame(minWidth: 460, minHeight: 360)
+        .background(KeyNavHelper(
+            onArrow: { moveSelection($0) },
+            onReturn: {
+                if let c = navList.first(where: { $0.id == effectiveSelection }) {
+                    model.pasteIntoFrontApp(c)
+                }
+            },
+            hasSelection: { !navList.isEmpty },
+            onEscape: {
+                if filter.isEmpty { return false }
+                filter = ""
+                return true
+            }))
+        .onChange(of: filter) { _, _ in selection = nil }
+    }
+
+    /// Effective row highlight: the explicit selection, or the top row.
+    private var effectiveSelection: Clip.ID? { selection ?? navList.first?.id }
+
+    private func moveSelection(_ delta: Int) {
+        let ids = navList.map(\.id)
+        guard !ids.isEmpty else { return }
+        let cur = ids.firstIndex(of: effectiveSelection ?? "") ?? (delta > 0 ? -1 : ids.count)
+        selection = ids[min(ids.count - 1, max(0, cur + delta))]
     }
 
     private func clipSection(_ title: String?, _ clips: [Clip]) -> some View {
@@ -137,12 +169,13 @@ public struct HistoryView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
-            .background(hovered == clip.id ? OBTheme.insetFill : .clear,
+            .background(effectiveSelection == clip.id ? OBTheme.insetFill : .clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { inside in hovered = inside ? clip.id : nil }
+        .onHover { inside in if inside { selection = clip.id } }
+        .id(clip.id)
         .contextMenu {
             Button("Paste into current app") { model.pasteIntoFrontApp(clip) }
             Button("Copy again") { copyAgain(clip) }

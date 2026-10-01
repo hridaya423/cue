@@ -26,6 +26,10 @@ find -H ".build/$CONFIG" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP/Conte
 # model's venv to speak /v1/systemone.
 cp Scripts/laya_server.py "$APP/Contents/Resources/"
 
+# App icon (generated: `swift Scripts/make_icon.swift build/Cue.iconset`
+# then `iconutil -c icns` — regenerate if the mark changes).
+cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -35,6 +39,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key><string>Cue</string>
     <key>CFBundleExecutable</key><string>Cue</string>
     <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleIconName</key><string>AppIcon</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>LSUIElement</key><true/>

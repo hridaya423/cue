@@ -6,13 +6,21 @@ import SwiftUI
 public struct MenuBarView: View {
     var model: AppModel
     @State private var filter = ""
-    @State private var hovered: Clip.ID?
+    /// Hover and arrow keys share one selection — moving the mouse picks
+    /// a row, ↑↓ walk from there, Return pastes it.
+    @State private var selection: Clip.ID?
+    /// Search takes focus on open — the panel is type-to-filter from the
+    /// first keystroke, like a launcher.
+    @FocusState private var searchFocused: Bool
 
     private var visibleClips: [Clip] {
         let clips = model.store.clips
         guard !filter.isEmpty else { return clips }
         return clips.filter { $0.preview.localizedCaseInsensitiveContains(filter) }
     }
+
+    /// The rows actually rendered — nav and ⌘N shortcuts operate on this.
+    private var navClips: [Clip] { Array(visibleClips.prefix(10)) }
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -27,6 +35,33 @@ public struct MenuBarView: View {
             footer
         }
         .frame(width: 330)
+        .background(KeyNavHelper(
+            onArrow: { moveSelection($0) },
+            onReturn: { if let c = selectedClip { model.pasteIntoFrontApp(c) } },
+            hasSelection: { selectedClip != nil },
+            onEscape: {
+                if filter.isEmpty { return false }
+                filter = ""
+                return true
+            }))
+        .onChange(of: filter) { _, _ in selection = nil }
+        .task { searchFocused = true }
+    }
+
+    /// The row Return acts on — explicit selection, else the top match.
+    private var selectedClip: Clip? {
+        selection.flatMap { id in navClips.first { $0.id == id } } ?? navClips.first
+    }
+
+    /// Effective row highlight: the explicit selection, or the top row so
+    /// Return's target is always visible.
+    private var effectiveSelection: Clip.ID? { selection ?? navClips.first?.id }
+
+    private func moveSelection(_ delta: Int) {
+        let ids = navClips.map(\.id)
+        guard !ids.isEmpty else { return }
+        let cur = ids.firstIndex(of: effectiveSelection ?? "") ?? (delta > 0 ? -1 : ids.count)
+        selection = ids[min(ids.count - 1, max(0, cur + delta))]
     }
 
     // MARK: - Header
@@ -96,6 +131,7 @@ public struct MenuBarView: View {
             TextField("Search clips", text: $filter)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
+                .focused($searchFocused)
             if !filter.isEmpty {
                 Button { filter = "" } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -141,15 +177,20 @@ public struct MenuBarView: View {
             // Explicit height: a ScrollView collapses to zero inside the
             // auto-sizing MenuBarExtra window — the content must size itself.
             let rows = min(visibleClips.count, 10)
-            ScrollView {
-                LazyVStack(spacing: 1) {
-                    ForEach(Array(visibleClips.prefix(10).enumerated()), id: \.element.id) { i, clip in
-                        clipRow(clip, index: i)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 1) {
+                        ForEach(Array(navClips.enumerated()), id: \.element.id) { i, clip in
+                            clipRow(clip, index: i)
+                        }
                     }
+                    .padding(.horizontal, 6)
                 }
-                .padding(.horizontal, 6)
+                .frame(height: min(CGFloat(rows) * 45 + 8, 320))
+                .onChange(of: selection) { _, sel in
+                    if let sel { proxy.scrollTo(sel, anchor: .center) }
+                }
             }
-            .frame(height: min(CGFloat(rows) * 45 + 8, 320))
         }
     }
 
@@ -188,13 +229,14 @@ public struct MenuBarView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
-            .background(hovered == clip.id ? OBTheme.insetFill : .clear,
+            .background(effectiveSelection == clip.id ? OBTheme.insetFill : .clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { inside in hovered = inside ? clip.id : nil }
+        .onHover { inside in if inside { selection = clip.id } }
         .accessibilityLabel("Paste \(clip.preview)")
+        .id(clip.id)
         .modifier(RowShortcut(index: index))
     }
 
