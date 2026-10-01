@@ -67,6 +67,22 @@ public final class AppModel {
                 self.open(id: w)
             }
         }
+        // `CUE_DEMO_PICKER=1` shows the full picker once — same purpose.
+        if ProcessInfo.processInfo.environment["CUE_DEMO_PICKER"] != nil {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(800))
+                let cands = ["Standup moved to 10", "mira@example.com",
+                             "https://typesafe.ai/docs", "call me at +1 415 555 0117",
+                             "invoice approved"].enumerated().map { i, t in
+                    ScoredCandidate(clip: Clip(text: t, kind: .text,
+                                               sourceApp: ["Slack", "Mail", "Safari", "Messages", "Notes"][i],
+                                               copiedAt: Date().addingTimeInterval(-300.0 * Double(i + 1)),
+                                               pinned: i == 4),
+                                    probability: 0, confidence: 0)
+                }
+                hud.showPicker(candidates: cands, near: nil) { _ in }
+            }
+        }
         // `CUE_DEMO_CHOOSER=1` shows the chooser once near the mouse — a
         // visual-verification hook; practice exercises the same view.
         if ProcessInfo.processInfo.environment["CUE_DEMO_CHOOSER"] != nil {
@@ -250,7 +266,7 @@ public struct CueApp: App {
     public init() {}
 
     public var body: some Scene {
-        MenuBarExtra("Cue", systemImage: "paperclip") {
+        MenuBarExtra("Cue", systemImage: "doc.on.clipboard") {
             // First access happens inside body evaluation (MainActor),
             // which is where AppModel builds the whole object graph.
             MenuBarView(model: AppModel.shared)

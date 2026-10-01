@@ -223,8 +223,19 @@ final class PickerState {
 
 // MARK: - Views
 
-private extension Clip {
-    var kindIcon: String { isURL ? "link" : "text.alignleft" }
+/// kbd-styled hint key cap — shared by the chooser and picker footers.
+private struct KbdCap: View {
+    let s: String
+    var body: some View {
+        Text(s)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1.5)
+            .background(.quaternary.opacity(0.6),
+                        in: RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                    .strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
+    }
 }
 
 struct ChooserView: View {
@@ -326,17 +337,7 @@ struct ChooserView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    /// kbd-styled hint key cap.
-    private func hintKey(_ s: String) -> some View {
-        Text(s)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1.5)
-            .background(.quaternary.opacity(0.6),
-                        in: RoundedRectangle(cornerRadius: 3.5, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                    .strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
-    }
+    private func hintKey(_ s: String) -> some View { KbdCap(s: s) }
 
     /// "Paste {value}, from {app}" — the app name only when we have one.
     private func rowLabel(for o: PasteOption) -> String {
@@ -381,24 +382,7 @@ struct PickerView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(state.visible.enumerated()), id: \.offset) { i, cand in
-                            HStack(spacing: 10) {
-                                Image(systemName: cand.clip.kindIcon)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(i == state.selection ? Color.accentColor : .secondary)
-                                    .frame(width: 14)
-                                Text(cand.clip.preview)
-                                    .font(.system(size: 13))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer(minLength: 8)
-                                Text(cand.clip.copiedAt.relativeAge)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(i == state.selection ? Color.accentColor.opacity(0.12) : .clear)
-                            .id(i)
+                            pickerRow(i, cand)
                         }
                     }
                 }
@@ -416,11 +400,19 @@ struct PickerView: View {
                     .padding(.vertical, 16)
             }
 
-            Text("↑↓ choose · ⏎ paste · esc plain paste")
-                .font(.system(size: 10))
-                .foregroundStyle(.quaternary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+            HStack(spacing: 4) {
+                KbdCap(s: "↑↓")
+                Text("choose")
+                KbdCap(s: "⏎")
+                Text("paste")
+                Spacer()
+                KbdCap(s: "esc")
+                Text("plain paste")
+            }
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
         }
         .frame(width: 420)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -428,6 +420,33 @@ struct PickerView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color(nsColor: OBTheme.separatorNS).opacity(0.8), lineWidth: 0.5)
         )
+    }
+
+    private func pickerRow(_ i: Int, _ cand: ScoredCandidate) -> some View {
+        let sel = i == state.selection
+        return HStack(spacing: 10) {
+            SourceAppIcon(clip: cand.clip, size: 15)
+                .frame(width: 15)
+            Text(cand.clip.preview)
+                .font(.system(size: 13))
+                .foregroundStyle(sel ? OBTheme.highlightText : .primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 8)
+            if cand.clip.pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(sel ? OBTheme.highlightText.opacity(0.7) : OBTheme.foldEdge)
+            }
+            Text(cand.clip.copiedAt.relativeAge)
+                .font(.system(size: 11))
+                .foregroundStyle(sel ? OBTheme.highlightText.opacity(0.7)
+                                     : Color(nsColor: .tertiaryLabelColor))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(sel ? OBTheme.highlight : .clear)
+        .id(i)
     }
 }
 

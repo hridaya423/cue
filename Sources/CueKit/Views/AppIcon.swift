@@ -15,6 +15,13 @@ struct SourceAppIcon: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: size, height: size)
+        } else {
+            // No recorded bundle ID (pre-tracking clips, hand-added) —
+            // a content glyph beats a blank tile.
+            Image(systemName: clip.isURL ? "link" : "doc.text")
+                .font(.system(size: size * 0.62, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: size, height: size)
         }
     }
 

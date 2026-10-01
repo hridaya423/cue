@@ -108,5 +108,5 @@ model servers detached under launchd so the sweep survives the shell;
 `Scripts/eval_run.sh <tag> --endpoint …` runs one detached pass.
 
 `Sources/CueKit/` is the whole app; `Sources/Cue/main.swift` is a
-trampoline. Menu bar → "Run self-check" drives a real end-to-end paste into a
+trampoline. Settings → General → Run self-check drives a real end-to-end paste into a
 live text field and asserts the result. See `AGENTS.md` for invariants.
