@@ -9,7 +9,10 @@ public struct HistoryView: View {
 
     private var visible: [Clip] {
         guard !filter.isEmpty else { return model.store.clips }
-        return model.store.clips.filter { $0.preview.localizedCaseInsensitiveContains(filter) }
+        return model.store.clips.filter {
+            $0.preview.localizedCaseInsensitiveContains(filter)
+                || $0.sourceApp.localizedCaseInsensitiveContains(filter)
+        }
     }
 
     private var pinned: [Clip] { visible.filter(\.pinned) }

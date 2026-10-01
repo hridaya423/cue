@@ -44,7 +44,7 @@ in `Sources/CueKit`:
 - `Controller.swift` — `SmartPasteController` orchestrates; `FeedbackTracker` learns from ⌘Z-within-2.5s.
 - `HUD.swift` — non-activating panels near the caret: chooser (clickable rows, 1–9/arrows/Return to pick, Esc or ⌘V = plain paste, source-app icons, caret-anchored entrance), full picker, deciding dots after 250 ms, status toast, nothing-fits notice.
 - `ModelRoles.swift` + `Resources/benchmarks.json` — frozen benchmark numbers drive catalog rank/reason via a pure `roles(from:)` formula (quality = resolved − 2·wrong; accuracy → speed → balance; latency budget required).
-- `Views/` — menu bar, history, settings (+hotkey recorder), onboarding; `ProviderPicker.swift` is the shared provider/model UI.
+- `Views/` — `MenuBar.swift` is the `.window`-style MenuBarExtra panel (search, clip list, mode chips, icon footer); history, settings (+hotkey recorder), onboarding; `ProviderPicker.swift` is the shared provider/model UI; `KeyNav.swift` bridges ↑↓/Return/Esc into both list views (a TextField eats arrows). `Scripts/make_icon.swift` regenerates `Resources/AppIcon.icns`.
 - `SelfCheck.swift` — real end-to-end check: labeled NSTextField → real capture → real decision → real pasteboard write → assert the field got the pasteboard's content. An LSUIElement app can't self-activate from a synthetic driver, so the keystroke leg rides `PasteExecutor.onWouldPost` → real `performKeyEquivalent`/`paste:` on the field editor (the HID-tap leg only ever reaches the system-frontmost app). Settings → General → Run self-check.
 
 ## Invariants — don't break these

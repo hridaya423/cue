@@ -16,7 +16,10 @@ public struct MenuBarView: View {
     private var visibleClips: [Clip] {
         let clips = model.store.clips
         guard !filter.isEmpty else { return clips }
-        return clips.filter { $0.preview.localizedCaseInsensitiveContains(filter) }
+        return clips.filter {
+            $0.preview.localizedCaseInsensitiveContains(filter)
+                || $0.sourceApp.localizedCaseInsensitiveContains(filter)
+        }
     }
 
     /// The rows actually rendered — nav and ⌘N shortcuts operate on this.
