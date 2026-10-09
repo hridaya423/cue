@@ -23,5 +23,16 @@ submit() { # label dir cmd...
 # call — it starves every other server's latency. Opt in: JEVLITE=1.
 [ "${JEVLITE:-0}" = 1 ] && [ -d "$M/jevlite" ] && submit jevlite "$M/jevlite/repo" env PATH=$HOME/.local/bin:/opt/homebrew/bin:$PATH uv run python serve.py --host 127.0.0.1 --port 8768
 
+# The new decision-model families (recommended variants only) — same shim argv
+# as ModelManager: <script> <port> <hfRepo> <serveModel> <snapshot>.
+[ -d "$M/jevstyle" ]  && submit jevstyle "$M/jevstyle" "$M/jevstyle/venv/bin/jev-style" serve --host 127.0.0.1 --port 8770 --release 0.8b
+[ -d "$M/jevk5" ]     && submit jevk5 "$M/jevk5" "$M/jevk5/venv/bin/python" "$R/Scripts/jevk5_server.py" 8771 alibiserikbay/JevK5-GGUF jevk5-4b-v0.3-Q8_0.gguf ""
+[ -d "$M/startlux" ]  && submit startlux "$M/startlux" "$M/startlux/venv/bin/python" "$R/Scripts/startlux_server.py" 8772 startlux-models/StartLux-Decision-4B StartLux-Decision-4B "$M/startlux/snapshot"
+[ -d "$M/vsr" ]       && submit vsr "$M/vsr" "$M/vsr/venv/bin/python" "$R/Scripts/vsr_server.py" 8773 vllm-sr/Decision-2.0-Eos-0.8B Decision-2.0-Eos-0.8B ""
+[ -d "$M/clef" ]      && submit clef "$M/clef" "$M/clef/venv/bin/python" "$R/Scripts/clef_server.py" 8774 Cloudflare/clef-flash clef-flash "$M/clef/snapshot"
+[ -d "$M/intern" ]    && submit intern "$M/intern" "$M/intern/venv/bin/python" "$R/Scripts/intern_server.py" 8775 internlm/Intern-Decision-2B Intern-Decision-2B "$M/intern/snapshot"
+[ -d "$M/jevnano" ]   && submit jevnano "$M/jevnano" "$M/jevnano/venv/bin/python" "$R/Scripts/nano_server.py" 8776 tasksource/tasksource-jev-nano-v1 tasksource-jev-nano-v1 ""
+[ -d "$M/s1lite" ]    && submit s1lite "$M/s1lite/repo" env PATH=$HOME/.local/bin:/opt/homebrew/bin:$PATH uv run systemone-lite --model dwidlee/systemone-lite-0.5b --port 8778
+
 sleep 3
 launchctl list | grep cue.eval || true

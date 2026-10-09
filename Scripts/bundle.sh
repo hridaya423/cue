@@ -22,9 +22,9 @@ cp ".build/$CONFIG/Cue" "$APP/Contents/MacOS/"
 # find never descends and the resource bundle silently doesn't ship.
 find -H ".build/$CONFIG" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
 
-# The Laya server shim — the managed-model installer runs this inside the
-# model's venv to speak /v1/systemone.
-cp Scripts/laya_server.py "$APP/Contents/Resources/"
+# The model-server shims — the managed-model installer runs the matching
+# script inside each shim-kind model's venv to speak /v1/systemone.
+cp Scripts/*_server.py "$APP/Contents/Resources/"
 
 # App icon (generated: `swift Scripts/make_icon.swift build/Cue.iconset`
 # then `iconutil -c icns` — regenerate if the mark changes).

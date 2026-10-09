@@ -60,8 +60,13 @@ public struct ModelSpec: Sendable, Identifiable {
         /// serve = `uv run <serveArgv>` inside the repo.
         case repo(url: String, syncExtras: [String], installArgv: [[String]],
                   serveArgv: [String], env: [String: String])
-        /// `uv venv` + `uv pip install <pkgs>`; serve = our bundled shim script.
-        case shim(packages: [String])
+        /// `uv venv` + `uv pip install <pkgs>`; serve = a bundled shim script
+        /// (`Scripts/<script>`, or the app Resources copy) run as
+        /// `python <script> {port} {weights} {serveModel} {snapshot}`.
+        /// `downloadsSnapshot` additionally runs `hf download {weights}` into
+        /// `snapshot/` and installs the snapshot's `requirements.txt` first —
+        /// for models whose serving code ships inside the weight repo.
+        case shim(packages: [String], script: String, downloadsSnapshot: Bool)
     }
 
     /// Resolved (model, variant) pair with the endpoint the client should hit.
@@ -78,7 +83,11 @@ public struct ModelSpec: Sendable, Identifiable {
 public enum ModelCatalog {
     /// The ranked list. Rank drives ordering in "Other local models" and the
     /// recommended badge; kev/laya also get top-level rows in the picker.
-    public static let all: [ModelSpec] = ModelRoles.apply(to: [kev, laya, von, jevons, jevlite, decider])
+    public static let all: [ModelSpec] = ModelRoles.apply(to: [
+        kev, laya, von, jevons, jevlite,
+        jevstyle, jevk5, startlux, vsr, clef, intern, jevnano,
+        decider, pplxdecider, s1lite, gliner, scorer, openthai,
+    ])
 
     /// kev and laya are top-level picker rows; everything else is "Others".
     public static var others: [ModelSpec] {
@@ -124,12 +133,15 @@ public enum ModelCatalog {
             WeightSpec(id: "kev-9b", paramsLabel: "9B", diskLabel: "~19 GB", ramLabel: "~20 GB",
                        accuracy: 0.9, speed: 0.3,
                        serveModel: "kev-latest", hfRepo: "jaredpalmer/kev-9b"),
+            WeightSpec(id: "kev-27b", paramsLabel: "27B", diskLabel: "~55 GB", ramLabel: "~56 GB",
+                       accuracy: 0.95, speed: 0.1,
+                       serveModel: "kev-latest", hfRepo: "jaredpalmer/kev-27b"),
         ])
 
     public static let laya = ModelSpec(
         id: "laya", title: "Laya", rank: 2, reason: "Best balance", defaultPort: 8765,
         blurb: "Under 1 GB, about 300 ms per decision, and rarely wrong (3% in Cue’s benchmark).",
-        kind: .shim(packages: ["laya"]),
+        kind: .shim(packages: ["laya"], script: "laya_server.py", downloadsSnapshot: false),
         support: .supported,
         variants: [
             WeightSpec(id: "laya-en", paramsLabel: "421M", diskLabel: "~900 MB", ramLabel: "~1 GB",
@@ -192,15 +204,237 @@ public enum ModelCatalog {
     /// flash-linear-attention is a hard dep and Triton has no macOS wheels —
     /// listed so the catalog is complete, but not installable here.
     public static let decider = ModelSpec(
-        id: "decider", title: "Decider", rank: 6, reason: "Largest local", defaultPort: 8769,
-        blurb: "1.9B Qwen3.5 full fine-tune, one-pass typed decisions.",
-        kind: .venv(packages: ["decider @ git+https://github.com/Mapika/decider"],
+        id: "decider", title: "Decider", rank: 13, reason: "Full fine-tunes", defaultPort: 8769,
+        blurb: "Mapika's full fine-tune family — one-pass typed decisions, well calibrated.",
+        kind: .venv(packages: ["decider-ai[serve]"],
                     serveArgv: ["python", "-m", "decider.serve", "--port", "{port}"]),
-        support: .unsupported("needs NVIDIA/Triton kernels"),
+        support: .unsupported("needs NVIDIA/Triton kernels (flash-linear-attention)"),
         variants: [
             WeightSpec(id: "decider-2b", paramsLabel: "1.9B", diskLabel: "~4 GB", ramLabel: "~5 GB",
                        accuracy: 0.8, speed: 0.4,
                        serveModel: "decider-2b", hfRepo: "Mapika/decider-2b"),
+            WeightSpec(id: "decider-4b", paramsLabel: "4B", diskLabel: "~8 GB", ramLabel: "~9 GB",
+                       accuracy: 0.85, speed: 0.3,
+                       serveModel: "decider-4b", hfRepo: "Mapika/decider-4b"),
+            WeightSpec(id: "decider-35b", paramsLabel: "35B-A3B", diskLabel: "~70 GB", ramLabel: "~72 GB",
+                       accuracy: 0.9, speed: 0.15,
+                       serveModel: "decider-35b-a3b", hfRepo: "Mapika/decider-35b-a3b"),
+        ])
+
+    /// Cloudflare's Clef decision models — the joint-schema-head readout ships
+    /// inside the weight snapshot (`joint_schema_model.py`, `systemone()`).
+    /// Apache-2.0, multimodal, fully System One-compatible.
+    public static let clef = ModelSpec(
+        id: "clef", title: "Clef", rank: 10, reason: "Cloudflare", defaultPort: 8774,
+        blurb: "Cloudflare's decision models — multimodal, Jev-native contract, top of the Decision Index.",
+        kind: .shim(packages: ["torch>=2.8", "transformers>=5.10.2", "safetensors",
+                               "pillow", "accelerate"],
+                    script: "clef_server.py", downloadsSnapshot: true),
+        support: .experimental("transformers 5 + joint schema head; MPS path unverified"),
+        variants: [
+            WeightSpec(id: "clef-flash", paramsLabel: "9B", diskLabel: "~19 GB", ramLabel: "~20 GB",
+                       recommended: true, accuracy: 0.85, speed: 0.3,
+                       serveModel: "clef-flash", hfRepo: "Cloudflare/clef-flash"),
+            WeightSpec(id: "clef-27b", paramsLabel: "27B", diskLabel: "~54 GB", ramLabel: "~56 GB",
+                       accuracy: 0.9, speed: 0.1,
+                       serveModel: "clef", hfRepo: "Cloudflare/clef"),
+        ])
+
+    /// StartLux-Decision — ships its own /v1/systemone server in the weight
+    /// repo (`startlux_decision.server`) and auto-selects an MLX backend on
+    /// Apple Silicon. Weights are CC BY-NC-4.0: non-commercial use only.
+    public static let startlux = ModelSpec(
+        id: "startlux", title: "StartLux", rank: 8, reason: "Native server", defaultPort: 8772,
+        blurb: "Ships its own /v1/systemone server with an Apple Silicon MLX backend. Weights are non-commercial (CC BY-NC).",
+        kind: .shim(packages: [], script: "startlux_server.py", downloadsSnapshot: true),
+        support: .experimental("CC BY-NC-4.0 weights — non-commercial use only"),
+        variants: [
+            WeightSpec(id: "slx-4b", paramsLabel: "4B", diskLabel: "~8 GB", ramLabel: "~9 GB",
+                       recommended: true, accuracy: 0.8, speed: 0.5,
+                       serveModel: "StartLux-Decision-4B", hfRepo: "startlux-models/StartLux-Decision-4B"),
+            WeightSpec(id: "slx-2b", paramsLabel: "2B", diskLabel: "~4 GB", ramLabel: "~5 GB",
+                       accuracy: 0.72, speed: 0.65,
+                       serveModel: "StartLux-Decision-2B", hfRepo: "startlux-models/StartLux-Decision-2B"),
+            WeightSpec(id: "slx-0.8b", paramsLabel: "0.8B", diskLabel: "~1.6 GB", ramLabel: "~2.5 GB",
+                       accuracy: 0.6, speed: 0.85,
+                       serveModel: "StartLux-Decision-0.8B", hfRepo: "startlux-models/StartLux-Decision-0.8B"),
+            WeightSpec(id: "slx-9b", paramsLabel: "9B", diskLabel: "~18 GB", ramLabel: "~19 GB",
+                       accuracy: 0.85, speed: 0.35,
+                       serveModel: "StartLux-Decision-9B", hfRepo: "startlux-models/StartLux-Decision-9B"),
+        ])
+
+    /// Jev-Style v3 — chaoliangUNSW's calibrated 0.8B/2B line. The `jev-style`
+    /// pip package ships a complete server (`jev-style serve`) that picks MLX
+    /// on Apple Silicon. The most turnkey new install.
+    public static let jevstyle = ModelSpec(
+        id: "jevstyle", title: "Jev-Style", rank: 6, reason: "Best on-device", defaultPort: 8770,
+        blurb: "Calibrated 0.8B/2B decision models — MLX-first on Apple Silicon, long-context, 51 languages.",
+        kind: .venv(packages: ["jev-style[mlx]"],
+                    serveArgv: ["jev-style", "serve", "--host", "127.0.0.1",
+                                "--port", "{port}", "--release", "{serveModel}"]),
+        support: .experimental("solid pip install path; accuracy unmeasured in Cue's benchmark"),
+        variants: [
+            WeightSpec(id: "jevstyle-0.8b", paramsLabel: "0.8B", diskLabel: "~0.8 GB", ramLabel: "~1.5 GB",
+                       recommended: true, accuracy: 0.7, speed: 0.9,
+                       serveModel: "0.8b", hfRepo: "chaoliangUNSW/Jev-Style-0.8B-Decision-v3"),
+            WeightSpec(id: "jevstyle-2b", paramsLabel: "2B", diskLabel: "~2 GB", ramLabel: "~3 GB",
+                       accuracy: 0.75, speed: 0.7,
+                       serveModel: "2b", hfRepo: "chaoliangUNSW/Jev-Style-2B-Decision-v3"),
+        ])
+
+    /// JevK5 — 2nd of 76 systems on JevBench v1.4, the top open entrant.
+    /// On Mac the documented path is llama.cpp serving a GGUF plus the
+    /// `jevk5` package's logprob client — our shim spawns both halves.
+    public static let jevk5 = ModelSpec(
+        id: "jevk5", title: "JevK5", rank: 7, reason: "Top open model", defaultPort: 8771,
+        blurb: "2nd of 76 on JevBench v1.4 — the strongest open decision model that runs on a laptop.",
+        kind: .shim(packages: ["jevk5 @ git+https://github.com/allebee/jevk5@v0.3.2", "llama-cpp-python"],
+                    script: "jevk5_server.py", downloadsSnapshot: false),
+        support: .experimental("llama.cpp + stdlib client; shim spawns the backend"),
+        variants: [
+            WeightSpec(id: "jevk5-4b", paramsLabel: "4B", diskLabel: "~4.5 GB", ramLabel: "~6 GB",
+                       recommended: true, accuracy: 0.85, speed: 0.5,
+                       serveModel: "jevk5-4b-v0.3-Q8_0.gguf", hfRepo: "alibiserikbay/JevK5-GGUF"),
+            WeightSpec(id: "jevk5-4b-q4", paramsLabel: "4B Q4", diskLabel: "~2.7 GB", ramLabel: "~4 GB",
+                       accuracy: 0.8, speed: 0.6,
+                       serveModel: "jevk5-4b-v0.3-Q4_K_M.gguf", hfRepo: "alibiserikbay/JevK5-GGUF"),
+            WeightSpec(id: "jevk5-2b", paramsLabel: "2B", diskLabel: "~2 GB", ramLabel: "~3 GB",
+                       accuracy: 0.7, speed: 0.75,
+                       serveModel: "jevk5-2b-v0.2-Q8_0.gguf", hfRepo: "alibiserikbay/JevK5-GGUF"),
+            WeightSpec(id: "jevk5-9b", paramsLabel: "9B", diskLabel: "~9.5 GB", ramLabel: "~11 GB",
+                       accuracy: 0.9, speed: 0.3,
+                       serveModel: "jevk5-9b-v0.3.3-Q8_0.gguf", hfRepo: "alibiserikbay/JevK5-GGUF"),
+        ])
+
+    /// vLLM Semantic Router's Decision 2.0 line — transformers weights whose
+    /// remote code exposes `model.system_one()` directly.
+    public static let vsr = ModelSpec(
+        id: "vsr", title: "Decision 2.0", rank: 9, reason: "vLLM router", defaultPort: 8773,
+        blurb: "vLLM Semantic Router's Decision 2.0 — five sizes, one-pass typed decisions.",
+        kind: .shim(packages: ["torch>=2.8", "transformers>=5.17", "safetensors", "accelerate"],
+                    script: "vsr_server.py", downloadsSnapshot: false),
+        support: .experimental("trust_remote_code weights; CPU/MPS path unverified"),
+        variants: [
+            WeightSpec(id: "vsr-eos", paramsLabel: "0.8B", diskLabel: "~1.6 GB", ramLabel: "~3 GB",
+                       recommended: true, accuracy: 0.7, speed: 0.85,
+                       serveModel: "Decision-2.0-Eos-0.8B", hfRepo: "vllm-sr/Decision-2.0-Eos-0.8B"),
+            WeightSpec(id: "vsr-sol", paramsLabel: "2B", diskLabel: "~4 GB", ramLabel: "~5 GB",
+                       accuracy: 0.75, speed: 0.65,
+                       serveModel: "Decision-2.0-Sol-2B", hfRepo: "vllm-sr/Decision-2.0-Sol-2B"),
+            WeightSpec(id: "vsr-kai", paramsLabel: "0.6B", diskLabel: "~1.3 GB", ramLabel: "~2 GB",
+                       accuracy: 0.6, speed: 0.9,
+                       serveModel: "Decision-2.0-Kai-0.6B", hfRepo: "vllm-sr/Decision-2.0-Kai-0.6B"),
+            WeightSpec(id: "vsr-nox", paramsLabel: "4B", diskLabel: "~8 GB", ramLabel: "~9 GB",
+                       accuracy: 0.8, speed: 0.45,
+                       serveModel: "Decision-2.0-Nox-4B", hfRepo: "vllm-sr/Decision-2.0-Nox-4B"),
+            WeightSpec(id: "vsr-lux", paramsLabel: "9B", diskLabel: "~18 GB", ramLabel: "~19 GB",
+                       accuracy: 0.85, speed: 0.3,
+                       serveModel: "Decision-2.0-Lux-9B", hfRepo: "vllm-sr/Decision-2.0-Lux-9B"),
+        ])
+
+    /// Intern-Decision (internlm) — multimodal, A–Z symbol readout, ships an
+    /// in-repo `DecisionEngine` that answers one Jev request at a time.
+    public static let intern = ModelSpec(
+        id: "intern", title: "Intern-Decision", rank: 11, reason: "Multimodal", defaultPort: 8775,
+        blurb: "InternLM's structured decision line — multimodal, calibrated, Apache-2.0.",
+        kind: .shim(packages: ["torch>=2.8", "transformers>=5.8", "pillow",
+                               "safetensors", "accelerate"],
+                    script: "intern_server.py", downloadsSnapshot: true),
+        support: .experimental("in-repo inference.py; CUDA-leaning but device-portable"),
+        variants: [
+            WeightSpec(id: "intern-2b", paramsLabel: "2B", diskLabel: "~4 GB", ramLabel: "~5 GB",
+                       recommended: true, accuracy: 0.75, speed: 0.55,
+                       serveModel: "Intern-Decision-2B", hfRepo: "internlm/Intern-Decision-2B"),
+            WeightSpec(id: "intern-0.8b", paramsLabel: "0.8B", diskLabel: "~1.7 GB", ramLabel: "~2.5 GB",
+                       accuracy: 0.65, speed: 0.75,
+                       serveModel: "Intern-Decision-0.8B", hfRepo: "internlm/Intern-Decision-0.8B"),
+            WeightSpec(id: "intern-4b", paramsLabel: "4B", diskLabel: "~8 GB", ramLabel: "~9 GB",
+                       accuracy: 0.8, speed: 0.4,
+                       serveModel: "Intern-Decision-4B", hfRepo: "internlm/Intern-Decision-4B"),
+        ])
+
+    /// tasksource-jev-nano — a 149M ColBERT (PyLate) decision model. Tiny and
+    /// CPU-fast; weakest on knowledge/reasoning but honest about it.
+    public static let jevnano = ModelSpec(
+        id: "jevnano", title: "jev-nano", rank: 12, reason: "Smallest", defaultPort: 8776,
+        blurb: "149M ColBERT decision model — tiny and CPU-fast; weakest on reasoning.",
+        kind: .shim(packages: ["pylate"], script: "nano_server.py", downloadsSnapshot: false),
+        support: .experimental("score answers synthesized from ordered levels"),
+        variants: [
+            WeightSpec(id: "jev-nano-v1", paramsLabel: "149M", diskLabel: "~600 MB", ramLabel: "~1 GB",
+                       recommended: true, accuracy: 0.4, speed: 0.95,
+                       serveModel: "tasksource-jev-nano-v1", hfRepo: "tasksource/tasksource-jev-nano-v1"),
+        ])
+
+    /// Perplexity's pplx-decider — the 27B line that tops the public Decision
+    /// Index. Its autojev runtime is CUDA-only and wants ~49 GiB of weights.
+    public static let pplxdecider = ModelSpec(
+        id: "pplxdecider", title: "pplx-decider", rank: 14, reason: "Perplexity", defaultPort: 8777,
+        blurb: "Perplexity's 27B decider — the strongest open decision model. Needs a datacenter GPU.",
+        kind: .venv(packages: [], serveArgv: []),
+        support: .unsupported("CUDA-only autojev runtime; ~49 GiB bf16 weights"),
+        variants: [
+            WeightSpec(id: "pplx-decider-v1.1", paramsLabel: "27B", diskLabel: "~54 GB", ramLabel: "~50 GB",
+                       accuracy: 0.9, speed: 0.15,
+                       serveModel: "pplx-decider-v1.1-27b", hfRepo: "perplexity-ai/pplx-decider-v1.1-27b"),
+            WeightSpec(id: "pplx-decider-v1", paramsLabel: "27B", diskLabel: "~54 GB", ramLabel: "~50 GB",
+                       accuracy: 0.85, speed: 0.15,
+                       serveModel: "pplx-decider-v1-27b", hfRepo: "perplexity-ai/pplx-decider-v1-27b"),
+        ])
+
+    /// systemone-lite — a 0.5B hobbyist System One model with its own runtime
+    /// (`systemone-lite` CLI). MIT.
+    public static let s1lite = ModelSpec(
+        id: "s1lite", title: "systemone-lite", rank: 15, reason: "Tiny runtime", defaultPort: 8778,
+        blurb: "0.5B Qwen2.5 hobbyist System One — option-token scoring, MIT.",
+        kind: .repo(url: "https://github.com/fritzprix/systemone-lite.git",
+                    syncExtras: [], installArgv: [],
+                    serveArgv: ["systemone-lite", "--model", "{weights}", "--port", "{port}"],
+                    env: [:]),
+        support: .experimental("unverified upstream; niche 0.5B quality"),
+        variants: [
+            WeightSpec(id: "s1lite-0.5b", paramsLabel: "0.5B", diskLabel: "~1 GB", ramLabel: "~1.5 GB",
+                       recommended: true, accuracy: 0.5, speed: 0.8,
+                       serveModel: "systemone-lite-0.5b", hfRepo: "dwidlee/systemone-lite-0.5b"),
+        ])
+
+    /// GLiNER2.5-Decide — Fastino's 340M routing classifier. Fast and good on
+    /// fast-decisions, but it emits only the winning label, not a distribution.
+    public static let gliner = ModelSpec(
+        id: "gliner", title: "GLiNER-Decide", rank: 16, reason: "Classifier", defaultPort: 8779,
+        blurb: "Fastino's 340M label classifier — fast on routing tasks, but argmax-only output.",
+        kind: .venv(packages: [], serveArgv: []),
+        support: .unsupported("returns the winning label only — the chooser needs calibrated probabilities"),
+        variants: [
+            WeightSpec(id: "gliner-decide", paramsLabel: "340M", diskLabel: "~700 MB", ramLabel: "~1 GB",
+                       accuracy: 0.5, speed: 0.95,
+                       serveModel: "gliner-decide", hfRepo: "fastino/GLiNER2.5-Decide"),
+        ])
+
+    /// pngwn's System One scorer — Qwen3.5-4B with a sequence-classification
+    /// head. CC BY-NC-4.0 weights and no published server.
+    public static let scorer = ModelSpec(
+        id: "scorer", title: "S1 Scorer", rank: 17, reason: "Scoring head", defaultPort: 8780,
+        blurb: "Qwen3.5-4B + sequence-classification head — single-pass System One scorer.",
+        kind: .venv(packages: [], serveArgv: []),
+        support: .unsupported("CC BY-NC-4.0 weights; no published server"),
+        variants: [
+            WeightSpec(id: "scorer-4b", paramsLabel: "4B", diskLabel: "~8 GB", ramLabel: "~9 GB",
+                       accuracy: 0.7, speed: 0.4,
+                       serveModel: "s1-scorer", hfRepo: "pngwn/system-one-qwen3.5-4b-scorer"),
+        ])
+
+    /// OpenThai-SystemOne — a Thai+English decision model on Qwen3.5-0.8B.
+    /// Real System One contract; only an Ollama build is published so far.
+    public static let openthai = ModelSpec(
+        id: "openthai", title: "OpenThai S1", rank: 18, reason: "Thai", defaultPort: 8781,
+        blurb: "Thai+English System One on Qwen3.5-0.8B — strong for Thai apps.",
+        kind: .venv(packages: [], serveArgv: []),
+        support: .unsupported("Thai-optimized; only an Ollama build is published"),
+        variants: [
+            WeightSpec(id: "openthai-0.8b", paramsLabel: "0.8B", diskLabel: "~1.6 GB", ramLabel: "~2.5 GB",
+                       accuracy: 0.6, speed: 0.7,
+                       serveModel: "OpenThai-SystemOne", hfRepo: "iapp/OpenThai-SystemOne"),
         ])
 }
 
@@ -263,12 +497,25 @@ public final class ModelManager {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
             switch spec.kind {
-            case .venv(let packages, _), .shim(let packages):
+            case .venv(let packages, _), .shim(let packages, _, _):
                 try await runStep(spec.id, "creating venv",
                                   uvArgv(["venv", dir.appendingPathComponent("venv").path, "--python", "3.12"]), cwd: dir)
                 let py = dir.appendingPathComponent("venv/bin/python").path
+                var pkgs = packages
+                if spec.downloadsSnapshot { pkgs.append("huggingface_hub") }
                 try await runStep(spec.id, "installing packages",
-                                  uvArgv(["pip", "install", "--python", py] + packages), cwd: dir)
+                                  uvArgv(["pip", "install", "--python", py] + pkgs), cwd: dir)
+                if spec.downloadsSnapshot {
+                    let snapshot = dir.appendingPathComponent("snapshot")
+                    try await runStep(spec.id, "downloading weights",
+                                      [dir.appendingPathComponent("venv/bin/hf").path,
+                                       "download", resolved.variant.hfRepo, "--local-dir", snapshot.path], cwd: dir)
+                    let reqs = snapshot.appendingPathComponent("requirements.txt")
+                    if FileManager.default.fileExists(atPath: reqs.path) {
+                        try await runStep(spec.id, "installing model requirements",
+                                          uvArgv(["pip", "install", "--python", py, "-r", reqs.path]), cwd: dir)
+                    }
+                }
             case .repo(let url, let extras, let extraSteps, _, _):
                 let repoDir = dir.appendingPathComponent("repo")
                 if !FileManager.default.fileExists(atPath: repoDir.path) {
@@ -451,12 +698,14 @@ public final class ModelManager {
         let sub = { (s: String) in
             s.replacing("{port}", with: "\(r.spec.defaultPort)")
              .replacing("{weights}", with: r.variant.hfRepo)
+             .replacing("{serveModel}", with: r.variant.serveModel)
+             .replacing("{snapshot}", with: self.modelDir(r.spec.id).appendingPathComponent("snapshot").path)
         }
         switch r.spec.kind {
         case .venv(_, let argv): return argv.map(sub)
         case .repo(_, _, _, let argv, _): return argv.map(sub)
-        case .shim:
-            return ["python", Self.shimPath, "{port}"].map(sub)
+        case .shim(_, let script, _):
+            return ["python", Self.shimPath(script), "{port}", "{weights}", "{serveModel}", "{snapshot}"].map(sub)
         }
     }
     private func serveEnv(_ spec: ModelSpec) -> [String: String] {
@@ -464,13 +713,14 @@ public final class ModelManager {
         return [:]
     }
 
-    /// The bundled shim: inside a .app it lives in Resources; during
+    /// A bundled shim: inside a .app it lives in Resources; during
     /// development it lives in Scripts/ next to Package.swift.
-    static var shimPath: String {
-        if let p = Bundle.main.path(forResource: "laya_server", ofType: "py") { return p }
+    static func shimPath(_ script: String) -> String {
+        let name = (script as NSString).deletingPathExtension
+        if let p = Bundle.main.path(forResource: name, ofType: "py") { return p }
         let dev = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Scripts/laya_server.py")
+            .appendingPathComponent("Scripts/\(script)")
         return dev.path
     }
 
@@ -596,5 +846,9 @@ extension ModelSpec {
     var syncExtras: [String] {
         if case .repo(_, let extras, _, _, _) = kind { return extras }
         return []
+    }
+    var downloadsSnapshot: Bool {
+        if case .shim(_, _, let snapshot) = kind { return snapshot }
+        return false
     }
 }
