@@ -283,14 +283,15 @@ public enum ModelCatalog {
         ])
 
     /// JevK5 — 2nd of 76 systems on JevBench v1.4, the top open entrant.
-    /// On Mac the documented path is llama.cpp serving a GGUF plus the
-    /// `jevk5` package's logprob client — our shim spawns both halves.
+    /// On Mac the documented path is llama.cpp + GGUF; our shim loads it
+    /// in-process via llama_cpp and reuses the package's calibration math.
     public static let jevk5 = ModelSpec(
         id: "jevk5", title: "JevK5", rank: 7, reason: "Top open model", defaultPort: 8771,
         blurb: "2nd of 76 on JevBench v1.4 — the strongest open decision model that runs on a laptop.",
-        kind: .shim(packages: ["jevk5 @ git+https://github.com/allebee/jevk5@v0.3.2", "llama-cpp-python"],
+        kind: .shim(packages: ["jevk5 @ git+https://github.com/allebee/jevk5@v0.3.2",
+                               "llama-cpp-python", "numpy", "huggingface_hub"],
                     script: "jevk5_server.py", downloadsSnapshot: false),
-        support: .experimental("llama.cpp + stdlib client; shim spawns the backend"),
+        support: .experimental("in-process llama.cpp GGUF; Metal on Apple Silicon"),
         variants: [
             WeightSpec(id: "jevk5-4b", paramsLabel: "4B", diskLabel: "~4.5 GB", ramLabel: "~6 GB",
                        recommended: true, accuracy: 0.85, speed: 0.5,

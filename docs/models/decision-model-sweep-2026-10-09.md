@@ -21,7 +21,7 @@ plus dozens of community fine-tunes.
 | Entry | Weights (license) | Serve path | Tier |
 |---|---|---|---|
 | `jevstyle` | chaoliangUNSW/Jev-Style-{0.8B,2B}-Decision-v3 (Apache-2.0) | `pip install jev-style[mlx]` + `jev-style serve --release …` — native CLI, MLX-first | experimental |
-| `jevk5` | alibiserikbay/JevK5-GGUF (Apache-2.0) — #2 of 76 on JevBench v1.4 | `llama-cpp-python` backend spawned by `Scripts/jevk5_server.py` + `jevk5` logprob client (v0.3.2) | experimental |
+| `jevk5` | alibiserikbay/JevK5-GGUF (Apache-2.0) — #2 of 76 on JevBench v1.4 | in-process `llama_cpp.Llama` (Metal) in `Scripts/jevk5_server.py` + `jevk5` package's calibration helpers (v0.3.2) | experimental |
 | `startlux` | startlux-models/StartLux-Decision-{0.8B,2B,4B,9B} (CC BY-NC-4.0 — non-commercial) | repo ships `startlux_decision.server` — auto MLX backend on Apple Silicon | experimental |
 | `vsr` | vllm-sr/Decision-2.0-{Eos-0.8B,Kai-0.6B,Sol-2B,Nox-4B,Lux-9B} (Apache-2.0) | `AutoModel.from_pretrained(…, trust_remote_code=True).system_one()` via `Scripts/vsr_server.py` | experimental |
 | `clef` | Cloudflare/clef-flash 9B, Cloudflare/clef 27B (Apache-2.0) — multimodal, DI-top | snapshot ships `joint_schema_model.systemone()`; `Scripts/clef_server.py` wraps it (mps→cpu) | experimental |
@@ -145,6 +145,43 @@ catalogue entry would be dishonest:
   tiny-aya, Hunyuan-smalls, gpt-oss-20b, Hermes-3B, Ling-mini, MiniCPM-VL,
   DeepSeek-R1-Distill-1.5B…) — generate text; they cannot produce the
   calibrated per-option distribution the contract requires.
+
+## Live verification (2026-10-09, this Mac)
+
+Each family below was installed into a scratch venv/repo and answered a real
+Cue-shaped `POST /v1/systemone` (state with two clips, `choice` + `noul`
+questions; `score` where applicable) with HTTP 200:
+
+| Family | Backend | Result |
+|---|---|---|
+| `jevstyle` | MLX (`jev-style[mlx]` + `jev-style serve`) | choice c1 p=0.68, noul, score+legend. No `/health` route — `waitForHealth` accepts any 2xx–4xx as bound |
+| `jevnano` | torch (`pylate`, 149M) | `/health` ok; choice c1 p=0.86, noul, score |
+| `s1lite` | `.repo` → `uv sync` → `systemone-lite` CLI | `/health` ok; choice/noul answered (distribution ~tied — contract verified, not accuracy) |
+| `vsr` | torch MPS (`AutoModel.system_one()`) | choice c1 p=0.96 calibrated |
+| `jevk5` | in-process `llama_cpp.Llama` (Metal) | choice c1 p=0.97, noul — strongest open result |
+| `startlux` | repo's own `startlux_decision.server`, auto-MLX | choice c1 p=0.76 in ~200 ms |
+| `intern` | torch MPS (`DecisionEngine.predict`) | choice c1 p=0.84, noul, temperature-scaled |
+
+`clef` is the only installable family **not** live-tested: clef-flash 9B is
+~19 GB and exceeded available disk. Its shim was verified against the real
+snapshot source (`load_release_model` signature + `systemone()` output
+shape), not against a running model.
+
+Bugs found and fixed *by* the live runs (none visible statically):
+
+- **vllm-sr/Decision-2.0**: the vendored runtime sha256-verifies the bundle
+  against `MODEL_MANIFEST.json`, and the Oct-8 card-metadata commit broke HEAD
+  (README hash ≠ manifest). `vsr_server.py` now picks the newest
+  self-consistent revision automatically (verified: `3594047d` loads clean).
+- **vsr dtype**: the runtime rejects any `torch_dtype` — numerics are
+  runtime-fixed; `device` is a load-time kwarg, not a post-load `.to()`.
+- **jevk5**: `llama_cpp.server`'s OpenAI routes don't match `JevK5GGUF`'s
+  native `/tokenize`+`/completion` calls, so the shim was rewritten to do the
+  option-letter readout in-process (`Llama.eval` + `scores` +
+  `logits_to_logprobs`, requiring `logits_all=True`), reusing the jevk5
+  package's own prompt/spread/calibration helpers.
+- **jevk5 temps**: the `v0.3.3` 9B GGUF has its own calibration pair
+  (1.316/1.05) — prefix-matched before the `v0.3` entry it also matches.
 
 ## Provenance notes
 
