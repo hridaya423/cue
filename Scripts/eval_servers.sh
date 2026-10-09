@@ -33,6 +33,11 @@ submit() { # label dir cmd...
 [ -d "$M/intern" ]    && submit intern "$M/intern" "$M/intern/venv/bin/python" "$R/Scripts/intern_server.py" 8775 internlm/Intern-Decision-2B Intern-Decision-2B "$M/intern/snapshot"
 [ -d "$M/jevnano" ]   && submit jevnano "$M/jevnano" "$M/jevnano/venv/bin/python" "$R/Scripts/nano_server.py" 8776 tasksource/tasksource-jev-nano-v1 tasksource-jev-nano-v1 ""
 [ -d "$M/s1lite" ]    && submit s1lite "$M/s1lite/repo" env PATH=$HOME/.local/bin:/opt/homebrew/bin:$PATH uv run systemone-lite --model dwidlee/systemone-lite-0.5b --port 8778
+[ -d "$M/minicpm" ]   && submit minicpm "$M/minicpm/repo" env PATH=$HOME/.local/bin:/opt/homebrew/bin:$PATH uv run python scripts/serve.py --model models/system-one-minicpm5-2b-q8 --temperature temperature-minicpm5-2b-q8.json --host 127.0.0.1 --port 8782
+[ -d "$M/s1qwen" ]    && submit s1qwen "$M/s1qwen/repo" env PATH=$HOME/.local/bin:/opt/homebrew/bin:$PATH uv run python scripts/serve.py --model models/qwen3-0.6b --adapter adapters/system-one-qwen3-0.6b --temperature adapters/system-one-qwen3-0.6b/temperature.json --host 127.0.0.1 --port 8783
+[ -d "$M/jevk5lite" ] && submit jevk5lite "$M/jevk5lite" "$M/jevk5lite/venv/bin/python" "$R/Scripts/lite_server.py" 8784 alibiserikbay/JevK5-Lite JevK5-Lite ""
+[ -d "$M/kenning" ]   && submit kenning "$M/kenning" "$M/kenning/venv/bin/python" "$R/Scripts/kenning_server.py" 8788 systemonedev/kenning-large-v0.6 kenning-large-v0.6 ""
+[ -d "$M/truetype" ]  && submit truetype "$M/truetype" "$M/truetype/venv/bin/python" "$R/Scripts/truetype_server.py" 8789 stephenlb/system-one-model system-one-model ""
 
 sleep 3
 launchctl list | grep cue.eval || true

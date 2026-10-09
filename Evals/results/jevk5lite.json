@@ -1,0 +1,15 @@
+{
+  "jevk5lite" : {
+    "cases" : 110,
+    "chooser_on_unambiguous_pct" : 38,
+    "exact" : 72,
+    "lucky_guess" : 1,
+    "miss" : 9,
+    "p50_ms" : 331,
+    "p95_ms" : 483,
+    "resolved_chooser" : 23,
+    "resolved_pct" : 86,
+    "wrong" : 5,
+    "wrong_pct" : 5
+  }
+}

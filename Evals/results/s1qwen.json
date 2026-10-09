@@ -1,0 +1,15 @@
+{
+  "s1qwen" : {
+    "cases" : 110,
+    "chooser_on_unambiguous_pct" : 47,
+    "exact" : 60,
+    "lucky_guess" : 10,
+    "miss" : 7,
+    "p50_ms" : 234,
+    "p95_ms" : 384,
+    "resolved_chooser" : 28,
+    "resolved_pct" : 80,
+    "wrong" : 5,
+    "wrong_pct" : 5
+  }
+}

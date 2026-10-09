@@ -110,3 +110,22 @@ Gotchas: run one heavy server load at a time (jevlite loading starves the
 GPU and turns every other model's call into a 2.5 s timeout); after a reboot,
 warm laya with a few requests first (its first-shape kernel compile blocks
 its single-threaded shim).
+
+## 2026-10-10 — new catalogue families (live CueEval, 303 recorded responses each)
+
+Four more catalogue families benchmarked end-to-end through `JevClient`
+(raw answers in `*-raw.jsonl`):
+
+| model | resolved | wrong | p50 | p95 | quality |
+|---|---|---|---|---|---|
+| minicpm (2B q8, MLX) | 92% | 3% | 693 | 1101 | 0.86 — best quality measured; over the p50 budget, no role |
+| kenning v0.6 (400M CE, MPS) | 88% | 6% | 452 | 1106 | 0.76 — in budget; over-picks email on no-fit cases |
+| jevk5lite (437M CPU) | 86% | 5% | 331 | 483 | 0.76 — in budget |
+| s1qwen (0.6B LoRA, MLX) | 80% | 5% | 234 | 384 | 0.70 — in budget |
+
+Roles unchanged: kev stays Most accurate (0.82) + Best balance, von stays
+Fastest (215 ms, resolved ≥ 80 gate passes at 88%).
+
+Watch out: an earlier jevk5lite run reported 72%/0%/14 ms — that was a
+stale broken shim 500ing every call (fail-closed fallbacks scoring, zero
+records written). Verify `*-raw.jsonl` line counts before trusting a row.

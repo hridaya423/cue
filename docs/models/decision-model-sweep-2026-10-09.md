@@ -192,8 +192,61 @@ Bugs found and fixed *by* the live runs (none visible statically):
 - `ModelRoles` roles (Most accurate / Best balance / Fastest) remain driven
   exclusively by `Resources/benchmarks.json` — new models cannot take a role
   until measured.
-- Gated check: none of the catalogued repos are gated (`gemma-3n-E4B-it`,
-  used by jevlite's *adapter* family vagmi/jev-lite, is the only gated repo
-  in the landscape and stays out).
+- Gated check: `stephenlb/system-one-model` is the only catalogued gated
+  repo (Gemma licence — install requires an HF login that has accepted it,
+  declared on the entry). `gemma-3n-E4B-it`, used by jevlite's *adapter*
+  family vagmi/jev-lite, also stays out.
 - `runanywhere/decision-models-stable-fork` is a curated mirror of the models
   above, not a separate family.
+
+## Second sweep — 2026-10-10 (community tail + live CueEval)
+
+The first sweep's untested-community list was walked end to end. Verdicts:
+
+**Catalogued and live-verified:**
+
+- `mpuig/system-one-minicpm5-2b-q8` — MIT, MLX-native 2B, per-primitive
+  temperatures. Served by `github.com/mpuig/system-one` (`.repo` kind).
+  The engine fail-closes on a temperature-identity check, so the install
+  prunes every file not in the backbone manifest — including the adapter
+  dir left by `hf download`. CueEval: **92%/3%, p50 693 ms** — highest
+  measured quality, over the p50 budget so no role.
+- `mpuig/system-one-qwen3-0.6b` — MIT, Qwen3-0.6B + published adapter hash
+  (verified `c3e1c86f…`). Same `.repo` serving repo. CueEval **80%/5%,
+  p50 234 ms** — in budget, no role.
+- `alibiserikbay/JevK5-Lite` — Apache-2.0 437M DeBERTa-v3 CPU classifier.
+  `lite_server.py` maps each question's options onto a calibrated label
+  head. Two real fixes found only by benchmarking: a stale dev server
+  500ing every call produced a plausible-but-fake 72%/0%/14 ms run with
+  **zero recorded answers** (`*-raw.jsonl` is the audit trail — always
+  check it), and `classify` now batches all heads into one encoder pass
+  with fp32/threads=4 (186 ms warm; the card's bf16 tip is x86-only and
+  is 7× slower on M-series). Real CueEval: **86%/5%, p50 331 ms**.
+- `systemonedev/kenning-{large-v0.5,large-v0.6,xl-v0.6}` — Apache-2.0, the
+  deepest open family: contract-native wire format, shipped per-type
+  temperatures, two engines (cross-encoder and a Qwen3-1.7B decoder that
+  escalates to deliberate reasoning and beats Clef on agent decisions).
+  The builder's own servers bind 0.0.0.0 on CPU, so `kenning_server.py`
+  drives `Kenning`/`KenningXL` directly on loopback with MPS. CueEval
+  (v0.6): **88%/6%, p50 452 ms** — in budget, no role; it over-picks an
+  email option on some nothing-fits cases.
+- `stephenlb/system-one-model` — Gemma-licensed 12B whose LM head is a
+  26-logit decision head; one pass answers all primitives. Ships
+  `model.system_one()` via trust_remote_code; `truetype_server.py` is the
+  same thin shim shape as vsr. ~24 GB and HF-gated — experimental.
+
+**Reviewed and excluded (documented, not catalogued):**
+
+- `oomu/OOMU-SystemOne-0.6B-GGUF` — Apache-2.0 but a *fixed* 256-token
+  decision schema for OOMU's own desktop policies; can't take caller
+  criteria. Same exclusion as DavidHatley's five-head mini.
+- `abidlabs/jev-typed-decisions-causal-0.6b` — Apache-2.0 LoRA on
+  Qwen3-0.6B-Base; a reproduction experiment (in-training acc 0.62) with
+  no published serving path. Letter-readout could reuse the jevk5 shim
+  shape if it ever gets a runtime.
+- `MSGEncrypted/ocf-typed-decisions-mbert-base` — Apache-2.0 164M
+  ModernBERT typed-decision head (0.751 on the typed-decisions test);
+  but the card's runtime (`packages.classify`/`models_ai.classify`) is
+  not published. Checkpoint only.
+- `hotchpotch/bekko-system-one-v0-*` stays `.unsupported`: the card
+  explicitly leaves the licence "to be finalized".

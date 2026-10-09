@@ -85,8 +85,8 @@ public enum ModelCatalog {
     /// recommended badge; kev/laya also get top-level rows in the picker.
     public static let all: [ModelSpec] = ModelRoles.apply(to: [
         kev, laya, von, jevons, jevlite,
-        jevstyle, jevk5, startlux, vsr, clef, intern, jevnano,
-        decider, pplxdecider, s1lite, gliner, scorer, openthai,
+        jevstyle, jevk5, startlux, vsr, clef, intern, jevnano, minicpm, s1qwen,
+        decider, pplxdecider, s1lite, jevk5lite, kenning, truetype, gliner, scorer, openthai, bekko,
     ])
 
     /// kev and laya are top-level picker rows; everything else is "Others".
@@ -204,7 +204,7 @@ public enum ModelCatalog {
     /// flash-linear-attention is a hard dep and Triton has no macOS wheels —
     /// listed so the catalog is complete, but not installable here.
     public static let decider = ModelSpec(
-        id: "decider", title: "Decider", rank: 13, reason: "Full fine-tunes", defaultPort: 8769,
+        id: "decider", title: "Decider", rank: 15, reason: "Full fine-tunes", defaultPort: 8769,
         blurb: "Mapika's full fine-tune family — one-pass typed decisions, well calibrated.",
         kind: .venv(packages: ["decider-ai[serve]"],
                     serveArgv: ["python", "-m", "decider.serve", "--port", "{port}"]),
@@ -367,10 +367,68 @@ public enum ModelCatalog {
                        serveModel: "tasksource-jev-nano-v1", hfRepo: "tasksource/tasksource-jev-nano-v1"),
         ])
 
+    /// system-one MiniCPM — mpuig's MIT-licensed System One rebuild: 2B MiniCPM5
+    /// fused LoRA at 8-bit MLX, per-primitive calibrated temperatures, and a
+    /// native `/v1/systemone` server (`scripts/serve.py`) in the repo.
+    public static let minicpm = ModelSpec(
+        id: "minicpm", title: "system-one MiniCPM", rank: 13, reason: "MIT + calibrated", defaultPort: 8782,
+        blurb: "MIT 2B MLX decision model — per-primitive temperature calibration, 73% out-of-family.",
+        kind: .repo(url: "https://github.com/mpuig/system-one.git",
+                    syncExtras: [],
+                    // The engine fail-closes when the model dir's file hashes
+                    // don't match the temperature artifact's backbone_files —
+                    // `hf download` leaves adapter/, .cache/ and temperature.json
+                    // behind, so we move the artifact out and prune the rest.
+                    installArgv: [
+                        ["hf", "download", "mpuig/system-one-minicpm5-2b-q8", "--local-dir", "models/system-one-minicpm5-2b-q8"],
+                        ["cp", "models/system-one-minicpm5-2b-q8/temperature.json", "temperature-minicpm5-2b-q8.json"],
+                        ["python", "-c", "import os, shutil; d='models/system-one-minicpm5-2b-q8'; [shutil.rmtree(d+'/'+p, ignore_errors=True) for p in ('adapter', '.cache')]; os.path.exists(d+'/temperature.json') and os.remove(d+'/temperature.json')"],
+                    ],
+                    serveArgv: ["python", "scripts/serve.py",
+                                "--model", "models/system-one-minicpm5-2b-q8",
+                                "--temperature", "temperature-minicpm5-2b-q8.json",
+                                "--host", "127.0.0.1", "--port", "{port}"],
+                    env: [:]),
+        support: .experimental("native server; thresholds calibrated in-family — see card's shift warning"),
+        variants: [
+            WeightSpec(id: "minicpm-2b", paramsLabel: "2B", diskLabel: "~2.5 GB", ramLabel: "~4 GB",
+                       recommended: true, accuracy: 0.73, speed: 0.85,
+                       serveModel: "models/system-one-minicpm5-2b-q8", hfRepo: "mpuig/system-one-minicpm5-2b-q8"),
+        ])
+
+    /// system-one Qwen3 — the same MIT recipe as a rank-16 LoRA on Qwen3-0.6B;
+    /// volume tier: ~1.4 GB of base+adapter.
+    public static let s1qwen = ModelSpec(
+        id: "s1qwen", title: "system-one Qwen3", rank: 14, reason: "MIT + smallest MLX", defaultPort: 8783,
+        blurb: "MIT 0.6B MLX decision model — LoRA on Qwen3, calibrated, the lightest System One build.",
+        kind: .repo(url: "https://github.com/mpuig/system-one.git",
+                    syncExtras: [],
+                    // Same fail-closed identity check as minicpm: the base dir
+                    // must hash down to exactly Qwen3-0.6B's seven core files —
+                    // no LICENSE/README/.cache. The adapter dir's extras are
+                    // fine; only adapters.safetensors is hashed there.
+                    installArgv: [
+                        ["hf", "download", "Qwen/Qwen3-0.6B", "--local-dir", "models/qwen3-0.6b"],
+                        ["hf", "download", "mpuig/system-one-qwen3-0.6b", "--local-dir", "adapters/system-one-qwen3-0.6b"],
+                        ["python", "-c", "import os, shutil; d='models/qwen3-0.6b'; [os.remove(d+'/'+f) for f in ('LICENSE','README.md') if os.path.exists(d+'/'+f)]; [shutil.rmtree(p+'/.cache', ignore_errors=True) for p in (d, 'adapters/system-one-qwen3-0.6b')]"],
+                    ],
+                    serveArgv: ["python", "scripts/serve.py",
+                                "--model", "models/qwen3-0.6b",
+                                "--adapter", "adapters/system-one-qwen3-0.6b",
+                                "--temperature", "adapters/system-one-qwen3-0.6b/temperature.json",
+                                "--host", "127.0.0.1", "--port", "{port}"],
+                    env: [:]),
+        support: .experimental("volume tier: 66% out-of-family per card; same shift warning applies"),
+        variants: [
+            WeightSpec(id: "s1qwen-0.6b", paramsLabel: "0.6B", diskLabel: "~1.4 GB", ramLabel: "~2 GB",
+                       recommended: true, accuracy: 0.66, speed: 0.9,
+                       serveModel: "models/qwen3-0.6b", hfRepo: "mpuig/system-one-qwen3-0.6b"),
+        ])
+
     /// Perplexity's pplx-decider — the 27B line that tops the public Decision
     /// Index. Its autojev runtime is CUDA-only and wants ~49 GiB of weights.
     public static let pplxdecider = ModelSpec(
-        id: "pplxdecider", title: "pplx-decider", rank: 14, reason: "Perplexity", defaultPort: 8777,
+        id: "pplxdecider", title: "pplx-decider", rank: 16, reason: "Perplexity", defaultPort: 8777,
         blurb: "Perplexity's 27B decider — the strongest open decision model. Needs a datacenter GPU.",
         kind: .venv(packages: [], serveArgv: []),
         support: .unsupported("CUDA-only autojev runtime; ~49 GiB bf16 weights"),
@@ -386,7 +444,7 @@ public enum ModelCatalog {
     /// systemone-lite — a 0.5B hobbyist System One model with its own runtime
     /// (`systemone-lite` CLI). MIT.
     public static let s1lite = ModelSpec(
-        id: "s1lite", title: "systemone-lite", rank: 15, reason: "Tiny runtime", defaultPort: 8778,
+        id: "s1lite", title: "systemone-lite", rank: 17, reason: "Tiny runtime", defaultPort: 8778,
         blurb: "0.5B Qwen2.5 hobbyist System One — option-token scoring, MIT.",
         kind: .repo(url: "https://github.com/fritzprix/systemone-lite.git",
                     syncExtras: [], installArgv: [],
@@ -402,7 +460,7 @@ public enum ModelCatalog {
     /// GLiNER2.5-Decide — Fastino's 340M routing classifier. Fast and good on
     /// fast-decisions, but it emits only the winning label, not a distribution.
     public static let gliner = ModelSpec(
-        id: "gliner", title: "GLiNER-Decide", rank: 16, reason: "Classifier", defaultPort: 8779,
+        id: "gliner", title: "GLiNER-Decide", rank: 19, reason: "Classifier", defaultPort: 8779,
         blurb: "Fastino's 340M label classifier — fast on routing tasks, but argmax-only output.",
         kind: .venv(packages: [], serveArgv: []),
         support: .unsupported("returns the winning label only — the chooser needs calibrated probabilities"),
@@ -415,7 +473,7 @@ public enum ModelCatalog {
     /// pngwn's System One scorer — Qwen3.5-4B with a sequence-classification
     /// head. CC BY-NC-4.0 weights and no published server.
     public static let scorer = ModelSpec(
-        id: "scorer", title: "S1 Scorer", rank: 17, reason: "Scoring head", defaultPort: 8780,
+        id: "scorer", title: "S1 Scorer", rank: 20, reason: "Scoring head", defaultPort: 8780,
         blurb: "Qwen3.5-4B + sequence-classification head — single-pass System One scorer.",
         kind: .venv(packages: [], serveArgv: []),
         support: .unsupported("CC BY-NC-4.0 weights; no published server"),
@@ -428,7 +486,7 @@ public enum ModelCatalog {
     /// OpenThai-SystemOne — a Thai+English decision model on Qwen3.5-0.8B.
     /// Real System One contract; only an Ollama build is published so far.
     public static let openthai = ModelSpec(
-        id: "openthai", title: "OpenThai S1", rank: 18, reason: "Thai", defaultPort: 8781,
+        id: "openthai", title: "OpenThai S1", rank: 21, reason: "Thai", defaultPort: 8781,
         blurb: "Thai+English System One on Qwen3.5-0.8B — strong for Thai apps.",
         kind: .venv(packages: [], serveArgv: []),
         support: .unsupported("Thai-optimized; only an Ollama build is published"),
@@ -436,6 +494,90 @@ public enum ModelCatalog {
             WeightSpec(id: "openthai-0.8b", paramsLabel: "0.8B", diskLabel: "~1.6 GB", ramLabel: "~2.5 GB",
                        accuracy: 0.6, speed: 0.7,
                        serveModel: "OpenThai-SystemOne", hfRepo: "iapp/OpenThai-SystemOne"),
+        ])
+
+    /// JevK5-Lite — 437M DeBERTa-v3 CPU label classifier from the JevK5
+    /// project. Generic heads, not a typed-decision runtime: our shim maps
+    /// each question to a single-label head and reads calibrated
+    /// probabilities back. Preview-1 quality per its own card.
+    public static let jevk5lite = ModelSpec(
+        id: "jevk5lite", title: "JevK5-Lite", rank: 18, reason: "CPU classifier", defaultPort: 8784,
+        blurb: "437M CPU classifier — calibrated labels adapted to the contract; preview quality.",
+        kind: .shim(packages: ["jevk5[lite] @ git+https://github.com/allebee/jevk5@v0.3.1"],
+                    script: "lite_server.py", downloadsSnapshot: false),
+        support: .experimental("generic label heads, not typed-decision-native; card says preview"),
+        variants: [
+            WeightSpec(id: "jevk5-lite", paramsLabel: "437M", diskLabel: "~1.7 GB", ramLabel: "~2 GB",
+                       recommended: true, accuracy: 0.5, speed: 0.85,
+                       serveModel: "JevK5-Lite", hfRepo: "alibiserikbay/JevK5-Lite"),
+        ])
+
+    /// Kenning — systemone-builder's Apache-2.0 family, the most complete
+    /// open System One implementation found in the sweep: contract-native
+    /// wire format, per-type temperatures shipped in the weights, and two
+    /// engines. kenning-large-* are cross-encoders (every option scored
+    /// against the state in batched pairs); kenning-xl is a Qwen3-1.7B
+    /// decoder that escalates to a short reasoning trace on hard
+    /// structured questions and beats Clef on agent decisions. The stock
+    /// servers bind 0.0.0.0 on CPU, so the shim drives the model classes
+    /// directly on loopback with MPS.
+    public static let kenning = ModelSpec(
+        id: "kenning", title: "Kenning", rank: 24, reason: "Apache-2.0 native", defaultPort: 8788,
+        blurb: "Cross-encoder / XL decoder — contract-native, calibrated; the deepest Apache-2.0 family in the sweep.",
+        kind: .shim(packages: ["systemone-builder @ git+https://github.com/systemonedev/systemone-builder#subdirectory=backend",
+                               "torch", "transformers", "sentencepiece"],
+                    script: "kenning_server.py", downloadsSnapshot: false),
+        support: .experimental("native contract server via builder shim; cross-encoder cost grows with option count"),
+        variants: [
+            WeightSpec(id: "kenning-v06", paramsLabel: "~400M", diskLabel: "~1.6 GB", ramLabel: "~2 GB",
+                       recommended: true, accuracy: 0.7, speed: 0.6,
+                       serveModel: "kenning-large-v0.6", hfRepo: "systemonedev/kenning-large-v0.6"),
+            WeightSpec(id: "kenning-v05", paramsLabel: "435M", diskLabel: "~1.7 GB", ramLabel: "~2 GB",
+                       accuracy: 0.68, speed: 0.6,
+                       serveModel: "kenning-large-v0.5", hfRepo: "systemonedev/kenning-large-v0.5"),
+            WeightSpec(id: "kenning-xl-v06", paramsLabel: "1.7B", diskLabel: "~3.4 GB", ramLabel: "~4 GB",
+                       accuracy: 0.72, speed: 0.45,
+                       serveModel: "kenning-xl-v0.6", hfRepo: "systemonedev/kenning-xl-v0.6"),
+        ])
+
+    /// stephenlb/system-one-model — a Gemma-4-12B whose LM head was swapped
+    /// for a 26-logit decision head: one forward pass answers every question
+    /// type with real probabilities. The publisher benchmarked on Apple
+    /// Silicon (117 ms p50). Heavy (~24 GB bf16) and gated behind the Gemma
+    /// licence, but contract-native and genuinely local.
+    public static let truetype = ModelSpec(
+        id: "truetype", title: "System One (Gemma)", rank: 23, reason: "12B single-pass", defaultPort: 8789,
+        blurb: "Gemma-4-12B with a decision head — one pass, all primitives; 24 GB, HF-gated.",
+        kind: .shim(packages: ["transformers>=5.17", "torch", "accelerate", "sentencepiece", "protobuf"],
+                    script: "truetype_server.py", downloadsSnapshot: false),
+        support: .experimental("~24 GB download; gated repo — HF login plus Gemma licence required"),
+        variants: [
+            WeightSpec(id: "truetype-12b", paramsLabel: "12B", diskLabel: "~24 GB", ramLabel: "~26 GB",
+                       recommended: true, accuracy: 0.85, speed: 0.5,
+                       serveModel: "system-one-model", hfRepo: "stephenlb/system-one-model"),
+        ])
+
+    /// bekko-system-one — hotchpotch's 17M/68M/400M ModernBERT typed-decision
+    /// family, the smallest native contract models anywhere. S1MB-measured
+    /// (400m: Task Avg 50.6 vs Jev 1.13's 59.6). Listed but not installable:
+    /// the publisher declares the weights+code license "to be finalized" —
+    /// unlicensed weights are all-rights-reserved, so installing them in-app
+    /// would be dishonest.
+    public static let bekko = ModelSpec(
+        id: "bekko", title: "bekko system-one", rank: 22, reason: "Unlicensed", defaultPort: 8785,
+        blurb: "17M–400M native typed-decision models — contract-native, but published without a license.",
+        kind: .venv(packages: [], serveArgv: []),
+        support: .unsupported("weights published with no license (card: 'to be finalized')"),
+        variants: [
+            WeightSpec(id: "bekko-400m", paramsLabel: "400M", diskLabel: "~1.5 GB", ramLabel: "~1.5 GB",
+                       accuracy: 0.65, speed: 0.9,
+                       serveModel: "bekko-system-one-v0-400m", hfRepo: "hotchpotch/bekko-system-one-v0-400m"),
+            WeightSpec(id: "bekko-68m", paramsLabel: "68M", diskLabel: "~300 MB", ramLabel: "~500 MB",
+                       accuracy: 0.5, speed: 0.95,
+                       serveModel: "bekko-system-one-v0-68m", hfRepo: "hotchpotch/bekko-system-one-v0-68m"),
+            WeightSpec(id: "bekko-17m", paramsLabel: "17M", diskLabel: "~80 MB", ramLabel: "~200 MB",
+                       accuracy: 0.35, speed: 0.98,
+                       serveModel: "bekko-system-one-v0-17m", hfRepo: "hotchpotch/bekko-system-one-v0-17m"),
         ])
 }
 
