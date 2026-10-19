@@ -20,7 +20,8 @@ public struct ModelBenchmark: Codable, Sendable, Equatable {
     /// undo plus a re-paste, a miss costs one keypress.
     public var quality: Double { resolved - 2 * wrong }
     /// The engine's gates: inside the latency budget, and not leaning on the chooser for clear cases.
-    public var meetsGates: Bool { p50 <= 500 && p95 <= 1200 && (chooser ?? 0) <= 0.2 }
+    /// Speed is judged on p95: most pastes never ask the model, so the median is 0 ms for every model.
+    public var meetsGates: Bool { p95 <= 1200 && (chooser ?? 0) <= 0.2 }
 }
 
 public enum ModelRole: String, Sendable, CaseIterable {
@@ -48,9 +49,9 @@ public enum ModelRoles {
     /// Roles in display order (the first is Recommended). Assigned in that
     /// order and each model holds at most one role:
     /// - Most accurate: highest `quality`, ties → fewer wrong pastes.
-    /// - Fastest: lowest p50 with resolved ≥ 80%.
-    /// - Best balance: highest `quality − 0.10·p50/500 − 0.05·diskGB/2`.
-    /// Only models that meet the gates (p50 ≤ 500, p95 ≤ 1200, chooser on clear ≤ 20%) qualify.
+    /// - Fastest: lowest p95 with resolved ≥ 80%.
+    /// - Best balance: highest `quality − 0.10·p95/1000 − 0.05·diskGB/2`.
+    /// Only models that meet the gates (p95 ≤ 1200, chooser on clear ≤ 20%) qualify.
     public static func roles(from data: [ModelBenchmark]) -> [(role: ModelRole, bench: ModelBenchmark)] {
         var pool = data.filter(\.meetsGates)
         var out: [(ModelRole, ModelBenchmark)] = []
@@ -63,13 +64,13 @@ public enum ModelRoles {
         // break a real tie.
         func q(_ b: ModelBenchmark) -> Double { (b.quality * 1000).rounded() }
         take(.mostAccurate, pool.max { (q($0), -$0.wrong) < (q($1), -$1.wrong) })
-        take(.fastest, pool.filter { $0.resolved >= 0.8 }.min { $0.p50 < $1.p50 })
+        take(.fastest, pool.filter { $0.resolved >= 0.8 }.min { $0.p95 < $1.p95 })
         take(.bestBalance, pool.max { balance($0) < balance($1) })
         return ModelRole.allCases.compactMap { r in out.first { $0.0 == r } }
     }
 
     static func balance(_ b: ModelBenchmark) -> Double {
-        b.quality - 0.10 * b.p50 / 500 - 0.05 * b.diskGB / 2
+        b.quality - 0.10 * b.p95 / 1000 - 0.05 * b.diskGB / 2
     }
 
     public static func role(of modelID: String) -> ModelRole? {

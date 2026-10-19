@@ -1,195 +1,311 @@
 import SwiftUI
 
-/// The menu-bar panel (.window MenuBarExtra): status header, searchable
-/// recent clips, mode chips, and a quiet icon footer. Click a clip to
-/// paste it into the app you were in.
+/// The menu-bar panel (.window MenuBarExtra). Maps the app's state onto `MenuPanel`, which only draws plain values,
+/// so the panel renders off-screen without the live app (hotkeys, clipboard monitor, model server).
 public struct MenuBarView: View {
     var model: AppModel
-    @State private var filter = ""
-    /// Hover and arrow keys share one selection — moving the mouse picks
-    /// a row, ↑↓ walk from there, Return pastes it.
-    @State private var selection: Clip.ID?
-    /// Search takes focus on open — the panel is type-to-filter from the
-    /// first keystroke, like a launcher.
-    @FocusState private var searchFocused: Bool
 
-    private var visibleClips: [Clip] {
-        let clips = model.store.clips
+    public var body: some View {
+        MenuPanel(
+            status: status,
+            detail: model.controller.lastAction,
+            clips: model.store.clips,
+            mode: Binding(get: { mode }, set: setMode),
+            paused: Binding(get: { !model.monitor.running },
+                            set: { $0 ? model.monitor.stop() : model.monitor.start() }),
+            actions: MenuPanelActions(
+                paste: { model.pasteIntoFrontApp($0) },
+                togglePin: { model.store.togglePin($0) },
+                remove: { model.store.remove($0) },
+                openHistory: { model.open(id: "history") },
+                openSettings: { model.open(id: "settings") }))
+    }
+
+    private var mode: PasteMode {
+        if model.settings.queueMode { return .queue }
+        return model.settings.triggerMode == .intercept ? .smart : .plain
+    }
+
+    private func setMode(_ mode: PasteMode) {
+        let intercept = mode != .plain
+        model.settings.triggerMode = intercept ? .intercept : .hotkey
+        model.hotkeys.interceptCmdV = intercept
+        model.settings.queueMode = mode == .queue
+        if mode != .queue { model.store.clearQueue() }
+    }
+
+    private var status: PanelStatus {
+        if !model.monitor.running { return .init(.paused, "Paused") }
+        if !model.trusted { return .init(.warning, "Needs Accessibility") }
+        if model.providerStatus.state == .unreachable { return .init(.error, "Model not responding") }
+        switch model.settings.provider {
+        case .off: return .init(.ready, "Ready", note: "smart picks off")
+        case .jevDirect, .jevGateway, .custom: return .init(.ready, "Ready", note: "hosted model")
+        case .local:
+            guard let r = model.selectedLocal else { return .init(.warning, "No model chosen") }
+            let name = "\(r.spec.title) on this Mac"
+            switch model.models.status(of: r.spec.id) {
+            case .running: return .init(.ready, "Ready", note: name)
+            case .starting: return .init(.warning, "Model starting", note: name)
+            case .installing: return .init(.warning, "Installing model", note: name)
+            case .failed: return .init(.error, "Model failed to start", note: name)
+            case .installed: return .init(.warning, "Model not running", note: name)
+            case .notInstalled: return .init(.warning, "Model not installed", note: name)
+            }
+        }
+    }
+}
+
+public enum PasteMode: String, CaseIterable, Sendable {
+    case smart, queue, plain
+
+    var title: String {
+        switch self {
+        case .smart: "Smart"
+        case .queue: "Queue"
+        case .plain: "Plain"
+        }
+    }
+}
+
+public struct PanelStatus: Equatable, Sendable {
+    public enum Tone: Sendable { case ready, warning, error, paused }
+    public var tone: Tone
+    public var title: String
+    public var note: String?
+
+    public init(_ tone: Tone, _ title: String, note: String? = nil) {
+        self.tone = tone
+        self.title = title
+        self.note = note
+    }
+
+    var color: Color {
+        switch tone {
+        case .ready: .green
+        case .warning: .orange
+        case .error: .red
+        case .paused: .gray
+        }
+    }
+}
+
+public struct MenuPanelActions {
+    public var paste: (Clip) -> Void
+    public var togglePin: (Clip) -> Void
+    public var remove: (Clip) -> Void
+    public var openHistory: () -> Void
+    public var openSettings: () -> Void
+}
+
+struct MenuPanel: View {
+    let status: PanelStatus
+    let detail: String?
+    let clips: [Clip]
+    @Binding var mode: PasteMode
+    @Binding var paused: Bool
+    let actions: MenuPanelActions
+
+    @State private var filter = ""
+    /// Hover and arrow keys share one selection; Return pastes it.
+    @State private var selection: Clip.ID?
+    @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    static let recentWindow: TimeInterval = OptionBuilder.freshFor
+    /// Content starts 24 pt from the panel edge; cards, fields and row highlights sit 12 pt in.
+    static let edge: CGFloat = 12
+    static let fill = Color.primary.opacity(0.07)
+    private static let rowHeight: CGFloat = 40
+    private static let maxListHeight: CGFloat = 300
+
+    private var matches: [Clip] {
         guard !filter.isEmpty else { return clips }
         return clips.filter {
-            $0.preview.localizedCaseInsensitiveContains(filter)
-                || $0.sourceApp.localizedCaseInsensitiveContains(filter)
+            $0.text.localizedCaseInsensitiveContains(filter) || $0.sourceApp.localizedCaseInsensitiveContains(filter)
         }
     }
 
-    /// The rows actually rendered — nav and ⌘N shortcuts operate on this.
-    private var navClips: [Clip] { Array(visibleClips.prefix(10)) }
+    /// What arrows, Return and ⌘1–⌘9 walk: the clipboard card first, then the rows, in screen order.
+    private var navClips: [Clip] { Array(matches.prefix(30)) }
+    private var clipboard: Clip? { filter.isEmpty ? clips.first : nil }
+    private var listed: [Clip] { clipboard == nil ? navClips : Array(navClips.dropFirst()) }
+    private var recent: [Clip] { listed.filter { -$0.copiedAt.timeIntervalSinceNow < Self.recentWindow } }
+    private var earlier: [Clip] { listed.filter { -$0.copiedAt.timeIntervalSinceNow >= Self.recentWindow } }
+    private var selected: Clip.ID? { selection ?? navClips.first?.id }
 
-    public var body: some View {
+    var body: some View {
         VStack(spacing: 0) {
             header
-            if !model.store.clips.isEmpty {
-                searchField
-            }
-            clipList
-            Divider().opacity(0.6)
-            controlsRow
-            Divider().opacity(0.6)
+            if !clips.isEmpty { searchField }
+            if let clipboard { clipboardCard(clipboard) }
+            list
+            Divider().opacity(0.5)
+            modeRow
             footer
         }
-        .frame(width: 330)
+        .frame(width: 340)
         .background(KeyNavHelper(
-            onArrow: { moveSelection($0) },
-            onReturn: { if let c = selectedClip { model.pasteIntoFrontApp(c) } },
-            hasSelection: { selectedClip != nil },
+            onArrow: moveSelection,
+            onReturn: { if let c = navClips.first(where: { $0.id == selected }) { actions.paste(c) } },
+            hasSelection: { selected != nil },
             onEscape: {
-                if filter.isEmpty { return false }
+                guard !filter.isEmpty else { return false }
                 filter = ""
                 return true
             }))
         .onChange(of: filter) { _, _ in selection = nil }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: clips.map(\.id))
         .task { searchFocused = true }
     }
-
-    /// The row Return acts on — explicit selection, else the top match.
-    private var selectedClip: Clip? {
-        selection.flatMap { id in navClips.first { $0.id == id } } ?? navClips.first
-    }
-
-    /// Effective row highlight: the explicit selection, or the top row so
-    /// Return's target is always visible.
-    private var effectiveSelection: Clip.ID? { selection ?? navClips.first?.id }
 
     private func moveSelection(_ delta: Int) {
         let ids = navClips.map(\.id)
         guard !ids.isEmpty else { return }
-        let cur = ids.firstIndex(of: effectiveSelection ?? "") ?? (delta > 0 ? -1 : ids.count)
+        let cur = ids.firstIndex(of: selected ?? "") ?? (delta > 0 ? -1 : ids.count)
         selection = ids[min(ids.count - 1, max(0, cur + delta))]
     }
 
-    // MARK: - Header
+    private func shortcutIndex(_ clip: Clip) -> Int? {
+        navClips.firstIndex(of: clip).flatMap { $0 < 9 ? $0 : nil }
+    }
+
+    // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-                Text("Cue")
-                    .font(.system(size: 13, weight: .semibold))
-                Text(statusLine)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
+        HStack(spacing: 7) {
+            Circle().fill(status.color).frame(width: 7, height: 7).accessibilityHidden(true)
+            Text("Cue").font(.system(size: 13, weight: .semibold))
+            Text(status.title).font(.system(size: 12)).foregroundStyle(.secondary)
+            if let note = status.note {
+                Text("· \(note)").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             }
-            if let action = model.controller.lastAction {
-                Text(action)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .padding(.leading, 13)
-            }
-            if model.settings.triggerMode == .intercept, !model.trusted {
-                Label("⌘V interception paused — needs Accessibility",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.orange)
-                    .padding(.leading, 13)
-            }
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
+        .padding(.horizontal, 24)
+        .padding(.top, 13)
         .padding(.bottom, 10)
+        .contentShape(Rectangle())
+        .help(detail.map { "Last paste: \($0)" } ?? "")
+        .accessibilityElement(children: .combine)
     }
 
-    private var statusColor: Color {
-        if !model.monitor.running { return .gray }
-        if !model.trusted { return .orange }
-        switch model.providerStatus.state {
-        case .ok: return .green
-        case .unreachable: return .red
-        case .unknown:
-            // No call yet — the managed model's boot state is the signal.
-            if case .local = model.settings.provider, let r = model.selectedLocal {
-                switch model.models.status(of: r.spec.id) {
-                case .running: return .green
-                case .failed: return .red
-                default: return .orange
-                }
-            }
-            return model.settings.provider == .off ? .gray : .orange
-        }
-    }
-
-    // MARK: - Search
+    // MARK: Search
 
     private var searchField: some View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.tertiary)
-            TextField("Search clips", text: $filter)
+            TextField("Search history", text: $filter)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .focused($searchFocused)
             if !filter.isEmpty {
                 Button { filter = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(OBTheme.insetFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         .padding(.horizontal, 12)
-        .padding(.bottom, 8)
+        .padding(.vertical, 7)
+        .background(Self.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, Self.edge)
+        .padding(.bottom, 10)
     }
 
-    // MARK: - Clips
+    // MARK: Clipboard
+
+    private func clipboardCard(_ clip: Clip) -> some View {
+        let isSelected = selected == clip.id
+        return Button { actions.paste(clip) } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("On your clipboard")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    ReturnHint(visible: isSelected)
+                }
+                Text(clip.preview)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(2)
+                    .truncationMode(ClipLook.of(clip).truncation)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 5) {
+                    SourceAppIcon(clip: clip, size: 12)
+                    Text(ClipLook.meta(clip)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected ? Color.accentColor.opacity(0.14) : Self.fill,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(PressStyle())
+        .onHover { if $0 { selection = clip.id } }
+        .modifier(RowShortcut(index: 0))
+        .accessibilityLabel("Paste your clipboard, \(clip.preview)")
+        .padding(.horizontal, Self.edge)
+        .padding(.bottom, 6)
+    }
+
+    // MARK: History
 
     @ViewBuilder
-    private var clipList: some View {
-        if model.store.clips.isEmpty {
-            VStack(spacing: 5) {
-                Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 20))
-                    .foregroundStyle(.tertiary)
-                Text("Nothing copied yet")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("Copy text anywhere — it'll be here, and \(hotkeyHint) smart-pastes it.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
+    private var list: some View {
+        if clips.isEmpty {
+            VStack(spacing: 6) {
+                Image(systemName: "doc.on.clipboard").font(.system(size: 24)).foregroundStyle(.secondary)
+                Text("Nothing copied yet").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+                Text("Copy text in any app and it shows up here.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
-        } else if visibleClips.isEmpty {
-            Text("No matches")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+            .padding(.vertical, 28)
+        } else if navClips.isEmpty {
+            Text("No clips match “\(filter)”")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
-        } else {
-            // Explicit height: a ScrollView collapses to zero inside the
-            // auto-sizing MenuBarExtra window — the content must size itself.
-            let rows = min(visibleClips.count, 10)
+                .padding(.vertical, 20)
+        } else if !listed.isEmpty {
+            let sections = filter.isEmpty
+                ? [("Recent", recent), ("Earlier", earlier)].filter { !$0.1.isEmpty }
+                : [("", listed)]
+            let contentHeight = CGFloat(listed.count) * Self.rowHeight
+                + CGFloat(sections.filter { !$0.0.isEmpty }.count) * 26 + 6
+            let overflows = contentHeight > Self.maxListHeight
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 1) {
-                        ForEach(Array(navClips.enumerated()), id: \.element.id) { i, clip in
-                            clipRow(clip, index: i)
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(sections, id: \.0) { title, rows in
+                            if !title.isEmpty {
+                                Text(title)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 26, alignment: .bottomLeading)
+                            }
+                            ForEach(rows) { clip in
+                                ClipRow(clip: clip, isSelected: selected == clip.id,
+                                        shortcut: shortcutIndex(clip), fill: Self.fill, actions: actions)
+                                    .frame(height: Self.rowHeight)
+                                    .onHover { if $0 { selection = clip.id } }
+                                    .id(clip.id)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
                         }
                     }
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, Self.edge)
+                    .padding(.bottom, overflows ? 14 : 6)
                 }
-                .frame(height: min(CGFloat(rows) * 45 + 8, 320))
+                .frame(height: min(contentHeight, Self.maxListHeight))
+                .mask(ScrollFade(active: overflows, height: min(contentHeight, Self.maxListHeight)))
                 .onChange(of: selection) { _, sel in
                     if let sel { proxy.scrollTo(sel, anchor: .center) }
                 }
@@ -197,204 +313,235 @@ public struct MenuBarView: View {
         }
     }
 
-    private func clipRow(_ clip: Clip, index: Int) -> some View {
-        Button {
-            model.pasteIntoFrontApp(clip)
-        } label: {
-            HStack(spacing: 9) {
-                ZStack {
-                    OBTheme.insetFill
-                    SourceAppIcon(clip: clip, size: 16)
-                }
-                .frame(width: 26, height: 26)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    // MARK: Controls
 
+    private var modeRow: some View {
+        HStack(spacing: 10) {
+            Text("⌘V pastes").font(.system(size: 12)).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Picker("⌘V pastes", selection: $mode) {
+                ForEach(PasteMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .fixedSize()
+            .help(modeHelp)
+        }
+        .padding(.leading, 24)
+        .padding(.trailing, Self.edge)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+    }
+
+    private var modeHelp: String {
+        switch mode {
+        case .smart: "⌘V pastes your clipboard, adapted to the field. Choices appear only when unsure."
+        case .queue: "Each ⌘V pastes the next clip, oldest first."
+        case .plain: "⌘V is untouched. The choices shortcut still works."
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 0) {
+            FooterButton(title: "History", icon: "clock.arrow.circlepath", action: actions.openHistory)
+            FooterButton(title: "Settings", icon: "gearshape", action: actions.openSettings)
+            Spacer()
+            Menu {
+                Button(paused ? "Resume Copying" : "Pause Copying") { paused.toggle() }
+                Divider()
+                Button("Quit Cue") { NSApp.terminate(nil) }.keyboardShortcut("q")
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 13, weight: .medium))
+                    .frame(width: 26, height: 24)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("More")
+        }
+        .padding(.leading, Self.edge)
+        .padding(.trailing, Self.edge)
+        .padding(.top, 4)
+        .padding(.bottom, 9)
+    }
+}
+
+/// How a clip shows itself: a glyph for its kind, and truncation that keeps the part people recognize.
+enum ClipLook {
+    case link, email, number, code, multiline, text
+
+    static func of(_ clip: Clip) -> ClipLook {
+        let t = clip.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clip.isURL { return .link }
+        if !t.contains(where: \.isWhitespace), t.contains("@"), t.contains(".") { return .email }
+        if t.count >= 4, t.allSatisfy({ $0.isNumber || " +-().,".contains($0) }) { return .number }
+        if t.count >= 6, !t.contains(where: \.isWhitespace), t.contains(where: \.isNumber), t.contains(where: \.isLetter) {
+            return .code
+        }
+        if t.contains("\n") { return .multiline }
+        return .text
+    }
+
+    var symbol: String {
+        switch self {
+        case .link: "link"
+        case .email: "envelope"
+        case .number: "number"
+        case .code: "chevron.left.forwardslash.chevron.right"
+        case .multiline: "text.alignleft"
+        case .text: "text.quote"
+        }
+    }
+
+    /// Links keep their host and their last path part; prose keeps its opening words.
+    var truncation: Text.TruncationMode { self == .link ? .middle : .tail }
+
+    static func meta(_ clip: Clip) -> String {
+        [clip.copiedAt.relativeAge, clip.sourceApp].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
+private struct ClipRow: View {
+    let clip: Clip
+    let isSelected: Bool
+    let shortcut: Int?
+    let fill: Color
+    let actions: MenuPanelActions
+    @State private var hovered = false
+
+    var body: some View {
+        let look = ClipLook.of(clip)
+        Button { actions.paste(clip) } label: {
+            HStack(spacing: 10) {
+                Image(systemName: look.symbol)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(clip.preview)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 13))
                         .lineLimit(1)
-                        .truncationMode(.middle)
-                    Text(meta(clip))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .truncationMode(look.truncation)
+                    HStack(spacing: 4) {
+                        SourceAppIcon(clip: clip, size: 11)
+                        Text(ClipLook.meta(clip))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 6)
-                if clip.pinned {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(OBTheme.foldEdge)
+                if hovered {
+                    RowAction(icon: clip.pinned ? "pin.slash" : "pin", label: clip.pinned ? "Unpin" : "Pin") {
+                        actions.togglePin(clip)
+                    }
+                    RowAction(icon: "trash", label: "Delete") { actions.remove(clip) }
+                } else if clip.pinned {
+                    Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(.tertiary)
                 }
-                Text("⌘\(index + 1)")
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(.quaternary)
-                    .opacity(index < 9 ? 1 : 0)
+                if isSelected, !hovered { ReturnHint(visible: true) }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(effectiveSelection == clip.id ? OBTheme.insetFill : .clear,
+            .padding(.horizontal, 12)
+            .frame(maxHeight: .infinity)
+            .background(isSelected ? fill : .clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { inside in if inside { selection = clip.id } }
-        .accessibilityLabel("Paste \(clip.preview)")
-        .id(clip.id)
-        .modifier(RowShortcut(index: index))
+        .buttonStyle(PressStyle())
+        .onHover { inside in withAnimation(.easeOut(duration: 0.12)) { hovered = inside } }
+        .modifier(RowShortcut(index: shortcut))
+        .accessibilityLabel("Paste \(clip.preview), \(ClipLook.meta(clip))")
     }
+}
 
-    /// ⌘1…⌘9 pastes the nth visible clip while the panel is key.
-    private struct RowShortcut: ViewModifier {
-        let index: Int
-        func body(content: Content) -> some View {
-            if index < 9 {
-                content.keyboardShortcut(KeyEquivalent(Character("\(index + 1)")),
-                                         modifiers: .command)
-            } else {
-                content
-            }
-        }
-    }
+private struct RowAction: View {
+    let icon: String
+    let label: String
+    let action: () -> Void
 
-    private func meta(_ clip: Clip) -> String {
-        var parts = [clip.copiedAt.relativeAge]
-        if !clip.sourceApp.isEmpty { parts.append(clip.sourceApp) }
-        if clip.timesPasted > 0 { parts.append("pasted \(clip.timesPasted)×") }
-        return parts.joined(separator: " · ")
-    }
-
-    // MARK: - Controls
-
-    private var controlsRow: some View {
-        HStack(spacing: 6) {
-            ModeChip(title: "Intercept ⌘V", isOn: interceptBinding,
-                     hint: "Smart-paste runs on every paste")
-            ModeChip(title: queueChipTitle, isOn: queueBinding,
-                     hint: "FIFO queue: each paste takes the next queued clip")
-            ModeChip(title: "Paused", isOn: pausedBinding,
-                     hint: "Stop watching the clipboard")
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-    }
-
-    private var queueChipTitle: String {
-        model.settings.queueMode && !model.store.queue.isEmpty
-            ? "Queue \(model.store.queue.count)"
-            : "Queue"
-    }
-
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack(spacing: 2) {
-            footerButton("clock.arrow.circlepath", "History") { model.open(id: "history") }
-            footerButton("gearshape", "Settings") { model.open(id: "settings") }
-            Spacer()
-            footerButton("power", "Quit Cue") { NSApp.terminate(nil) }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-    }
-
-    private func footerButton(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {
+    var body: some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 26, height: 22)
+                .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-
-    // MARK: - Status + bindings
-
-    private var hotkeyHint: String {
-        model.settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)?.displayString ?? "⌃⌥V"
-    }
-
-    private var statusLine: String {
-        var parts = [model.monitor.running
-                     ? (model.trusted ? "ready" : "needs Accessibility")
-                     : "paused"]
-        switch model.settings.provider {
-        case .jevDirect: parts.append("jev direct")
-        case .jevGateway: parts.append("jev via gateway")
-        case .local:
-            if let r = model.selectedLocal {
-                var s = "\(r.spec.title.lowercased()) \(r.variant.paramsLabel)"
-                switch model.models.status(of: r.spec.id) {
-                case .running: s += " · running"
-                case .starting: s += " · starting"
-                case .installing: s += " · installing"
-                case .installed: s += " · stopped"
-                case .failed: s += " · failed"
-                case .notInstalled: s += " · not installed"
-                }
-                parts.append(s)
-            } else {
-                parts.append("local model")
-            }
-        case .custom: parts.append("custom endpoint")
-        case .off: parts.append("off")
-        }
-        if model.providerStatus.state == .unreachable { parts.append("unreachable") }
-        // Mirrors the decision path: scrubbing only happens when the resolved
-        // endpoint is actually remote — a loopback custom endpoint is local.
-        if model.settings.effectivePIIRedaction,
-           model.makeProvider()?.isRemote == true {
-            parts.append("pii scrubbed")
-        }
-        parts.append("\(model.store.clips.count) clips")
-        return parts.joined(separator: " · ")
-    }
-
-    private var queueBinding: Binding<Bool> {
-        Binding(get: { model.settings.queueMode },
-                set: { v in
-                    model.settings.queueMode = v
-                    if !v { model.store.clearQueue() }
-                })
-    }
-    private var interceptBinding: Binding<Bool> {
-        Binding(get: { model.settings.triggerMode == .intercept },
-                set: { v in
-                    model.settings.triggerMode = v ? .intercept : .hotkey
-                    model.hotkeys.interceptCmdV = v
-                })
-    }
-    private var pausedBinding: Binding<Bool> {
-        Binding(get: { !model.monitor.running },
-                set: { paused in paused ? model.monitor.stop() : model.monitor.start() })
+        .buttonStyle(PressStyle())
+        .help(label)
+        .accessibilityLabel(label)
+        .transition(.opacity)
     }
 }
 
-/// A small pill that fills with the coral accent when on —
-/// Control-Center-style toggles for the panel's controls row.
-/// (Toggle+buttonStyle leaks the tint into off-state labels on macOS,
-/// so this is an explicit Button for a truthful on/off contrast.)
-private struct ModeChip: View {
-    let title: String
-    @Binding var isOn: Bool
-    var hint: String = ""
+/// Return pastes the highlighted clip; the hint sits only on that one.
+private struct ReturnHint: View {
+    let visible: Bool
 
     var body: some View {
-        Button { isOn.toggle() } label: {
-            Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(isOn ? .white : .secondary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4.5)
-                .background(Capsule().fill(isOn ? OBTheme.foldEdge
-                                                : Color.primary.opacity(0.07)))
-                .overlay(Capsule().strokeBorder(Color.primary.opacity(isOn ? 0 : 0.12),
-                                                lineWidth: 0.5))
-                .contentShape(Capsule())
+        Text("↩")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.tertiary)
+            .opacity(visible ? 1 : 0)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct FooterButton: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 12))
+                .foregroundStyle(hovered ? .primary : .secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(hovered ? Color.primary.opacity(0.07) : .clear,
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(hint)
+        .buttonStyle(PressStyle())
+        .onHover { hovered = $0 }
+    }
+}
+
+/// Press feedback: a slight scale while held.
+private struct PressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// A list that scrolls fades out at its bottom edge, so a cut row reads as "more below".
+private struct ScrollFade: View {
+    let active: Bool
+    let height: CGFloat
+
+    var body: some View {
+        LinearGradient(stops: [.init(color: .black, location: 0),
+                               .init(color: .black, location: active ? 1 - 18 / max(height, 18) : 1),
+                               .init(color: active ? .clear : .black, location: 1)],
+                       startPoint: .top, endPoint: .bottom)
+    }
+}
+
+/// ⌘1–⌘9 pastes the matching clip while the panel is key.
+private struct RowShortcut: ViewModifier {
+    let index: Int?
+
+    func body(content: Content) -> some View {
+        if let index, index < 9 {
+            content.keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+        } else {
+            content
+        }
     }
 }

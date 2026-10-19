@@ -89,9 +89,8 @@ struct ModelCatalogTests {
 }
 
 struct ModelRolesTests {
-    func b(_ m: String, _ r: Double, _ w: Double, _ p50: Double, p95: Double = 400,
-           disk: Double = 1) -> ModelBenchmark {
-        ModelBenchmark(model: m, variant: m, resolved: r, wrong: w, p50: p50, p95: p95,
+    func b(_ m: String, _ r: Double, _ w: Double, _ p95: Double, disk: Double = 1) -> ModelBenchmark {
+        ModelBenchmark(model: m, variant: m, resolved: r, wrong: w, p50: 0, p95: p95,
                        diskGB: disk, ramGB: disk)
     }
 
@@ -118,10 +117,8 @@ struct ModelRolesTests {
     }
 
     @Test func overBudgetModelsGetNoRole() {
-        let r = ModelRoles.roles(from: [b("slow", 0.99, 0, 900), b("ok", 0.8, 0.02, 300)])
+        let r = ModelRoles.roles(from: [b("slow", 0.99, 0, 2000), b("ok", 0.8, 0.02, 300)])
         #expect(!r.contains { $0.bench.model == "slow" })
-        let r2 = ModelRoles.roles(from: [b("tail", 0.99, 0, 300, p95: 2000)])
-        #expect(r2.isEmpty)
     }
 
     @Test func aModelThatLeansOnTheChooserGetsNoRole() {

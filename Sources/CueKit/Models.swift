@@ -119,7 +119,7 @@ public enum ModelCatalog {
 
     public static let kev = ModelSpec(
         id: "kev", title: "Kev", rank: 1, reason: "Most accurate", defaultPort: 8009,
-        blurb: "Fewest wrong pastes in Cue’s benchmark (1%), about 250 ms per decision.",
+        blurb: "About 250 ms at worst, with 5% wrong pastes in Cue’s tests.",
         kind: .repo(url: "https://github.com/jaredpalmer/kev.git",
                     syncExtras: ["serve"], installArgv: [],
                     serveArgv: ["python", "-m", "kev.serve", "--run", "{weights}", "--port", "{port}"],
@@ -145,15 +145,15 @@ public enum ModelCatalog {
 
     public static let laya = ModelSpec(
         id: "laya", title: "Laya", rank: 2, reason: "Best balance", defaultPort: 8765,
-        blurb: "Under 1 GB, about 300 ms per decision, and rarely wrong (3% in Cue’s benchmark).",
+        blurb: "Under 1 GB and the quickest here (about 100 ms at worst), with 3% wrong pastes in Cue’s tests.",
         kind: .shim(packages: ["laya"], script: "laya_server.py", downloadsSnapshot: false),
         support: .supported,
         variants: [
             WeightSpec(id: "laya-en", paramsLabel: "421M", diskLabel: "~900 MB", ramLabel: "~1 GB",
-                       recommended: true, accuracy: 0.8, speed: 0.8,
+                       accuracy: 0.8, speed: 0.8,
                        serveModel: "laya", hfRepo: "convaiinnovations/laya"),
             WeightSpec(id: "laya-multi", paramsLabel: "322M", diskLabel: "~700 MB", ramLabel: "~1 GB",
-                       accuracy: 0.6, speed: 0.95,
+                       recommended: true, accuracy: 0.6, speed: 0.95,
                        serveModel: "multilingual", hfRepo: "convaiinnovations/laya-multilingual"),
             WeightSpec(id: "laya-typed", paramsLabel: "421M", diskLabel: "~900 MB", ramLabel: "~1 GB",
                        accuracy: 0.7, speed: 0.9,
@@ -162,7 +162,7 @@ public enum ModelCatalog {
 
     public static let von = ModelSpec(
         id: "von", title: "Von", rank: 3, reason: "Fastest", defaultPort: 8766,
-        blurb: "Quickest decisions, about 215 ms. Finds the most, but pastes the wrong thing more often (10%).",
+        blurb: "About 200 ms at worst, with 4% wrong pastes in Cue’s tests.",
         kind: .venv(packages: ["von-sdk"],
                     serveArgv: ["von", "serve", "--host", "127.0.0.1", "--port", "{port}"]),
         support: .supported,
@@ -211,7 +211,7 @@ public enum ModelCatalog {
     /// 0.0099, no argmax flips. The default local model: it meets the chooser gate kev doesn't.
     public static let decider = ModelSpec(
         id: "decider", title: "Decider", rank: 15, reason: "Full fine-tunes", defaultPort: 8790,
-        blurb: "Picks the right clip most often in Cue’s tests (1% wrong), about 200 ms on Apple silicon.",
+        blurb: "Picks the right clip most often in Cue’s tests (1% wrong), about 250 ms at worst on Apple silicon.",
         kind: .shim(packages: ["decider-ai==1.9.0", "mlx==0.32.2", "mlx-lm==0.31.3",
                                "fastapi==0.149.0", "uvicorn==0.54.0"],
                     script: "decider_mlx_server.py", downloadsSnapshot: false),

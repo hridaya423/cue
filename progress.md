@@ -349,3 +349,12 @@ Isolation check: the real `com.local.cue` defaults (backup `/tmp/cue-real-defaul
 - **Placement in tall editors with no caret:** anchors at the pointer inside the field, else its top-left, not the far edge.
 - **Model window 12 h → 15 min** (user: choices make sense for a burst of copies; older is a search). CueEval live (decider, 110×1): 92% / 1% wrong / chooser on clear 13% (unchanged). Replay is unreliable for option-set changes: answers are keyed by option id.
 - Not live-verified: outside-click close, shortcut pass-through, tall-editor anchor (no GUI lane used; the user's Mac was in use).
+
+### R21 — catalog re-measured, menu bar panel redesigned (2026-10-19)
+
+- **Benchmarks re-run live under the R20 engine** (CueEval, 110×1). New `CueEval --serve <model[:variant]>` installs and starts a model through the app's own ModelManager, so a broken install fails in the benchmark (the decider missing-deps bug would have shown here). All six installs worked.
+  decider 92/1 p95 249 · kev 90/5 249 · kenning 90/4 634 · laya-typed 90/4 319 · von 89/4 204 · jevk5lite 89/4 353 · laya-multi 84/3 102 · s1qwen 83/4 199 · laya-en 82/3 343 (resolved % / wrong % / p95 ms).
+  Gotcha: `laya_server.py` picks weights by the request's model name and silently falls back to laya-en for unknown names.
+- **Roles rank speed by p95**: p50 is 0 ms for every model now that most pastes never ask it. benchmarks.json holds only these live rows. Roles: Most accurate decider, Best balance von, Fastest laya (laya-multi is now laya's default variant). Runners-up sit within noise of each other (±4 pts) and all paste wrong about 4× as often as decider.
+- **Menu bar panel rebuilt** (`MenuBar.swift`): plain status header (last action in its tooltip), clipboard card, Recent (15 min) / Earlier groups, kind glyphs + source icons, link-middle/prose-tail truncation, hover pin/delete, ↩ on the selected row, one ⌘V segmented control (system accent, coral gone), labeled footer + ⋯ menu (Pause, Quit ⌘Q), 18 pt bottom fade. `MenuPanel` draws plain values so it renders off-screen without the live app. Critic (Sonnet 5.5, screenshots only): before 3–5, after 6–7; fixes applied for alignment, contrast, fade, icons, accent, light-mode field.
+- Not verified in the live menu bar (the user's Mac was in use): hover actions, keyboard nav, the ⋯ menu.

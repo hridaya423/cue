@@ -28,6 +28,8 @@ struct Args {
     /// Prints per-case model-leader vs ContextSignal agreement and what a
     /// forced leader-paste would have scored — for policy experiments.
     var diag = false
+    /// `model[:variant]` from the catalog, installed and started through the app's own ModelManager.
+    var serve: String?
 
     static func parse() throws -> Args {
         var a = Args()
@@ -49,6 +51,7 @@ struct Args {
             case "--threshold": a.threshold = Double(try need(&it, "--threshold")) ?? 0.7
             case "--margin": a.margin = Double(try need(&it, "--margin")) ?? 0.25
             case "--diag": a.diag = true
+            case "--serve": a.serve = try need(&it, "--serve")
             default: throw Err("unknown arg \(arg)")
             }
         }
@@ -58,7 +61,7 @@ struct Args {
                                         key: "")]
             _ = r
         }
-        guard !a.endpoints.isEmpty else { throw Err("no --endpoint given") }
+        guard !a.endpoints.isEmpty || a.serve != nil else { throw Err("no --endpoint or --serve given") }
         return a
     }
 
@@ -98,7 +101,8 @@ func loadCases(_ path: String) throws -> [EvalCase] {
 }
 
 func run() async throws -> Int {
-    let args = try Args.parse()
+    var args = try Args.parse()
+    if let spec = args.serve { args.endpoints.append(try await serve(spec)) }
     var cases = try loadCases(args.cases)
     if let c = args.onlyCategory { cases = cases.filter { $0.category == c } }
     if let c = args.onlyCase { cases = cases.filter { $0.id == c } }
@@ -232,10 +236,39 @@ func log(_ s: String) {
     FileHandle.standardError.write(Data((s + "\n").utf8))
 }
 
+@MainActor var servedModels: ModelManager?
+
+/// A broken install or a server that won't start fails here, not in a user's onboarding.
+@MainActor func serve(_ spec: String) async throws -> EndpointSpec {
+    let parts = spec.split(separator: ":").map(String.init)
+    guard let model = ModelCatalog.model(parts[0]),
+          let r = ModelCatalog.variant(modelID: model.id,
+                                       variantID: parts.count > 1 ? parts[1] : ModelCatalog.defaultVariant(of: model)?.id ?? "")
+    else { throw Err("unknown model \(spec)") }
+    let models = ModelManager()
+    servedModels = models
+    if models.installedVariant(of: model.id) != r.variant.id {
+        log("installing \(spec)…")
+        await models.install(r)
+    }
+    if case .failed(let why) = models.status(of: model.id) { throw Err("install \(spec) failed: \(why)") }
+    log("starting \(spec)…")
+    await models.start(r)
+    guard models.status(of: model.id) == .running else {
+        throw Err("start \(spec) failed: \(models.status(of: model.id)) · \(models.logTail[model.id] ?? "")")
+    }
+    guard let endpoint = JevEndpoint.custom(base: "http://127.0.0.1:\(model.defaultPort)", model: r.serveModel) else {
+        throw Err("bad endpoint for \(spec)")
+    }
+    return EndpointSpec(name: spec, endpoint: endpoint, key: "")
+}
+
 @main
 struct CueEvalMain {
     static func main() async throws {
         print("cueeval: starting"); fflush(stdout)
-        exit(Int32(try await run()))
+        let code = try await run()
+        servedModels?.stop()
+        exit(Int32(code))
     }
 }
