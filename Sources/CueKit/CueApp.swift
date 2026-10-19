@@ -11,7 +11,6 @@ public final class AppModel {
     public let monitor: ClipboardMonitor
     public let hotkeys: HotkeyManager
     public let executor: PasteExecutor
-    public let feedback: FeedbackTracker
     public let hud: HUDController
     public let redactor: PIIRedactor
     public let models: ModelManager
@@ -34,7 +33,6 @@ public final class AppModel {
         monitor = ClipboardMonitor(store: store, settings: settings)
         hotkeys = HotkeyManager(settings: settings)
         executor = PasteExecutor(monitor: monitor, hotkeys: hotkeys)
-        feedback = FeedbackTracker()
         hud = HUDController()
         redactor = PIIRedactor()
         models = ModelManager()
@@ -42,7 +40,7 @@ public final class AppModel {
         prefetch = DecisionPrefetch()
         let ctl = SmartPasteController(
             store: store, settings: settings,
-            executor: executor, feedback: feedback, hud: hud, redactor: redactor,
+            executor: executor, hud: hud, redactor: redactor,
             prefetch: prefetch
         ) { [settings, providerStatus] timeout in
             settings.providerClient(timeout: timeout).map { StatusTrackingProvider($0, status: providerStatus) }

@@ -159,12 +159,10 @@ public struct DecisionEngine: Sendable {
         self.redactor = redactor
     }
 
-    /// `feedback` maps clip.id → probability multiplier from past outcomes.
     public func decide(
         context: ContextSnapshot,
         candidates: [Clip],
         mode: Mode,
-        feedback: [String: Double] = [:],
         answer: (@Sendable () async throws -> JevResponse)? = nil
     ) async -> PasteOutcome {
         guard let latest = candidates.first else { return .pasteLatest(.empty) }
@@ -224,25 +222,11 @@ public struct DecisionEngine: Sendable {
             return .pasteLatest(.unreachable)
         }
 
-        var ranked = Self.ranked(from: resp, options: options)
+        let ranked = Self.ranked(from: resp, options: options)
         if mode == .formFill, case .noul(let p) = resp.answers["form_field"], p < 0.5 {
             return .pasteLatest(.lowConfidence)
         }
         if case .noul(let p) = resp.answers["form"], p >= 0.5 { isForm = true }
-
-        // Blend local feedback, renormalize.
-        if !feedback.isEmpty {
-            ranked = ranked.map { sc in
-                var s = sc
-                s.probability *= feedback[sc.option.clip.id] ?? 1
-                return s
-            }
-            let total = ranked.reduce(0) { $0 + $1.probability }
-            if total > 0 {
-                ranked = ranked.map { var s = $0; s.probability /= total; return s }
-            }
-            ranked.sort { $0.probability > $1.probability }
-        }
 
         let noneProb: Double
         if case .choice(_, _, let probs) = resp.answers["pick"] {

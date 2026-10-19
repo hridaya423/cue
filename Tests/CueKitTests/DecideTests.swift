@@ -352,19 +352,6 @@ struct DecisionEngineTests {
         guard case .pasteLatest = outcome else { Issue.record("expected pasteLatest, got \(outcome)"); return }
     }
 
-    @Test func feedbackDemotesClip() async {
-        var engine = DecisionEngine(provider: StubProvider(response: pickResponse(
-            pick: "c2", conf: 0.95, probs: ["c1": 0.4, "c2": 0.6])))
-        engine.confidenceThreshold = 0.5
-        engine.decisivenessMargin = 0.1
-        // c2 was undone before → multiplier 0.5 → .429 vs .571 → c1 wins.
-        let feedback = [clips[1].id: 0.5]
-        let outcome = await engine.decide(context: makeContext(label: "Notes"), candidates: clips,
-                                          mode: .hotkey, feedback: feedback)
-        guard case .paste(let d) = outcome else { Issue.record("expected paste"); return }
-        #expect(d.clip.text == "latest clip")
-    }
-
     @Test func formFillModeNeverShowsHUD() async {
         // 3-way split: no option reaches 0.5 → stop the form.
         let three = clips + [Clip(text: "third thing", kind: .text)]

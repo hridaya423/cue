@@ -340,3 +340,12 @@ Isolation check: the real `com.local.cue` defaults (backup `/tmp/cue-real-defaul
 - Fixed all six (`28fdda8`). Verified live in Helium: chooser directly under the To field (`/tmp/cueprobe/shot2.png`), Return pasted the email span, clipboard came back to the original copy. 138 tests pass. User switched to decider (in-app, :8790). History backup: `history.json.bak-20261019-2025`.
 - Not verified: ⌘V after a pick in the Message field (the user took the screen back mid-test; no more keystrokes sent). Other shim models may share the missing-dependency bug.
 - Next: the real-app gate (installed app, ~20 real fields, top 8 apps, Cue does its own AX work), run on the Mac mini, not the user's live session.
+
+### R20 — learning removed, chooser traps, 15-minute window (2026-10-19, user decisions)
+
+- **Per-clip learning deleted.** It rewarded every paste not undone by ⌘Z within 2.5 s; the user's `feedback.json` had +4 (max 1.5× boost) for `weiuhfhuew hridayahoney@gmail.com` in Gmail To. User: most pastes are new text, so per-clip memory rarely helps. Removed from engine, prefetch, controller, settings, CueDay.
+- **Second ⌘V within 1.4 s plain-pasted:** the "Pasted" toast counted as an open chooser. `isShowingChoices` now means a chooser/picker waits for keys.
+- **Chooser trapped the keyboard:** a click elsewhere in the same app left it up, eating every key. Any outside click now closes it; ⌘/⌃ shortcuts close it and pass through.
+- **Placement in tall editors with no caret:** anchors at the pointer inside the field, else its top-left, not the far edge.
+- **Model window 12 h → 15 min** (user: choices make sense for a burst of copies; older is a search). CueEval live (decider, 110×1): 92% / 1% wrong / chooser on clear 13% (unchanged). Replay is unreliable for option-set changes: answers are keyed by option id.
+- Not live-verified: outside-click close, shortcut pass-through, tall-editor anchor (no GUI lane used; the user's Mac was in use).

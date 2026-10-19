@@ -149,9 +149,6 @@ public struct SettingsView: View {
             LabeledContent("Onboarding") {
                 Button("Show Again") { model.open(id: "onboarding") }
             }
-            LabeledContent("Learned from undos") {
-                Button("Forget") { model.feedback.reset() }
-            }
             LabeledContent("Self-check") {
                 HStack(spacing: 8) {
                     if let result = model.selfCheckResult {

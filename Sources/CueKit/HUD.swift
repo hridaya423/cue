@@ -10,10 +10,23 @@ public final class HUDController {
     fileprivate var keyTap: CFMachPort?
     private var keyTapSource: CFRunLoopSource?
     private var resignObserver: NSObjectProtocol?
+    private var outsideClickMonitor: Any?
     private var dismissTask: Task<Void, Never>?
     fileprivate var onKey: ((NSEvent) -> Bool)?
 
-    public var isShowing: Bool { panel != nil }
+    /// A chooser or picker is waiting for keys. Toasts and the deciding dots don't count:
+    /// counting them made a second ⌘V within 1.4 s of a paste skip the decision.
+    public var isShowingChoices: Bool { onKey != nil }
+
+    /// Where a panel points: the caret, else the field. A tall editor with no caret
+    /// (Notes, Docs, Slack) points at the pointer inside it, not its far edge.
+    public static func anchor(caret: CGRect?, field: CGRect?) -> CGRect? {
+        if let caret { return caret }
+        guard let field, field.height > 80 else { return field }
+        let mouse = NSEvent.mouseLocation
+        let p = field.contains(mouse) ? mouse : CGPoint(x: field.minX + 12, y: field.maxY - 12)
+        return CGRect(x: p.x, y: p.y - 9, width: 2, height: 18)
+    }
 
     public init() {}
 
@@ -47,6 +60,8 @@ public final class HUDController {
             if e.modifierFlags.contains(.command), Int(e.keyCode) == kVK_ANSI_V {
                 self.dismiss(); onPick(nil); return true
             }
+            // Any other shortcut belongs to the app: close and let it through.
+            if !e.modifierFlags.intersection([.command, .control]).isEmpty { self.dismiss(); return false }
             // A digit held back for the search window: Return confirms it as a pick, Esc drops it,
             // any other key means it began a search ("1291").
             if let d = state.pendingDigit {
@@ -102,6 +117,7 @@ public final class HUDController {
             if e.modifierFlags.contains(.command), Int(e.keyCode) == kVK_ANSI_V {
                 self.dismiss(); onPick(nil); return true
             }
+            if !e.modifierFlags.intersection([.command, .control]).isEmpty { self.dismiss(); return false }
             switch Int(e.keyCode) {
             case kVK_DownArrow: state.move(1); return true
             case kVK_UpArrow: state.move(-1); return true
@@ -145,6 +161,8 @@ public final class HUDController {
         onKey = nil
         if let resignObserver { NSWorkspace.shared.notificationCenter.removeObserver(resignObserver) }
         resignObserver = nil
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        outsideClickMonitor = nil
         panel?.orderOut(nil)
         panel = nil
     }
@@ -195,6 +213,11 @@ public final class HUDController {
         resignObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in Task { @MainActor in self?.dismiss() } }
+        // A click in another field of the same app left the chooser up, eating every keystroke.
+        // Global monitors never see clicks on our own panel, so any click here is outside it.
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.dismiss() }
+        }
     }
 
     /// Below the field if it fits, otherwise above; clamped to the screen.

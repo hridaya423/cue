@@ -62,7 +62,7 @@ struct PrefetchTests {
         let prefetch = DecisionPrefetch()
         prefetch.warm(context: ctx(), candidates: clips, engine: engine(stub))
         let outcome = await prefetch.outcome(context: ctx(), candidates: clips,
-                                             mode: .intercept, feedback: [:], engine: engine(stub))
+                                             mode: .intercept, engine: engine(stub))
         #expect(stub.box.calls == 1)
         guard case .paste(let d) = outcome, d.text == "me@example.com" else {
             Issue.record("expected the warmed paste, got \(outcome)"); return
@@ -73,7 +73,7 @@ struct PrefetchTests {
         let stub = CountingProvider(box: PrefetchBox(), response: decisive)
         let prefetch = DecisionPrefetch()
         let outcome = await prefetch.outcome(context: ctx(), candidates: clips,
-                                             mode: .intercept, feedback: [:], engine: engine(stub))
+                                             mode: .intercept, engine: engine(stub))
         #expect(stub.box.calls == 1)
         guard case .paste = outcome else { Issue.record("expected paste, got \(outcome)"); return }
     }
@@ -85,7 +85,7 @@ struct PrefetchTests {
         let prefetch = DecisionPrefetch()
         prefetch.warm(context: ctx(), candidates: clips, engine: engine(stub))
         let outcome = await prefetch.outcome(context: ctx(), candidates: clips,
-                                             mode: .intercept, feedback: [:], engine: engine(stub))
+                                             mode: .intercept, engine: engine(stub))
         // A second decide would have been a second provider call.
         #expect(stub.box.calls == 1)
         guard case .paste = outcome else { Issue.record("expected paste, got \(outcome)"); return }
@@ -96,11 +96,11 @@ struct PrefetchTests {
         let prefetch = DecisionPrefetch()
         prefetch.warm(context: ctx(), candidates: clips, engine: engine(stub))
         _ = await prefetch.outcome(context: ctx(), candidates: clips,
-                                   mode: .intercept, feedback: [:], engine: engine(stub))
+                                   mode: .intercept, engine: engine(stub))
         let more = [Clip(text: "newest thing", kind: .text)] + clips
         prefetch.warm(context: ctx(), candidates: more, engine: engine(stub))
         _ = await prefetch.outcome(context: ctx(), candidates: more,
-                                   mode: .intercept, feedback: [:], engine: engine(stub))
+                                   mode: .intercept, engine: engine(stub))
         #expect(stub.box.calls == 2)
     }
 
@@ -109,10 +109,10 @@ struct PrefetchTests {
         let prefetch = DecisionPrefetch()
         prefetch.warm(context: ctx(label: "Email"), candidates: clips, engine: engine(stub))
         _ = await prefetch.outcome(context: ctx(label: "Email"), candidates: clips,
-                                   mode: .intercept, feedback: [:], engine: engine(stub))
+                                   mode: .intercept, engine: engine(stub))
         prefetch.warm(context: ctx(label: "Phone"), candidates: clips, engine: engine(stub))
         _ = await prefetch.outcome(context: ctx(label: "Phone"), candidates: clips,
-                                   mode: .intercept, feedback: [:], engine: engine(stub))
+                                   mode: .intercept, engine: engine(stub))
         #expect(stub.box.calls == 2)
     }
 
@@ -121,12 +121,12 @@ struct PrefetchTests {
         let prefetch = DecisionPrefetch()
         prefetch.warm(context: ctx(value: "a"), candidates: clips, engine: engine(stub))
         _ = await prefetch.outcome(context: ctx(value: "b"), candidates: clips,
-                                   mode: .intercept, feedback: [:], engine: engine(stub))
+                                   mode: .intercept, engine: engine(stub))
         // Typing moved the value; the warm still serves and a same-key rewarm
         // is a no-op — still one provider call total.
         prefetch.warm(context: ctx(value: "c"), candidates: clips, engine: engine(stub))
         let outcome = await prefetch.outcome(context: ctx(value: "c"), candidates: clips,
-                                             mode: .intercept, feedback: [:], engine: engine(stub))
+                                             mode: .intercept, engine: engine(stub))
         #expect(stub.box.calls == 1)
         guard case .paste = outcome else { Issue.record("expected paste, got \(outcome)"); return }
     }
@@ -137,7 +137,7 @@ struct PrefetchTests {
         prefetch.warm(context: ctx(label: "Phone"), candidates: clips, engine: engine(stub))
         for mode in [DecisionEngine.Mode.intercept, .hotkey, .intercept] {
             let outcome = await prefetch.outcome(context: ctx(label: "Phone"), candidates: clips,
-                                                 mode: mode, feedback: [:], engine: engine(stub))
+                                                 mode: mode, engine: engine(stub))
             guard case .choose = outcome else { Issue.record("\(mode): expected choose, got \(outcome)"); return }
         }
         #expect(stub.box.calls == 1)
@@ -149,7 +149,7 @@ struct PrefetchTests {
         prefetch.warm(context: ctx(), candidates: clips, engine: engine(stub))
         for _ in 0..<3 {
             let outcome = await prefetch.outcome(context: ctx(), candidates: clips,
-                                                 mode: .intercept, feedback: [:], engine: engine(stub))
+                                                 mode: .intercept, engine: engine(stub))
             guard case .paste = outcome else { Issue.record("expected paste, got \(outcome)"); return }
         }
         #expect(stub.box.calls == 1)
@@ -161,7 +161,7 @@ struct PrefetchTests {
         prefetch2.warm(context: ctx(label: "Message"), candidates: clips, engine: engine(stub2))
         for _ in 0..<2 {
             let outcome = await prefetch2.outcome(context: ctx(label: "Message"), candidates: clips,
-                                                  mode: .intercept, feedback: [:], engine: engine(stub2))
+                                                  mode: .intercept, engine: engine(stub2))
             guard case .pasteLatest = outcome else {
                 Issue.record("expected pasteLatest, got \(outcome)"); return
             }
@@ -178,7 +178,7 @@ struct PrefetchTests {
         // Focus moved before the first warm finished — it is superseded.
         prefetch.warm(context: ctx(label: "Phone"), candidates: clips, engine: engine(stub))
         let outcome = await prefetch.outcome(context: ctx(label: "Phone"), candidates: clips,
-                                             mode: .intercept, feedback: [:], engine: engine(stub))
+                                             mode: .intercept, engine: engine(stub))
         guard case .paste(let d) = outcome, d.text == "me@example.com" else {
             Issue.record("expected the Phone decision, got \(outcome)"); return
         }

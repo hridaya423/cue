@@ -90,22 +90,6 @@ func jsonLine(_ obj: [String: Any]) -> String {
     return s
 }
 
-/// Running feedback stats, mirroring FeedbackTracker: contextKey → clipID →
-/// net (+kept / −undone). The multiplier formula matches `multipliers(for:)`.
-struct DayFeedback {
-    var stats: [String: [String: Int]] = [:]
-
-    func multipliers(for ctx: ContextSnapshot) -> [String: Double] {
-        let key = FeedbackTracker.contextKey(bundleID: ctx.bundleID, fieldLabel: ctx.field.label)
-        return stats[key, default: [:]].mapValues { min(1.5, max(0.1, 1 + 0.25 * Double($0))) }
-    }
-
-    mutating func record(clipID: String, ctx: ContextSnapshot, undone: Bool) {
-        let key = FeedbackTracker.contextKey(bundleID: ctx.bundleID, fieldLabel: ctx.field.label)
-        stats[key, default: [:]][clipID, default: 0] += undone ? -1 : 1
-    }
-}
-
 struct StepAgg {
     var steps = 0
     var cueCorrect = 0
@@ -201,7 +185,6 @@ func runDay(_ args: Args) async throws -> Int {
                 continue
             }
             var history: [(clip: Clip, t: Double)] = []
-            var feedback = DayFeedback()
             var agg = StepAgg()
             var lines: [String] = []
             var step = 0
@@ -224,7 +207,7 @@ func runDay(_ args: Args) async throws -> Int {
                         args: args, caseID: "day-\(file.name)-\(String(format: "%03d", step))",
                         persona: file.name, step: step, t: t, into: into, before: before,
                         want: want, why: why,
-                        history: history, feedback: &feedback, hosts: hosts,
+                        history: history, hosts: hosts,
                         specByID: specByID, recorder: recorder, agg: &agg)
                     lines.append(line.line)
                     if let c = line.exportCase { exportLines.append(jsonLine(c)) }
@@ -280,7 +263,7 @@ struct StepLine {
 @MainActor
 func pasteStep(args: Args, caseID: String, persona: String, step: Int, t: Double, into: String,
                before: String, want: DayWant, why: String,
-               history: [(clip: Clip, t: Double)], feedback: inout DayFeedback,
+               history: [(clip: Clip, t: Double)],
                hosts: [String: DaySurfaceHost], specByID: [String: DaySurface],
                recorder: RecordingProvider, agg: inout StepAgg) async -> StepLine {
     let (sid, fid) = DayEvent.splitInto(into)
@@ -318,7 +301,6 @@ func pasteStep(args: Args, caseID: String, persona: String, step: Int, t: Double
     var optionsShown: [String] = []
     var landed = ""
     var chooserKeys: [String] = []
-    var pickedClipID: String?
     var decisionMS = 0.0
     var trigger = "⌘V"
 
@@ -333,7 +315,6 @@ func pasteStep(args: Args, caseID: String, persona: String, step: Int, t: Double
         engine.confidenceThreshold = args.threshold
         engine.decisivenessMargin = args.margin
         engine.timeout = args.timeout
-        let multipliers = feedback.multipliers(for: ctx)
         let stepMode: DecisionEngine.Mode =
             args.intent == "aware" && !want.satisfiedBy(landed: latestText, latest: latestText) ? .hotkey : args.engineMode
         trigger = stepMode == .hotkey ? "hotkey" : "⌘V"
@@ -345,7 +326,7 @@ func pasteStep(args: Args, caseID: String, persona: String, step: Int, t: Double
         let t0 = ContinuousClock.now
         let outcome = await prefetch.outcome(
             context: ctx, candidates: candidates, mode: stepMode,
-            feedback: multipliers, engine: engine)
+            engine: engine)
         let decided = ContinuousClock.now
         await prefetch.settle()
         let d = t0.duration(to: decided).components
@@ -358,7 +339,6 @@ func pasteStep(args: Args, caseID: String, persona: String, step: Int, t: Double
         switch outcome {
         case .paste(let dec):
             kind = "paste"
-            pickedClipID = dec.clip.id
             let after = (try? await host.insert(fid, dec.text)) ?? before
             landed = BarModel.inserted(before: before, after: after)
         case .choose(let opts):
@@ -380,7 +360,6 @@ func pasteStep(args: Args, caseID: String, persona: String, step: Int, t: Double
             optionsShown = rows.map(\.option.text)
             if let k = pick(rows) {
                 chooserKeys = typed.isEmpty ? ["\(k + 1)"] : typed + Array(repeating: "↓", count: k) + ["Return"]
-                pickedClipID = rows[k].option.clip.id
                 let after = (try? await host.insert(fid, rows[k].option.text)) ?? before
                 landed = BarModel.inserted(before: before, after: after)
             } else {
@@ -399,12 +378,9 @@ func pasteStep(args: Args, caseID: String, persona: String, step: Int, t: Double
     let trimmed = !correct && want.strings.contains { !$0.isEmpty && DayWant.flat(landed).contains(DayWant.flat($0)) }
     var undo = false
     if !correct && !trimmed {
-        // Persona ⌘Z — feedback −1, field restored, then the bar's route.
+        // Persona ⌘Z — field restored, then the bar's route.
         undo = true
         try? await host.restore(fid, value: before)
-    }
-    if let cid = pickedClipID {
-        feedback.record(clipID: cid, ctx: ctx, undone: undo)
     }
 
     var cueS = KLM.keystrokeS + decisionMS / 1000.0

@@ -53,17 +53,17 @@ public final class DecisionPrefetch {
     /// The outcome for this paste, from the warmed answer when the key matches
     /// (awaiting it if still in flight), otherwise asked live.
     public func outcome(context: ContextSnapshot, candidates: [Clip],
-                        mode: DecisionEngine.Mode, feedback: [String: Double],
+                        mode: DecisionEngine.Mode,
                         engine: DecisionEngine) async -> PasteOutcome {
         guard mode != .formFill, let task,
               PrefetchKey(context: context, candidates: candidates) == key else {
             // A stale warm-up would hold the model while this paste waits for it.
             task?.cancel(); task = nil; key = nil
             return await engine.decide(context: context, candidates: candidates,
-                                       mode: mode, feedback: feedback)
+                                       mode: mode)
         }
         return await engine.decide(context: context, candidates: candidates, mode: mode,
-                                   feedback: feedback, answer: { try await task.value })
+                                   answer: { try await task.value })
     }
 }
 
