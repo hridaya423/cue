@@ -10,6 +10,7 @@ struct Wordmark: View {
     /// Sweep every few seconds (welcome) or once per `replay` change (first smart paste).
     var loops = false
     var replay = 0
+    var color = OBTheme.action
 
     @State private var start = Date()
     @State private var animating = true
@@ -62,7 +63,7 @@ struct Wordmark: View {
                     let rect = CGRect(x: run.from * size.width + shear, y: CGFloat(run.row) * pitch + pitch * 0.19,
                                       width: (run.to - run.from) * size.width * eased, height: pitch * 0.62)
                     ctx.opacity = eased
-                    ctx.fill(Capsule().path(in: rect), with: .color(OBTheme.action))
+                    ctx.fill(Capsule().path(in: rect), with: .color(color))
                 }
             }
             .visualEffect { view, proxy in

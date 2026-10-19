@@ -2,10 +2,10 @@ import AppKit
 import Carbon
 import SwiftUI
 
-/// First-run flow in a native window: welcome → accessibility → trigger →
-/// models → privacy → practice. One idea per screen, the fold-out surface
-/// carries the content, the footer's primary is the single action.
-/// See docs/design/onboarding/SPEC.md.
+/// First-run flow in a native window: welcome → accessibility → trigger → models → privacy → practice.
+/// Welcome is a hero on the living cobalt field; every later screen splits into copy and controls on the
+/// canvas and a live stage on the right. The field never leaves: it slides from full width to the stage.
+/// Each step's controls and stage live in their own file (`Onboarding<Step>.swift`).
 public struct OnboardingView: View {
     var model: AppModel
 
@@ -35,117 +35,72 @@ public struct OnboardingView: View {
         }
     }
 
-    @State private var step: Step = .welcome
-    @State private var trusted = ContextCaptor.isTrusted
+    @State var step: Step = .welcome
+    @State var trusted = ContextCaptor.isTrusted
     /// The models/practice screens publish their footer action up here.
-    @State private var stepPrimary: OBPrimary?
-    @State private var practice: OnboardingPractice?
-    @State private var escMonitor: Any?
-    @State private var openedPermissionSettings = false
+    @State var stepPrimary: OBPrimary?
+    @State var practice: OnboardingPractice?
+    @State var escMonitor: Any?
+    @State var openedPermissionSettings = false
     /// Which way the last step change went: content slides in from the side it's travelling to.
-    @State private var forward = true
-    @State private var lean: CGFloat = 0
-    @State private var markReplay = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State var forward = true
+    @State var lean: CGFloat = 0
+    @State var markReplay = 0
+    @State var recorderConflict: String?
+    @State var redactedSample: String?
+    /// Route fixed when the flow starts, so the progress count doesn't jump as the user grants access.
+    @State var startedTrusted = ContextCaptor.isTrusted
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     public init(model: AppModel) { self.model = model }
 
-    private var practiceSucceeded: Bool {
+    var settings: AppSettings { model.settings }
+    var isHero: Bool { step == .welcome }
+
+    var practiceSucceeded: Bool {
         if let p = practice, case .succeeded = p.phase { return true }
         return false
     }
 
-    private var settings: AppSettings { model.settings }
-
     public var body: some View {
-        ZStack {
-            OBTheme.canvas.ignoresSafeArea()
+        ZStack(alignment: .topLeading) {
+            OBTheme.canvas
 
-            VStack(spacing: 0) {
-                Wordmark(height: step == .welcome ? 54 : 22, lean: lean, loops: step == .welcome, replay: markReplay)
-                    .padding(.top, step == .welcome ? 34 : 24)
-                    .padding(.bottom, step == .welcome ? 4 : 2)
+            CobaltField()
+                .frame(width: isHero ? OBLayout.window.width : OBLayout.stageWidth, height: OBLayout.window.height)
+                .offset(x: isHero ? 0 : OBLayout.columnWidth)
+                .accessibilityHidden(true)
 
-                VStack(spacing: 0) {
-                    Text(title)
-                        .font(.system(size: 28, weight: .semibold))
-                        .tracking(-0.4)
-                        .foregroundStyle(OBTheme.textPrimary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 680)
-                        .padding(.top, 21)
-
-                    Text(support)
-                        .font(.system(size: 16))
-                        .foregroundStyle(OBTheme.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 680)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 10)
-                }
-                .id(step)
-                .transition(stepTransition)
-
-                // Content column: 600 wide, top-anchored at y≈166. The
-                // window is fixed — a route that grows scrolls inside,
-                // it never resizes the window.
-                ScrollView(.vertical) {
-                    ZStack {
-                        switch step {
-                        case .welcome: welcomeStep.transition(stepTransition)
-                        case .accessibility: permissionStep.transition(stepTransition)
-                        case .trigger: triggerStep.transition(stepTransition)
-                        case .models: modelsStep.transition(stepTransition)
-                        case .privacy: privacyStep.transition(stepTransition)
-                        case .practice: practiceStep.transition(stepTransition)
-                        }
-                    }
-                    .padding(.vertical, 12)
-                    .frame(width: 600, alignment: .top)
-                    .frame(maxWidth: .infinity)
-                }
-                .scrollIndicators(.automatic)
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, step == .models ? 4 : 16)
-
-                footer
+            if isHero {
+                hero.transition(.opacity)
+            } else {
+                column
+                    .frame(width: OBLayout.columnWidth, height: OBLayout.window.height, alignment: .topLeading)
+                    .transition(.opacity)
+                stage
+                    .frame(width: OBLayout.stageWidth, height: OBLayout.window.height)
+                    .offset(x: OBLayout.columnWidth)
+                    .transition(.opacity)
             }
+
+            footer
+                .frame(width: OBLayout.window.width, height: OBLayout.footerHeight)
+                .offset(y: OBLayout.window.height - OBLayout.footerHeight)
         }
-        .frame(width: 760, height: 580)
+        .frame(width: OBLayout.window.width, height: OBLayout.window.height)
         .ignoresSafeArea()
         .onContinuousHover { phase in
             guard !reduceMotion, case .active(let at) = phase else { return }
-            withAnimation(.spring(duration: 0.6, bounce: 0)) { lean = max(-1, min(1, (at.x - 380) / 380)) }
+            withAnimation(.spring(duration: 0.6, bounce: 0)) { lean = max(-1, min(1, (at.x - 460) / 460)) }
         }
         .onChange(of: practiceSucceeded) { _, done in if done { markReplay += 1 } }
-        .animation(.timingCurve(0.23, 1, 0.32, 1, duration: reduceMotion ? 0.15 : 0.28), value: step)
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .timingCurve(0.65, 0, 0.35, 1, duration: 0.7), value: isHero)
+        .animation(.timingCurve(0.23, 1, 0.32, 1, duration: reduceMotion ? 0.15 : 0.35), value: step)
         .onAppear {
             trusted = ContextCaptor.isTrusted
+            startedTrusted = trusted
             #if DEBUG
-            if let s = ProcessInfo.processInfo.environment["OB_STEP"],
-               let i = Int(s), Step.allCases.indices.contains(i) {
-                step = Step.allCases[i]
-                if step == .practice {
-                    enterPractice()
-                    if ProcessInfo.processInfo.environment["OB_PRACTICE"] == "another" {
-                        practice?.tryAnother()
-                    }
-                    // `OB_PRACTICE_E2E=1` self-drives one real trigger once the
-                    // window is key: real engine decision + editor delivery,
-                    // exactly what a physical ⌘V would start.
-                    if ProcessInfo.processInfo.environment["OB_PRACTICE_E2E"] != nil {
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(800))
-                            FileHandle.standardError.write(Data(
-                                "E2E provider=\(model.settings.provider) local=\(model.settings.localModelID)/\(model.settings.localVariantID) client=\(model.makeProvider() == nil ? "nil" : "ok") phase=\(String(describing: practice?.phase)) trusted=\(ContextCaptor.isTrusted)\n".utf8))
-                            practice?.focus()
-                            _ = practice?.handleTrigger()
-                            FileHandle.standardError.write(Data("E2E after trigger phase=\(String(describing: practice?.phase))\n".utf8))
-                        }
-                    }
-                }
-            }
+            debugJump()
             #endif
             escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
                 // Escape closes without completing — unless the hotkey
@@ -164,88 +119,152 @@ public struct OnboardingView: View {
         }
     }
 
-    // MARK: - Shell
+    // MARK: - Layout
+
+    private var column: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Wordmark(height: 18, lean: lean, replay: markReplay)
+                .padding(.top, 58)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(.system(size: 30, weight: .bold))
+                    .tracking(-0.6)
+                    .foregroundStyle(OBTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 34)
+                Text(support)
+                    .font(.system(size: 15))
+                    .lineSpacing(3)
+                    .foregroundStyle(OBTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+                ScrollView(.vertical) {
+                    controls
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                }
+                .scrollIndicators(.never)
+                .scrollBounceBehavior(.basedOnSize)
+                .padding(.top, 24)
+            }
+            .id(step)
+            .transition(stepTransition)
+        }
+        .padding(.horizontal, OBLayout.margin)
+        .padding(.bottom, OBLayout.footerHeight)
+    }
+
+    @ViewBuilder private var controls: some View {
+        switch step {
+        case .welcome: EmptyView()
+        case .accessibility: permissionControls
+        case .trigger: triggerControls
+        case .models: modelsControls
+        case .privacy: privacyControls
+        case .practice: practiceControls
+        }
+    }
+
+    private var stage: some View {
+        ZStack {
+            switch step {
+            case .welcome: EmptyView()
+            case .accessibility: permissionStage
+            case .trigger: triggerStage
+            case .models: modelsStage
+            case .privacy: privacyStage
+            case .practice: practiceStage
+            }
+        }
+        .id(step)
+        .transition(stepTransition)
+        .padding(.horizontal, 40)
+        .padding(.top, 40)
+        .padding(.bottom, OBLayout.footerHeight)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 14) {
+            if step.previous(trusted: trusted, remote: privacyIsRemote) != nil {
+                OBRoundBack(onStage: isHero) { goBack() }
+            }
+            OBProgress(count: route.count, index: route.firstIndex(of: step) ?? 0, onStage: isHero)
+            Spacer()
+            if showsFinishLater {
+                Button("Finish later") { finishLater() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            if !primarySpec.title.isEmpty {
+                OBStagePrimary(title: primarySpec.title, enabled: primarySpec.enabled, action: primarySpec.action)
+            }
+        }
+        .padding(.horizontal, 28)
+        .padding(.bottom, 8)
+    }
+
+    /// This user's screens in order, from the trust and provider they started with.
+    var route: [Step] {
+        var out: [Step] = [], s: Step? = .welcome
+        while let cur = s {
+            out.append(cur)
+            s = cur.next(trusted: startedTrusted, remote: privacyIsRemote)
+        }
+        if !out.contains(step), let i = Step.allCases.firstIndex(of: step) {
+            out.insert(step, at: min(i, out.count))
+        }
+        return out
+    }
+
+    // MARK: - Copy
 
     private var title: String {
         switch step {
         case .welcome: "A better instinct for paste."
-        case .accessibility: "Allow Accessibility access"
+        case .accessibility: "Let Cue see the field."
         case .trigger: "Make it your shortcut."
         case .models: "Choose your model."
         case .privacy: "Choose what leaves your Mac."
         case .practice:
-            if let p = practice, case .succeeded = p.phase {
-                "That's your first smart paste."
-            } else {
-                "Try your first smart paste."
-            }
+            practiceSucceeded ? "That\u{2019}s your first smart paste." : "Try your first smart paste."
         }
     }
 
     private var support: String {
         switch step {
         case .welcome: "Copy it all. Cue pastes just the part that fits the field."
-        case .accessibility: "Cue needs permission to read field labels and paste into your apps."
+        case .accessibility: "Cue reads a field\u{2019}s label to know what belongs there. Turn it on once in System Settings."
         case .trigger: "Choose when Cue steps in."
         case .models: "Run a model on your Mac or connect a hosted service."
         case .privacy: "Mask personal details before Cue sends text to a hosted model."
         case .practice:
-            if let p = practice, case .succeeded = p.phase {
+            if practiceSucceeded {
                 "One copied message. Just the detail you needed."
             } else if let p = practice, p.target == .website {
-                "We copied a message. Paste just the link."
+                "We copied a message for you. Paste just the link."
             } else {
-                "We copied a message. Paste just the email."
+                "We copied a message for you. Paste just the email."
             }
         }
     }
 
-    /// The references put the footer inside the lower sheet on Accessibility
-    /// (primary, centered) and Models (Back left, primary right); every other
-    /// screen keeps Back + centered primary outside the panels.
-    private var footer: some View {
-        // One footer for every step, outside the scrolling content: the primary sits in the same
-        // place on each screen and can never scroll out of a fixed-height window.
-        ZStack {
-            if !primarySpec.title.isEmpty {
-                HStack { primaryCluster }.frame(maxWidth: .infinity)
-            }
-            HStack {
-                if step != .welcome {
-                    OBBackButton(action: goBack)
-                }
-                Spacer()
-                if showsFinishLater {
-                    Button("Finish setup later") { finishLater() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12))
-                        .foregroundStyle(OBTheme.textTertiary)
-                        .padding(.trailing, 24)
-                }
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 24)
-    }
-
-    private var primaryCluster: some View {
-        let p = primarySpec
-        return OBPrimaryButton(title: p.title, enabled: p.enabled, action: p.action)
-    }
+    // MARK: - Primary
 
     /// The footer primary per route/state — the single action per screen.
-    private var primarySpec: OBPrimary {
+    var primarySpec: OBPrimary {
         if let stepPrimary { return stepPrimary }
         switch step {
-        case .welcome, .trigger:
+        case .welcome:
+            return OBPrimary(title: "Get started") { advance() }
+        case .trigger, .models:
             return OBPrimary(title: "Continue") { advance() }
         case .accessibility:
             if trusted {
                 return OBPrimary(title: "Continue") { advance() }
             }
             return OBPrimary(title: "Open System Settings") { grantAccessibility() }
-        case .models:
-            return OBPrimary(title: "Continue") { advance() }
         case .privacy:
             return privacyPrimary
         case .practice:
@@ -253,30 +272,27 @@ public struct OnboardingView: View {
         }
     }
 
-    /// "Finish setup later" is quiet, truthful, and only where setup can be
-    /// unavailable — models and practice. Hidden when the primary already
-    /// carries that label (e.g. no provider configured).
+    /// Quiet and truthful, only where setup can be unavailable: models and practice.
     private var showsFinishLater: Bool {
         if primarySpec.title == "Finish setup later" { return false }
         switch step {
-        case .models:
-            return settings.provider == .off || settings.provider == .custom
-        case .practice:
-            return true
-        default:
-            return false
+        case .models: return settings.provider == .off || settings.provider == .custom
+        case .practice: return true
+        default: return false
         }
     }
 
     /// Forward slides left, Back slides right; Reduce Motion keeps only the crossfade.
-    private var stepTransition: AnyTransition {
+    var stepTransition: AnyTransition {
         guard !reduceMotion else { return .opacity }
-        let d: CGFloat = forward ? 18 : -18
+        let d: CGFloat = forward ? 22 : -22
         return .asymmetric(insertion: .opacity.combined(with: .offset(x: d)),
                            removal: .opacity.combined(with: .offset(x: -d)))
     }
 
-    private func advance() {
+    // MARK: - Navigation
+
+    func advance() {
         trusted = ContextCaptor.isTrusted
         guard let next = step.next(trusted: trusted, remote: privacyIsRemote) else { return }
         forward = true
@@ -285,7 +301,7 @@ public struct OnboardingView: View {
         if step == .practice { enterPractice() }
     }
 
-    private func goBack() {
+    func goBack() {
         trusted = ContextCaptor.isTrusted
         guard let previous = step.previous(trusted: trusted, remote: privacyIsRemote) else { return }
         forward = false
@@ -294,710 +310,36 @@ public struct OnboardingView: View {
         if step != .practice { leavePractice() }
     }
 
-    private func finishLater() {
+    func finishLater() {
         model.settings.onboardingDone = true
         leavePractice()
         model.close(id: "onboarding")
     }
 
-    private func closeWindow() {
+    func closeWindow() {
         leavePractice()
         model.close(id: "onboarding")
     }
 
-    // MARK: - Screen 1: Welcome
-
-    private var welcomeStep: some View {
-        WelcomeDemo()
-    }
-
-    // MARK: - Screen 2: Accessibility
-
-    private var permissionStep: some View {
-        FoldOut(verticalPadding: 16, lowerTopPadding: 14) {
-            VStack(alignment: .leading, spacing: 0) {
-                OBCaption("In System Settings")
-                Text("Privacy & Security › Accessibility")
-                    .font(.system(size: 17))
-                    .foregroundStyle(OBTheme.textPrimary)
-                    .padding(.top, 12)
-                HStack(spacing: 12) {
-                    Group {
-                        if let icon = NSApp.applicationIconImage {
-                            Image(nsImage: icon).resizable().scaledToFit()
-                        } else {
-                            Image(systemName: "paperclip")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundStyle(OBTheme.textSecondary)
-                        }
-                    }
-                    .frame(width: 32, height: 32)
-                    Text("Cue").font(.system(size: 15)).foregroundStyle(OBTheme.textPrimary)
-                    Spacer()
-                    PermissionSwitchDemo(granted: trusted)
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 54)
-                .background(OBTheme.insetFill, in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(OBTheme.separator, lineWidth: 0.7))
-                .padding(.top, 12)
-            }
-        } lower: {
-            VStack(alignment: .leading, spacing: 0) {
-                instruction(1, "Open System Settings below.")
-                instruction(2, "Turn on Cue under Accessibility.")
-                Text("Cue will bring you back when access is enabled.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(OBTheme.textSecondary)
-                    .padding(.leading, 40)
-                    .padding(.top, 6)
-                HStack(spacing: 8) {
-                    if trusted {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        Text("Access granted")
-                    } else {
-                        Image(systemName: "circle").foregroundStyle(OBTheme.textTertiary)
-                        Text("Access not yet granted")
-                    }
-                }
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(trusted ? .green : OBTheme.textTertiary)
-                .padding(.top, 10)
-                .frame(maxWidth: .infinity)
-            }
-            .frame(maxWidth: .infinity)
+    #if DEBUG
+    private func debugJump() {
+        guard let s = ProcessInfo.processInfo.environment["OB_STEP"],
+              let i = Int(s), Step.allCases.indices.contains(i) else { return }
+        step = Step.allCases[i]
+        guard step == .practice else { return }
+        enterPractice()
+        if ProcessInfo.processInfo.environment["OB_PRACTICE"] == "another" {
+            practice?.tryAnother()
         }
-        .task(id: step == .accessibility) {
-            guard step == .accessibility else { return }
-            while !Task.isCancelled && step == .accessibility {
-                trusted = ContextCaptor.isTrusted
-                if trusted {
-                    if openedPermissionSettings { model.open(id: "onboarding") }
-                    openedPermissionSettings = false
-                    advance()
-                    return
-                }
-                try? await Task.sleep(for: .milliseconds(500))
+        // `OB_PRACTICE_E2E=1` self-drives one real trigger once the window is key: real engine
+        // decision + editor delivery, exactly what a physical ⌘V would start.
+        if ProcessInfo.processInfo.environment["OB_PRACTICE_E2E"] != nil {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(800))
+                practice?.focus()
+                _ = practice?.handleTrigger()
             }
         }
     }
-
-    private func instruction(_ n: Int, _ text: String) -> some View {
-        HStack(spacing: 12) {
-            Text("\(n)")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(OBTheme.textPrimary)
-                .frame(width: 28, height: 28)
-                .background(OBTheme.textTertiary.opacity(0.1), in: Circle())
-            Text(text)
-                .font(.system(size: 14))
-                .foregroundStyle(OBTheme.textPrimary)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func grantAccessibility() {
-        openedPermissionSettings = true
-        ContextCaptor.requestTrust()
-        NSWorkspace.shared.open(
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-    }
-
-    // MARK: - Screen 3: Trigger
-
-    @State private var recorderConflict: String?
-
-    private var triggerStep: some View {
-        FoldOut(verticalPadding: 16, lowerTopPadding: 16) {
-            VStack(alignment: .leading, spacing: 0) {
-                triggerRow(
-                    title: "Dedicated shortcut",
-                    detail: "Use Cue when you choose. ⌘V stays unchanged.",
-                    selected: settings.triggerMode == .hotkey
-                ) {
-                    setTrigger(.hotkey)
-                } accessory: {
-                    VStack(spacing: 4) {
-                        HotkeyRecorder(
-                            value: settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
-                                ?? HotkeyManager.Action.smartPaste.default
-                        ) { hk in recordSmartPaste(hk) }
-                        .frame(width: 116, height: 34)
-                        Text("Click to change")
-                            .font(.system(size: 12))
-                            .foregroundStyle(OBTheme.textSecondary)
-                    }
-                    // Live in both modes: with ⌘V on, this shortcut still opens the list of choices.
-                }
-                Divider().padding(.leading, 68).padding(.vertical, 4)
-                triggerRow(
-                    title: "Use ⌘V",
-                    detail: "Cue pastes what fits the field. The shortcut still shows your choices.",
-                    selected: settings.triggerMode == .intercept
-                ) {
-                    setTrigger(.intercept)
-                } accessory: {
-                    EmptyView()
-                }
-            }
-        } lower: {
-            VStack(spacing: 10) {
-                OBCaption("Your shortcut pastes the part that fits the focused field.")
-                    .frame(maxWidth: .infinity)
-                if let recorderConflict {
-                    Text(recorderConflict)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                HStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Caption above the grey inset box (ref 03).
-                        Text("Copied message")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(OBTheme.textTertiary)
-                        HighlightedParagraph(
-                            text: "Reach Mira at mira@example.com or +44 7700 900123.",
-                            highlights: [OnboardingSample.Target.email.expected],
-                            fontSize: 12, width: 200)
-                            .padding(10)
-                            .background(OBTheme.insetFill,
-                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(OBTheme.separator, lineWidth: 0.5))
-                    }
-                    .frame(width: 224, alignment: .leading)
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(OBTheme.textTertiary)
-                        .fixedSize()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Email")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(OBTheme.textTertiary)
-                        Text(OnboardingSample.Target.email.expected)
-                            .font(.system(size: 13))
-                            .foregroundStyle(OBTheme.textPrimary)
-                            .lineLimit(1)
-                            .padding(.horizontal, 10).frame(height: 30)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(OBTheme.inputFill,
-                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(OBTheme.inputStroke, lineWidth: 0.5))
-                    }
-                }
-            }
-        }
-    }
-
-    private func triggerRow<Accessory: View>(
-        title: String, detail: String, selected: Bool,
-        action: @escaping () -> Void,
-        @ViewBuilder accessory: () -> Accessory
-    ) -> some View {
-        HStack(spacing: 12) {
-            Button(action: action) {
-                HStack(spacing: 12) {
-                    OBRadio(selected: selected)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(OBTheme.textPrimary)
-                        Text(detail).font(.system(size: 13))
-                            .foregroundStyle(OBTheme.textSecondary)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            Spacer()
-            accessory()
-        }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 72)
-    }
-
-    private func setTrigger(_ mode: AppSettings.TriggerMode) {
-        settings.triggerMode = mode
-        model.hotkeys.interceptCmdV = mode == .intercept
-    }
-
-    /// Reject bindings that collide with another Cue action — the recorder
-    /// keeps its prior value when we refuse to persist.
-    private func recordSmartPaste(_ hk: AppSettings.Hotkey) {
-        for action in HotkeyManager.Action.allCases where action != .smartPaste {
-            let other = settings.hotkey(for: action.rawValue) ?? action.default
-            if other.keyCode == hk.keyCode && other.modifiers == hk.modifiers {
-                recorderConflict = "That shortcut is already used for “\(action.title)”."
-                return
-            }
-        }
-        recorderConflict = nil
-        settings.setHotkey(hk, for: HotkeyManager.Action.smartPaste.rawValue)
-        model.hotkeys.reregister()
-    }
-
-    // MARK: - Screen 4: Models
-
-    private var modelsStep: some View {
-        OnboardingModels(model: model, primary: $stepPrimary) {
-            advance()
-        }
-    }
-
-    // MARK: - Screen 5: Privacy
-
-    /// Locality from the real endpoint, not the conservative mayBeRemote —
-    /// a loopback custom endpoint is local.
-    private var privacyIsRemote: Bool {
-        switch settings.provider {
-        case .jevDirect, .jevGateway: true
-        case .local, .off: false
-        case .custom: model.makeProvider()?.isRemote ?? false
-        }
-    }
-
-    @State private var redactedSample: String?
-
-    private var privacyStep: some View {
-        remotePrivacy
-    }
-
-    private var remotePrivacy: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            FoldOut {
-                VStack(alignment: .leading, spacing: 8) {
-                    OBCaption("Example copied text")
-                    HighlightedParagraph(
-                        text: "Send the launch brief to Mira at mira@example.com.",
-                        highlights: ["Mira", "mira@example.com"],
-                        fontSize: 16, width: 552)
-                }
-            } lower: {
-                VStack(alignment: .leading, spacing: 8) {
-                    OBCaption(settings.effectivePIIRedaction
-                              ? "Example sent to the model" : "Example sent without redaction")
-                    // [NAME]/[EMAIL] tokens render as neutral chips, in the static example or live
-                    // redactor output alike.
-                    HighlightedParagraph(
-                        text: scrubbedSample,
-                        highlights: Self.placeholderTokens(in: scrubbedSample),
-                        fontSize: 16, width: 552, masked: true)
-                }
-            }
-
-            VStack(spacing: 8) {
-                Toggle("Hide names and emails from hosted models", isOn: redactionToggle)
-                    .toggleStyle(.switch)
-                    .font(.system(size: 15))
-                    .fixedSize()
-                Text("The detail you paste keeps its original text.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(OBTheme.textTertiary)
-                if settings.piiRedaction != nil {
-                    Button("Use automatic setting") { settings.piiRedaction = nil }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12))
-                        .foregroundStyle(OBTheme.textTertiary)
-                }
-                redactorLine
-            }
-            .frame(maxWidth: .infinity)
-            HStack(spacing: 6) {
-                Image(systemName: "desktopcomputer")
-                    .font(.system(size: 11))
-                Text("Redaction uses a small model on your Mac.")
-                    .font(.system(size: 12))
-            }
-            .foregroundStyle(OBTheme.textTertiary)
-            .frame(maxWidth: .infinity)
-        }
-        .task(id: model.redactor.status) {
-            // Live preview once the redactor is ready — real output only.
-            if model.redactor.status == .ready {
-                redactedSample = try? await model.redactor.redact(
-                    "Send the launch brief to Mira at mira@example.com.")
-            }
-        }
-    }
-
-    /// Bracketed placeholders like `[NAME]`/`[EMAIL_1]` — whatever the real
-    /// redactor emits, plus the static example's tokens.
-    private static func placeholderTokens(in text: String) -> [String] {
-        var out: [String] = []
-        for m in text.matches(of: /\[[A-Z0-9_]+\]/) {
-            let t = String(m.output)
-            if !out.contains(t) { out.append(t) }
-        }
-        return out
-    }
-
-    /// Live redactor output when ready, else the labeled static example.
-    private var scrubbedSample: String {
-        settings.effectivePIIRedaction
-            ? redactedSample ?? "Send the launch brief to [NAME] at [EMAIL]."
-            : "Send the launch brief to Mira at mira@example.com."
-    }
-
-    @ViewBuilder
-    private var redactorLine: some View {
-        switch model.redactor.status {
-        case .idle:
-            EmptyView()
-        case .downloading(let f):
-            HStack(spacing: 8) {
-                ProgressView(value: f).frame(width: 120)
-                Text("Getting the redaction model… \(Int(f * 100))%")
-                    .font(.system(size: 12)).foregroundStyle(OBTheme.textSecondary)
-                    .monospacedDigit()
-            }
-            .frame(maxWidth: .infinity)
-        case .ready:
-            Label("Redaction ready", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 12)).foregroundStyle(.green)
-                .frame(maxWidth: .infinity)
-        case .failed(let msg):
-            Label("Download failed — \(msg)", systemImage: "xmark.circle")
-                .font(.system(size: 12)).foregroundStyle(.red)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-
-    /// The tri-state: toggling writes an explicit override; auto is shown as
-    /// the current effective value.
-    private var redactionToggle: Binding<Bool> {
-        Binding(
-            get: { settings.effectivePIIRedaction },
-            set: { settings.piiRedaction = $0 }
-        )
-    }
-
-    /// Privacy primary: remote + redaction-on-but-model-missing gates on
-    /// "Set up redaction" / "Downloading…" / "Retry download".
-    private var privacyPrimary: OBPrimary {
-        guard privacyIsRemote, settings.effectivePIIRedaction else {
-            return OBPrimary(title: "Continue") { advance() }
-        }
-        switch model.redactor.status {
-        case .ready:
-            return OBPrimary(title: "Continue") { advance() }
-        case .downloading:
-            return OBPrimary(title: "Downloading…", enabled: false)
-        case .failed:
-            return OBPrimary(title: "Retry download") {
-                Task { await model.redactor.prepare() }
-            }
-        case .idle:
-            return OBPrimary(title: "Set up redaction") {
-                Task { await model.redactor.prepare() }
-            }
-        }
-    }
-
-    // MARK: - Screen 6: Practice
-
-    private var practiceStep: some View {
-        Group {
-            if let practice {
-                PracticeScreen(practice: practice)
-            }
-        }
-    }
-
-    private var practicePrimary: OBPrimary {
-        guard let p = practice else { return OBPrimary(title: "Continue", enabled: false) }
-        switch p.phase {
-        case .intro, .armed, .deciding:
-            return .none
-        case .succeeded:
-            return OBPrimary(title: "Start using Cue") {
-                model.settings.onboardingDone = true
-                closeWindow()
-            }
-        case .ordinaryPaste, .uncertain, .failed:
-            return OBPrimary(title: "Try again") { p.reset(target: nil) }
-        case .lostPermission:
-            return OBPrimary(title: "Grant access") { step = .accessibility; leavePractice() }
-        case .unavailable:
-            // No model yet: the way forward is setting one up, not leaving.
-            return OBPrimary(title: "Set up a model") {
-                forward = false
-                step = .models
-                stepPrimary = nil
-                leavePractice()
-            }
-        }
-    }
-
-    private func enterPractice() {
-        let p = OnboardingPractice(model: model)
-        p.target = .email
-        practice = p
-        model.practice = p
-    }
-
-    private func leavePractice() {
-        practice?.cancel()
-        model.practice = nil
-        practice = nil
-    }
-}
-
-// MARK: - Welcome demo
-
-/// One copied message, one highlighted detail, one destination preview.
-/// Pointer/keyboard on the segmented control retargets the highlight and
-/// sends a coral chip through the fold to the field. Never touches the real
-/// clipboard, never calls a model.
-private struct WelcomeDemo: View {
-    @State private var target = OnboardingSample.Target.email
-    /// Paragraph-local rects + the paragraph's frame in demo space.
-    @State private var paragraphLocalRects: [CGRect] = []
-    @State private var paragraphRect: CGRect = .zero
-    /// Field anchor for the chip's destination.
-    @State private var fieldRect: CGRect = .zero
-    @State private var chip: ChipFlight?
-    @State private var chipTask: Task<Void, Never>?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private struct ChipFlight {
-        var from: CGRect
-        var to: CGRect
-        var text: String
-        var progress: CGFloat = 0
-    }
-
-    var body: some View {
-        FoldOut {
-            VStack(alignment: .leading, spacing: 16) {
-                OBCaption("Example copied message")
-                HighlightedParagraph(
-                    text: OnboardingSample.message,
-                    highlights: [span],
-                    width: 552
-                ) { rects in
-                    paragraphLocalRects = rects
-                }
-                .background(
-                    GeometryReader { g in
-                        Color.clear.preference(key: ParaAnchorKey.self,
-                                               value: g.frame(in: .named("demo")))
-                    }
-                )
-            }
-        } lower: {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(target.rawValue)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(OBTheme.textPrimary)
-                    Spacer()
-                    Text("Try a different field:")
-                        .font(.system(size: 11))
-                        .foregroundStyle(OBTheme.textSecondary)
-                    OBSegmented(items: OnboardingSample.Target.allCases.map { ($0, $0.rawValue) },
-                                selection: $target)
-                        .frame(width: 150)
-                }
-                OBFieldPreview(label: target.rawValue, value: shownValue)
-                    .background(
-                        GeometryReader { g in
-                            Color.clear.preference(key: FieldAnchorKey.self,
-                                                   value: g.frame(in: .named("demo")))
-                        }
-                    )
-            }
-        }
-        .coordinateSpace(name: "demo")
-        .onPreferenceChange(FieldAnchorKey.self) { fieldRect = $0 }
-        .onPreferenceChange(ParaAnchorKey.self) { paragraphRect = $0 }
-        .onChange(of: target) { _, _ in retarget() }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Demo: Cue picks the fitting detail from one copied message")
-        .overlay {
-            if let chip {
-                ChipView(chip: chip)
-            }
-        }
-    }
-
-    private var span: String { target.expected }
-
-    /// The field shows the extracted value — after the chip lands during a
-    /// retarget animation, immediately otherwise.
-    private var shownValue: String { chip == nil ? target.expected : "" }
-
-    /// The highlighted span's rect in demo coordinates.
-    private var spanRectInDemo: CGRect? {
-        paragraphLocalRects.first.map {
-            $0.offsetBy(dx: paragraphRect.minX, dy: paragraphRect.minY)
-        }
-    }
-
-    private func retarget() {
-        chipTask?.cancel()
-        guard !reduceMotion, let from = spanRectInDemo, !fieldRect.isEmpty else {
-            chip = nil
-            return
-        }
-        chip = ChipFlight(from: from, to: fieldRect, text: target.expected)
-        withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.4)) {
-            chip?.progress = 1
-        }
-        chipTask = Task {
-            try? await Task.sleep(for: .milliseconds(420))
-            guard !Task.isCancelled else { return }
-            chip = nil // field value appears
-        }
-    }
-
-    private struct FieldAnchorKey: PreferenceKey {
-        static let defaultValue: CGRect = .zero
-        static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
-    }
-
-    private struct ParaAnchorKey: PreferenceKey {
-        static let defaultValue: CGRect = .zero
-        static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
-    }
-
-    /// The coral chip that travels from the highlighted span to the field.
-    private struct ChipView: View {
-        var chip: ChipFlight
-        var body: some View {
-            let t = chip.progress
-            let x = chip.from.midX + (chip.to.midX - chip.from.midX) * t
-            let y = chip.from.midY + (chip.to.midY - chip.from.midY) * t - 3 * sin(t * .pi)
-            Text(chip.text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(OBTheme.highlightText)
-                .padding(.horizontal, 6).padding(.vertical, 3)
-                .background(OBTheme.highlight, in: RoundedRectangle(cornerRadius: 4))
-                .position(x: x, y: y)
-                .opacity(t < 0.85 ? 1 : 0)
-                .accessibilityHidden(true)
-        }
-    }
-}
-
-// MARK: - Practice screen
-
-/// The guided first paste. The field is a real NSTextField; the sample copy
-/// is a real pasteboard write; the trigger is the user's real binding.
-private struct PracticeScreen: View {
-    var practice: OnboardingPractice
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var succeeded: Bool { if case .succeeded = practice.phase { return true }; return false }
-
-    var body: some View {
-        FoldOut {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    OBCaption("Sample copied message")
-                    Spacer()
-                    Label("Copied for you", systemImage: "checkmark")
-                        .font(.system(size: 12))
-                        .foregroundStyle(OBTheme.textSecondary)
-                }
-                HighlightedParagraph(
-                    text: practice.sampleText,
-                    highlights: [practice.expected],
-                    fontSize: 16, width: 552)
-            }
-        } lower: {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(practice.fieldLabel)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(OBTheme.textPrimary)
-                HStack(spacing: 10) {
-                    PracticeField(label: practice.fieldLabel,
-                                  placeholder: practice.target == .email
-                                    ? "name@example.com" : "https://…",
-                                  practice: practice)
-                        .frame(height: 36)
-                        .overlay(alignment: .trailing) {
-                            // Ref 06: the confirmation sits inside the field.
-                            if succeeded {
-                                Label("\(practice.target.rawValue.capitalized) pasted", systemImage: "checkmark.circle.fill")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.green)
-                                    .padding(.trailing, 10)
-                                    .transition(reduceMotion ? .opacity
-                                                : .scale(scale: 0.85, anchor: .trailing).combined(with: .opacity))
-                            }
-                        }
-                        .animation(.spring(duration: 0.35, bounce: 0.25), value: succeeded)
-                    if case .succeeded = practice.phase, practice.round == 0 {
-                        OBBorderedButton(
-                            title: practice.target == .website ? "Try Email" : "Try Website"
-                        ) {
-                            practice.reset(target: practice.target == .website ? .email : .website)
-                        }
-                        OBBorderedButton(title: "Try another") { practice.tryAnother() }
-                    }
-                }
-                statusLine
-            }
-        }
-        .task {
-            practice.copySample()
-            await Task.yield()
-            practice.focus()
-        }
-    }
-
-    @ViewBuilder
-    private var statusLine: some View {
-        switch practice.phase {
-        case .intro:
-            Text("Preparing your sample…")
-                .font(.system(size: 12)).foregroundStyle(OBTheme.textTertiary)
-        case .armed:
-            HStack(spacing: 8) {
-                Text("Now press")
-                OBKeycap(keys: practice.triggerHint)
-            }
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(OBTheme.textSecondary)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 4)
-        case .deciding:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Deciding…").font(.system(size: 12))
-                    .foregroundStyle(OBTheme.textSecondary)
-            }
-        case .succeeded:
-            Text(practice.elapsedMilliseconds.map { "Pasted in \($0) ms · Find Cue in your Mac's menu bar." }
-                 ?? "Find Cue in your Mac's menu bar.")
-                .font(.system(size: 12))
-                .foregroundStyle(OBTheme.textTertiary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-        case .ordinaryPaste(let observed):
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Cue used ordinary paste this time.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.orange)
-                if !observed.isEmpty, observed != practice.expected {
-                    Text("The field got the whole message, not the \(practice.target.rawValue.lowercased()).")
-                        .font(.system(size: 11)).foregroundStyle(OBTheme.textTertiary)
-                }
-            }
-        case .uncertain:
-            Text("Cue wasn't sure which detail to paste.")
-                .font(.system(size: 12)).foregroundStyle(OBTheme.textSecondary)
-        case .failed(let msg):
-            Text(msg).font(.system(size: 12)).foregroundStyle(.red)
-        case .lostPermission:
-            Text("Accessibility access is needed to try this.")
-                .font(.system(size: 12)).foregroundStyle(.orange)
-        case .unavailable:
-            Text("Smart paste needs a working model — configure one in Settings anytime.")
-                .font(.system(size: 12)).foregroundStyle(OBTheme.textSecondary)
-        }
-    }
+    #endif
 }

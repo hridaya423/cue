@@ -279,7 +279,7 @@ public final class AppModel {
         }
         win.title = id == "history" ? "Clipboard History" : "Welcome to Cue"
         win.isReleasedWhenClosed = false
-        let size = id == "history" ? NSSize(width: 480, height: 420) : NSSize(width: 760, height: 580)
+        let size = id == "history" ? NSSize(width: 480, height: 420) : OBLayout.window
         win.setContentSize(size)
         return win
     }
