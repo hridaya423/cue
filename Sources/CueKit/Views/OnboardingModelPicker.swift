@@ -47,9 +47,8 @@ struct OnboardingModels: View {
     /// Catalog order: supported models first by rank for the visible list,
     /// the rest (experimental + unsupported) behind "More models".
     private var ranked: [ModelSpec] { ModelCatalog.all.sorted { $0.rank < $1.rank } }
-    private var headline: [ModelSpec] {
-        ranked.filter { !$0.support.isUnsupported }.prefix(3).map { $0 }
-    }
+    /// The role holders (Most accurate, Smallest); everything else sits behind "More models".
+    private var headline: [ModelSpec] { ModelCatalog.featured }
     private var rest: [ModelSpec] {
         let head = Set(headline.map(\.id))
         return ranked.filter { !head.contains($0.id) }

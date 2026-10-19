@@ -99,16 +99,16 @@ struct ModelRolesTests {
         let r = ModelRoles.roles(from: [b("bold", 0.88, 0.10, 200), b("careful", 0.84, 0.01, 250)])
         #expect(r.first?.role == .mostAccurate)
         #expect(r.first?.bench.model == "careful")
-        #expect(r.contains { $0.role == .fastest && $0.bench.model == "bold" })
+        #expect(r.contains { $0.role == .smallest && $0.bench.model == "bold" })
     }
 
     @Test func aDoubleWinnerFillsOnlyOneRole() {
         // "a" is best at everything; it takes Most accurate and the next
         // best fill the later roles.
-        let r = ModelRoles.roles(from: [b("a", 0.95, 0, 100), b("b", 0.85, 0.02, 200),
+        let r = ModelRoles.roles(from: [b("a", 0.95, 0, 100, disk: 0.4), b("b", 0.85, 0.02, 200),
                                         b("c", 0.82, 0.02, 300, disk: 0.5)])
-        #expect(r.map(\.role) == [.mostAccurate, .bestBalance, .fastest])
-        #expect(r.map(\.bench.model) == ["a", "c", "b"])
+        #expect(r.map(\.role) == [.mostAccurate, .smallest])
+        #expect(r.map(\.bench.model) == ["a", "c"])
     }
 
     @Test func tieOnQualityGoesToFewerWrong() {

@@ -26,15 +26,13 @@ public struct ModelBenchmark: Codable, Sendable, Equatable {
 
 public enum ModelRole: String, Sendable, CaseIterable {
     case mostAccurate = "Most accurate"
-    case bestBalance = "Best balance"
-    case fastest = "Fastest"
+    case smallest = "Smallest"
 
     /// Plain-words row subtitle.
     public var pitch: String {
         switch self {
         case .mostAccurate: "Fewest wrong pastes. Good for most Macs."
-        case .bestBalance: "Small download, quick and careful."
-        case .fastest: "Quickest decisions; guesses more often."
+        case .smallest: "Least disk and memory. Pastes the wrong thing a little more often."
         }
     }
 }
@@ -49,8 +47,9 @@ public enum ModelRoles {
     /// Roles in display order (the first is Recommended). Assigned in that
     /// order and each model holds at most one role:
     /// - Most accurate: highest `quality`, ties → fewer wrong pastes.
-    /// - Fastest: lowest p95 with resolved ≥ 80%.
-    /// - Best balance: highest `quality − 0.10·p95/1000 − 0.05·diskGB/2`.
+    /// - Smallest: least disk with resolved ≥ 80%, ties → quality. No speed role: every model answers
+    ///   within ~250–650 ms at p95 and most pastes never ask one. No balance role: on the measured
+    ///   catalog every mid-size model is both less accurate than and about as large as the most accurate one.
     /// Only models that meet the gates (p95 ≤ 1200, chooser on clear ≤ 20%) qualify.
     public static func roles(from data: [ModelBenchmark]) -> [(role: ModelRole, bench: ModelBenchmark)] {
         var pool = data.filter(\.meetsGates)
@@ -64,13 +63,8 @@ public enum ModelRoles {
         // break a real tie.
         func q(_ b: ModelBenchmark) -> Double { (b.quality * 1000).rounded() }
         take(.mostAccurate, pool.max { (q($0), -$0.wrong) < (q($1), -$1.wrong) })
-        take(.fastest, pool.filter { $0.resolved >= 0.8 }.min { $0.p95 < $1.p95 })
-        take(.bestBalance, pool.max { balance($0) < balance($1) })
+        take(.smallest, pool.filter { $0.resolved >= 0.8 }.min { ($0.diskGB, -q($0)) < ($1.diskGB, -q($1)) })
         return ModelRole.allCases.compactMap { r in out.first { $0.0 == r } }
-    }
-
-    static func balance(_ b: ModelBenchmark) -> Double {
-        b.quality - 0.10 * b.p95 / 1000 - 0.05 * b.diskGB / 2
     }
 
     public static func role(of modelID: String) -> ModelRole? {
@@ -97,10 +91,10 @@ public enum ModelRoles {
                 s.rank = roles.count + j + 1
             }
             // Meters are measured, not editorial: accuracy = quality
-            // (resolved − 2·wrong), speed = p50 against the 2.6 s ceiling.
+            // (resolved − 2·wrong), speed = p95 against the 2.6 s ceiling.
             if let b = data.first(where: { $0.model == spec.id }) {
                 let acc = min(max(b.quality, 0), 1)
-                let spd = min(max(1 - b.p50 / 2600, 0.05), 1)
+                let spd = min(max(1 - b.p95 / 2600, 0.05), 1)
                 s.variants = s.variants.map { v in
                     var v = v; v.accuracy = acc; v.speed = spd; return v
                 }

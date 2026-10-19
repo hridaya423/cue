@@ -35,7 +35,7 @@ public struct ModelSpec: Sendable, Identifiable {
     /// Lower = better; Others list and recommendations sort on this.
     public var rank: Int
     /// The plain-language pitch shown as the card's badge — users don't know
-    /// what kev/laya/von are; "Best balance" is what they can choose on.
+    /// what kev/laya/von are; "Smallest" is what they can choose on.
     public var reason: String
     public var defaultPort: Int
     public var blurb: String
@@ -144,7 +144,7 @@ public enum ModelCatalog {
         ])
 
     public static let laya = ModelSpec(
-        id: "laya", title: "Laya", rank: 2, reason: "Best balance", defaultPort: 8765,
+        id: "laya", title: "Laya", rank: 2, reason: "Smallest", defaultPort: 8765,
         blurb: "Under 1 GB and the quickest here (about 100 ms at worst), with 3% wrong pastes in Cue’s tests.",
         kind: .shim(packages: ["laya"], script: "laya_server.py", downloadsSnapshot: false),
         support: .supported,

@@ -3,7 +3,7 @@ import SwiftUI
 /// The provider picker shared by onboarding and Settings.
 /// Users don't know what kev/laya/von are — the picker leads with what each
 /// model is *for*: Jev hosted on top, then local cards pitched by reason
-/// (best balance / best accuracy / fastest) with meters, sizes, and inline
+/// (most accurate / smallest) with meters, sizes, and inline
 /// install/run controls. Everything else is one disclosure away.
 public struct ProviderPicker: View {
     var model: AppModel
