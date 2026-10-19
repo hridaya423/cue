@@ -336,6 +336,15 @@ struct DecisionEngineTests {
         #expect(opts.allSatisfy { $0.option.kind == .email })
     }
 
+    @Test func commandVInEmailFieldTakesTheClipboardsAddress() async {
+        let history = [Clip(text: "Reach Sam at sam.okafor@northwind.io or +1 415 555 0142 about the contract.", kind: .text),
+                       Clip(text: "weiuhfhuew hridayahoney@gmail.com", kind: .text)]
+        let outcome = await DecisionEngine(provider: nil).decide(
+            context: makeContext(label: "To"), candidates: history, mode: .intercept)
+        guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
+        #expect(d.text == "sam.okafor@northwind.io")
+    }
+
     @Test func noProviderPastesLatest() async {
         let engine = DecisionEngine(provider: nil)
         let outcome = await engine.decide(

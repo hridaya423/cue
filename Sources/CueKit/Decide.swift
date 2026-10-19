@@ -181,10 +181,13 @@ public struct DecisionEngine: Sendable {
             from: candidates, naming: ContextSignal.words(String(context.field.value.suffix(40)), min: 4))
         // A typed field (email/phone/URL) with exactly one matching option has one answer: the policy below
         // picks it whatever the model says. So skip the model — instant, and it works with none running.
+        // On ⌘V the clipboard wins: one matching part of the latest clip beats older matches (the user just copied it).
         if mode != .formFill, expects != .generic, expects != .name {
             let typed = options.filter { expects.matches($0) }
-            if typed.count == 1 { return .paste(DecisionPolicy.decision(
-                ScoredOption(option: typed[0], probability: 1, confidence: 1), isForm: false)) }
+            let fromLatest = typed.filter { $0.clip.id == latest.id }
+            let only = mode == .intercept && fromLatest.count == 1 ? fromLatest : typed
+            if only.count == 1 { return .paste(DecisionPolicy.decision(
+                ScoredOption(option: only[0], probability: 1, confidence: 1), isForm: false)) }
         }
         guard let provider else { return .pasteLatest(.noProvider) }
 
