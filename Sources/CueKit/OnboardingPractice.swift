@@ -337,6 +337,7 @@ struct PracticeField: NSViewRepresentable {
         f.delegate = context.coordinator
         f.bezelStyle = .roundedBezel
         f.focusRingType = .default
+        f.appearance = NSAppearance(named: .aqua) // sits on a white card in both modes
         practice.field = f
         return f
     }
