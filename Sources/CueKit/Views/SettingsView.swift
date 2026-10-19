@@ -8,21 +8,31 @@ import SwiftUI
 struct HotkeyRecorder: NSViewRepresentable {
     var value: AppSettings.Hotkey?
     var onChange: (AppSettings.Hotkey) -> Void
+    /// Draw nothing: the caller paints the keys and the armed state, the view only records.
+    var chromeless = false
+    var onArm: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> RecorderView {
         let v = RecorderView()
         v.onRecord = { hk in onChange(hk) }
+        v.chromeless = chromeless
+        v.onArm = onArm
         return v
     }
 
     func updateNSView(_ v: RecorderView, context: Context) {
         v.label = value?.displayString ?? "Record"
+        v.onArm = onArm
     }
 
     final class RecorderView: NSView {
         var label = "Record" { didSet { needsDisplay = true } }
         var onRecord: ((AppSettings.Hotkey) -> Void)?
-        private var recording = false { didSet { needsDisplay = true } }
+        var chromeless = false
+        var onArm: (Bool) -> Void = { _ in }
+        private var recording = false {
+            didSet { needsDisplay = true; if recording != oldValue { onArm(recording) } }
+        }
 
         override var acceptsFirstResponder: Bool { true }
         override var intrinsicContentSize: NSSize { NSSize(width: 96, height: 22) }
@@ -36,6 +46,7 @@ struct HotkeyRecorder: NSViewRepresentable {
         required init?(coder: NSCoder) { fatalError() }
 
         override func draw(_ dirtyRect: NSRect) {
+            guard !chromeless else { return }
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
             (recording ? NSColor.controlAccentColor.withAlphaComponent(0.2) : NSColor.controlBackgroundColor).setFill()
             path.fill()
@@ -58,7 +69,7 @@ struct HotkeyRecorder: NSViewRepresentable {
         }
 
         override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
-        override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
+        override func resignFirstResponder() -> Bool { recording = false; needsDisplay = true; return true }
 
         override func mouseDown(with event: NSEvent) {
             recording = true
