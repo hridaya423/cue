@@ -15,10 +15,26 @@ Env (default):  DECIDER_MODEL (Mapika/decider-0.8b)  DECIDER_PORT (8791)  DECIDE
   DECIDER_LAYOUT (unset: the layout of decider_config.json)
 """
 import asyncio
+import importlib.util
 import json
 import os
 import sys
 import time
+
+
+class _NoTorch:
+    """decider-ai pulls torch into the venv and transformers 5 imports it whenever it is installed (~0.5 GB),
+    though this server runs on MLX and never calls it. Report it as absent so transformers takes its torch-free path."""
+
+    def find_spec(self, name, path=None, target=None):
+        if name == "torch" or name.startswith("torch."):
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+        return None
+
+
+sys.meta_path.insert(0, _NoTorch())
+_find_spec = importlib.util.find_spec
+importlib.util.find_spec = lambda name, *a: None if name == "torch" or name.startswith("torch.") else _find_spec(name, *a)
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -58,7 +74,10 @@ SHARED_SUFFIX_TOKENS = _env_int("DECIDER_SHARED_SUFFIX_TOKENS", 65536)
 PREFILL_CHUNK = _env_int("DECIDER_PREFILL_CHUNK", 1024)
 WARMUP = os.environ.get("DECIDER_WARMUP", "1") == "1"
 TOKENIZE_THREADS = _env_int("DECIDER_TOKENIZE_THREADS", 8)
-CACHE_LIMIT = 1 << 30  # MLX's buffer cache keeps a buffer per new request shape; kev measured 1.0 GB cached vs 3.7 GB unbounded, same latency
+# MLX's buffer cache keeps a buffer per new request shape; kev measured 1.0 GB cached vs 3.7 GB unbounded, same latency.
+# An 8 GB Mac can't spare the gigabyte, so there it holds 256 MB and trades some speed for memory.
+_RAM = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+CACHE_LIMIT = (1 << 30) if _RAM > 8 * (1 << 30) else (256 << 20)
 
 MODEL_NAME = "decider"; TEMP = 1.0; TEMP_BY_TYPE = {}
 RELEASE_DATE = "2026-09-17"; ISOLATED = False

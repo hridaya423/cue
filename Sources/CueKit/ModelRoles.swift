@@ -32,7 +32,7 @@ public enum ModelRole: String, Sendable, CaseIterable {
     public var pitch: String {
         switch self {
         case .mostAccurate: "Fewest wrong pastes. Good for most Macs."
-        case .smallest: "Least disk and memory. Pastes the wrong thing a little more often."
+        case .smallest: "Uses the least memory. Pastes the wrong thing a little more often."
         }
     }
 }
@@ -44,14 +44,18 @@ public enum ModelRoles {
         return (try? JSONDecoder().decode([ModelBenchmark].self, from: data)) ?? []
     }()
 
-    /// Roles in display order (the first is Recommended). Assigned in that
-    /// order and each model holds at most one role:
+    /// Installed memory in GB. At 8 GB or less the most accurate model's ~3 GB is too much, so Smallest is Recommended there.
+    public static let machineRAMGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
+
+    /// Roles in display order (the first is Recommended). Assigned most accurate first,
+    /// and each model holds at most one role:
     /// - Most accurate: highest `quality`, ties → fewer wrong pastes.
-    /// - Smallest: least disk with resolved ≥ 80%, ties → quality. No speed role: every model answers
+    /// - Smallest: least memory with resolved ≥ 80%, ties → quality. No speed role: every model answers
     ///   within ~250–650 ms at p95 and most pastes never ask one. No balance role: on the measured
     ///   catalog every mid-size model is both less accurate than and about as large as the most accurate one.
     /// Only models that meet the gates (p95 ≤ 1200, chooser on clear ≤ 20%) qualify.
-    public static func roles(from data: [ModelBenchmark]) -> [(role: ModelRole, bench: ModelBenchmark)] {
+    public static func roles(from data: [ModelBenchmark],
+                             ramGB: Double = machineRAMGB) -> [(role: ModelRole, bench: ModelBenchmark)] {
         var pool = data.filter(\.meetsGates)
         var out: [(ModelRole, ModelBenchmark)] = []
         func take(_ role: ModelRole, _ best: ModelBenchmark?) {
@@ -63,8 +67,9 @@ public enum ModelRoles {
         // break a real tie.
         func q(_ b: ModelBenchmark) -> Double { (b.quality * 1000).rounded() }
         take(.mostAccurate, pool.max { (q($0), -$0.wrong) < (q($1), -$1.wrong) })
-        take(.smallest, pool.filter { $0.resolved >= 0.8 }.min { ($0.diskGB, -q($0)) < ($1.diskGB, -q($1)) })
-        return ModelRole.allCases.compactMap { r in out.first { $0.0 == r } }
+        take(.smallest, pool.filter { $0.resolved >= 0.8 }.min { ($0.ramGB, -q($0)) < ($1.ramGB, -q($1)) })
+        let order: [ModelRole] = ramGB <= 8 ? [.smallest, .mostAccurate] : [.mostAccurate, .smallest]
+        return order.compactMap { r in out.first { $0.0 == r } }
     }
 
     public static func role(of modelID: String) -> ModelRole? {

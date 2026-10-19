@@ -145,14 +145,14 @@ public enum ModelCatalog {
 
     public static let laya = ModelSpec(
         id: "laya", title: "Laya", rank: 2, reason: "Smallest", defaultPort: 8765,
-        blurb: "Under 1 GB and the quickest here (about 100 ms at worst), with 3% wrong pastes in Cue’s tests.",
+        blurb: "The quickest here (about 100 ms at worst), with 3% wrong pastes in Cue’s tests.",
         kind: .shim(packages: ["laya"], script: "laya_server.py", downloadsSnapshot: false),
         support: .supported,
         variants: [
             WeightSpec(id: "laya-en", paramsLabel: "421M", diskLabel: "~900 MB", ramLabel: "~1 GB",
                        accuracy: 0.8, speed: 0.8,
                        serveModel: "laya", hfRepo: "convaiinnovations/laya"),
-            WeightSpec(id: "laya-multi", paramsLabel: "322M", diskLabel: "~700 MB", ramLabel: "~1 GB",
+            WeightSpec(id: "laya-multi", paramsLabel: "322M", diskLabel: "~700 MB", ramLabel: "~2 GB",
                        recommended: true, accuracy: 0.6, speed: 0.95,
                        serveModel: "multilingual", hfRepo: "convaiinnovations/laya-multilingual"),
             WeightSpec(id: "laya-typed", paramsLabel: "421M", diskLabel: "~900 MB", ramLabel: "~1 GB",
@@ -167,7 +167,7 @@ public enum ModelCatalog {
                     serveArgv: ["von", "serve", "--host", "127.0.0.1", "--port", "{port}"]),
         support: .supported,
         variants: [
-            WeightSpec(id: "von-1.0", paramsLabel: "395M", diskLabel: "~1.5 GB", ramLabel: "~2 GB",
+            WeightSpec(id: "von-1.0", paramsLabel: "395M", diskLabel: "~1.5 GB", ramLabel: "~4 GB",
                        recommended: true, accuracy: 0.7, speed: 0.95,
                        serveModel: "von-1.0", hfRepo: "wfzyx/von-1.0"),
         ])
@@ -424,7 +424,7 @@ public enum ModelCatalog {
                     env: [:]),
         support: .experimental("volume tier: 66% out-of-family per card; same shift warning applies"),
         variants: [
-            WeightSpec(id: "s1qwen-0.6b", paramsLabel: "0.6B", diskLabel: "~1.4 GB", ramLabel: "~2 GB",
+            WeightSpec(id: "s1qwen-0.6b", paramsLabel: "0.6B", diskLabel: "~1.4 GB", ramLabel: "~3 GB",
                        recommended: true, accuracy: 0.66, speed: 0.9,
                        serveModel: "models/qwen3-0.6b", hfRepo: "mpuig/system-one-qwen3-0.6b"),
         ])
@@ -503,15 +503,15 @@ public enum ModelCatalog {
     /// JevK5-Lite — 437M DeBERTa-v3 CPU label classifier from the JevK5
     /// project. Generic heads, not a typed-decision runtime: our shim maps
     /// each question to a single-label head and reads calibrated
-    /// probabilities back. Preview-1 quality per its own card.
+    /// probabilities back. Its card says preview; on Cue's suite it resolves 89% with 4% wrong.
     public static let jevk5lite = ModelSpec(
         id: "jevk5lite", title: "JevK5-Lite", rank: 18, reason: "CPU classifier", defaultPort: 8784,
-        blurb: "437M CPU classifier — calibrated labels adapted to the contract; preview quality.",
+        blurb: "Uses the least memory here (under 1 GB). About 350 ms at worst, with 4% wrong pastes in Cue’s tests.",
         kind: .shim(packages: ["jevk5[lite] @ git+https://github.com/allebee/jevk5@v0.3.1"],
                     script: "lite_server.py", downloadsSnapshot: false),
-        support: .experimental("generic label heads, not typed-decision-native; card says preview"),
+        support: .supported,
         variants: [
-            WeightSpec(id: "jevk5-lite", paramsLabel: "437M", diskLabel: "~1.7 GB", ramLabel: "~2 GB",
+            WeightSpec(id: "jevk5-lite", paramsLabel: "437M", diskLabel: "~1.7 GB", ramLabel: "~0.7 GB",
                        recommended: true, accuracy: 0.5, speed: 0.85,
                        serveModel: "JevK5-Lite", hfRepo: "alibiserikbay/JevK5-Lite"),
         ])
@@ -533,7 +533,7 @@ public enum ModelCatalog {
                     script: "kenning_server.py", downloadsSnapshot: false),
         support: .experimental("native contract server via builder shim; cross-encoder cost grows with option count"),
         variants: [
-            WeightSpec(id: "kenning-v06", paramsLabel: "~400M", diskLabel: "~1.6 GB", ramLabel: "~2 GB",
+            WeightSpec(id: "kenning-v06", paramsLabel: "~400M", diskLabel: "~1.6 GB", ramLabel: "~3 GB",
                        recommended: true, accuracy: 0.7, speed: 0.6,
                        serveModel: "kenning-large-v0.6", hfRepo: "systemonedev/kenning-large-v0.6"),
             WeightSpec(id: "kenning-v05", paramsLabel: "435M", diskLabel: "~1.7 GB", ramLabel: "~2 GB",

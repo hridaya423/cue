@@ -111,6 +111,12 @@ struct ModelRolesTests {
         #expect(r.map(\.bench.model) == ["a", "c"])
     }
 
+    @Test func smallestLeadsOnAnEightGigabyteMac() {
+        let data = [b("accurate", 0.92, 0.01, 250, disk: 3), b("light", 0.89, 0.04, 350, disk: 0.7)]
+        #expect(ModelRoles.roles(from: data, ramGB: 16).map(\.bench.model) == ["accurate", "light"])
+        #expect(ModelRoles.roles(from: data, ramGB: 8).map(\.role) == [.smallest, .mostAccurate])
+    }
+
     @Test func tieOnQualityGoesToFewerWrong() {
         let r = ModelRoles.roles(from: [b("x", 0.90, 0.05, 300), b("y", 0.84, 0.02, 300)])
         #expect(r.first?.bench.model == "y")
