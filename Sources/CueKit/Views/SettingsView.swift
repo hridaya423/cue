@@ -139,7 +139,7 @@ public struct SettingsView: View {
             if let loginError {
                 Text(loginError).font(.callout).foregroundStyle(.red)
             }
-            Toggle("Confirm each smart paste", isOn: $settings.showStatusToast)
+            Toggle("Show a note when Cue picks for you", isOn: $settings.showStatusToast)
             Toggle("Paste in the order I copied (queue)", isOn: queueBinding)
         } footer: {
             Text("Queue: each ⌘V pastes the next clip you copied, oldest first, until the queue is empty.")

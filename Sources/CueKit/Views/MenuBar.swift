@@ -237,7 +237,7 @@ struct MenuPanel: View {
                     Spacer()
                     ReturnHint(visible: isSelected)
                 }
-                ClipLook.of(clip).title(clip, weight: .medium)
+                ClipLook.of(clip).title(clip.text, weight: .medium)
                     .lineLimit(2)
                     .truncationMode(ClipLook.of(clip).truncation)
                     .multilineTextAlignment(.leading)
@@ -387,6 +387,16 @@ struct MenuPanel: View {
 enum ClipLook {
     case link, email, number, code, multiline, text
 
+    static func of(_ option: PasteOption) -> ClipLook {
+        switch option.kind {
+        case .url: .link
+        case .email: .email
+        case .phone: .number
+        case .code: .code
+        case .text: of(option.clip)
+        }
+    }
+
     static func of(_ clip: Clip) -> ClipLook {
         let t = clip.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if clip.isURL { return .link }
@@ -403,19 +413,21 @@ enum ClipLook {
     var truncation: Text.TruncationMode { self == .link ? .middle : .tail }
 
     /// Links read as host + path with the scheme dropped; numbers and codes are monospaced so digits line up.
-    func title(_ clip: Clip, weight: Font.Weight = .regular) -> Text {
+    /// `muted` colors a link's path; a row drawn on the accent passes white.
+    func title(_ text: String, weight: Font.Weight = .regular, muted: Color = .secondary) -> Text {
+        let preview = Clip.preview(of: text)
         switch self {
         case .link:
-            guard let url = URL(string: clip.text.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  let host = url.host() else { return Text(clip.preview).font(.system(size: 13, weight: weight)) }
+            guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let host = url.host() else { return Text(preview).font(.system(size: 13, weight: weight)) }
             let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
             let rest = url.path() + (url.query().map { "?\($0)" } ?? "")
             return Text(bare).font(.system(size: 13, weight: weight == .regular ? .medium : .semibold))
-                + Text(rest == "/" ? "" : rest).font(.system(size: 13, weight: weight)).foregroundColor(.secondary)
+                + Text(rest == "/" ? "" : rest).font(.system(size: 13, weight: weight)).foregroundColor(muted)
         case .number, .code:
-            return Text(clip.preview).font(.system(size: 13, weight: weight, design: .monospaced))
+            return Text(preview).font(.system(size: 13, weight: weight, design: .monospaced))
         default:
-            return Text(clip.preview).font(.system(size: 13, weight: weight))
+            return Text(preview).font(.system(size: 13, weight: weight))
         }
     }
 
@@ -442,7 +454,7 @@ private struct ClipRow: View {
             HStack(spacing: 10) {
                 SourceAppIcon(clip: clip, size: 18)
                 VStack(alignment: .leading, spacing: 1) {
-                    look.title(clip)
+                    look.title(clip.text)
                         .lineLimit(1)
                         .truncationMode(look.truncation)
                     Text(ClipLook.meta(clip))

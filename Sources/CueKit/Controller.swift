@@ -81,7 +81,7 @@ public final class SmartPasteController {
         // Queue mode: deterministic FIFO, no model call.
         if settings.queueMode, let clip = store.popQueue() {
             lastAction = "queued paste" // never log clip contents
-            paste(clip.text, clip: clip, ctx: ctx)
+            paste(clip.text, clip: clip)
             return
         }
         guard !store.clips.isEmpty else {
@@ -124,7 +124,7 @@ public final class SmartPasteController {
     /// History-window/menu action: paste a specific clip into whatever app
     /// had focus. The caller is responsible for restoring focus first.
     public func pasteClip(_ clip: Clip) {
-        paste(clip.text, clip: clip, ctx: nil)
+        paste(clip.text, clip: clip)
     }
 
     /// Manual picker hotkey — always shows the picker, no model call.
@@ -137,7 +137,7 @@ public final class SmartPasteController {
         hud.showPicker(candidates: candidates, near: HUDController.anchor(caret: ctx.caretRect, field: ctx.fieldRect)) { [weak self] pick in
             guard let self else { return }
             guard let pick else { self.pasteLatest(); return }
-            self.paste(pick.clip.text, clip: pick.clip, ctx: nil)
+            self.paste(pick.clip.text, clip: pick.clip)
         }
     }
 
@@ -150,7 +150,8 @@ public final class SmartPasteController {
         case .paste(let d):
             lastAction = "pasted" + (d.detail.map { " · \($0)" } ?? "") + ms
             hud.dismiss() // a shown deciding indicator must not linger
-            paste(d.text, clip: d.clip, ctx: ctx, note: d.detail)
+            paste(d.text, clip: d.clip)
+            confirm(d, ctx: ctx)
             if d.isForm { await formFiller?.run() }
         case .choose(let opts):
             lastAction = "showed chooser" + ms
@@ -160,7 +161,7 @@ public final class SmartPasteController {
                 // Esc/⌘V means "plain paste" — the chooser promises it.
                 guard let pick else { self.lastAction = "plain paste · declined options"; self.pasteLatest(); return }
                 self.lastAction = "pasted picked option"
-                self.paste(pick.option.text, clip: pick.option.clip, ctx: ctx)
+                self.paste(pick.option.text, clip: pick.option.clip)
             }
         case .pasteLatest(let reason):
             lastAction = "plain paste · \(reason.label) · \(Self.fieldNote(ctx))" + ms
@@ -192,12 +193,19 @@ public final class SmartPasteController {
         return ctx.field.label.isEmpty ? "unlabelled field" : "field “\(ctx.field.label.prefix(30))”"
     }
 
-    private func paste(_ text: String, clip: Clip, ctx: ContextSnapshot?, note: String? = nil) {
+    private func paste(_ text: String, clip: Clip) {
         executor.paste(text)
         store.markPasted(clip)
-        if settings.showStatusToast {
-            hud.showStatus("Pasted “\(clip.preview)”" + (note.map { " · \($0)" } ?? ""))
-        }
+    }
+
+    /// Cue chose on its own: say what kind of thing landed and where it came from, next to the caret.
+    /// Never the text itself: the note is visible to anyone watching the screen.
+    private func confirm(_ d: Decision, ctx: ContextSnapshot) {
+        guard settings.showStatusToast else { return }
+        let kind = d.detail.map { $0 == "url" ? "link" : $0 }
+        let what = ["Pasted", kind].compactMap { $0 }.joined(separator: " ")
+        let note = d.clip.sourceApp.isEmpty ? what : "\(what) from \(d.clip.sourceApp)"
+        hud.showStatus(note, near: HUDController.anchor(caret: ctx.caretRect, field: ctx.fieldRect))
     }
 
     /// Internal: the practice session builds its engine through the same path.

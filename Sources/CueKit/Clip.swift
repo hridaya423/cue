@@ -46,7 +46,9 @@ public struct Clip: Codable, Identifiable, Hashable, Sendable {
     }
 
     /// Whitespace-collapsed first line, for labels and Jev criteria.
-    public var preview: String {
+    public var preview: String { Self.preview(of: text) }
+
+    public static func preview(of text: String) -> String {
         let squashed = text.components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")

@@ -143,8 +143,8 @@ public final class HUDController {
     }
 
     /// Tiny confirmation pill. Auto-dismisses.
-    public func showStatus(_ text: String) {
-        show(view: StatusToastView(text: text), near: nil, dismissOnResign: false)
+    public func showStatus(_ text: String, near rect: CGRect? = nil) {
+        show(view: StatusToastView(text: text), near: rect, dismissOnResign: false)
         dismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.4))
             self?.dismiss()
@@ -392,11 +392,11 @@ struct ChooserView: View {
                 SourceAppIcon(clip: so.option.clip, size: 18)
                     .frame(width: 18)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(so.option.text)
-                        .font(.system(size: 13, weight: .medium))
+                    let look = ClipLook.of(so.option)
+                    look.title(so.option.text, weight: .medium, muted: selected ? .white.opacity(0.75) : .secondary)
                         .foregroundStyle(selected ? .white : .primary)
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(look.truncation)
                     Text(contextLine(for: so.option))
                         .font(.system(size: 11))
                         .foregroundStyle(selected ? .white.opacity(0.8) : .secondary)
