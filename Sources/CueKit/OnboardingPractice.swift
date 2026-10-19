@@ -111,12 +111,12 @@ public final class OnboardingPractice {
             ?? HotkeyManager.Action.smartPaste.default).displayString
     }
 
-    /// "Copy sample" — a real pasteboard write (labeled as such in the UI).
-    /// The clipboard monitor may legitimately record it; the decision below
-    /// still only sees this one sample clip.
+    /// "Copy sample" — a real pasteboard write (labeled as such in the UI), marked transient so
+    /// the sample never lands in the user's history; the decision below only sees this one clip.
     public func copySample() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(sampleText, forType: .string)
+        NSPasteboard.general.setData(Data(), forType: .init("org.nspasteboard.TransientType"))
         focus()
         phase = model.makeProvider() == nil ? .unavailable : .armed
     }

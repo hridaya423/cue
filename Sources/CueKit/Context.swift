@@ -90,13 +90,20 @@ public enum ContextCaptor {
         guard isTrusted else { return ctx }
         if let pid = app?.processIdentifier { enableWebAccessibility(pid: pid) }
 
+        guard let focused = focusedElement(of: app) else { return ctx }
+        return capture(element: focused, app: app, into: ctx)
+    }
+
+    /// Helium fails the system-wide focus query (-25204) on every call while the app element answers it.
+    private static func focusedElement(of app: NSRunningApplication?) -> AXUIElement? {
         let system = AXUIElementCreateSystemWide()
         // A hung target app must not stall a paste — 50 ms per AX call.
         AXUIElementSetMessagingTimeout(system, 0.05)
-        var focusedRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-              let focusedRef, CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else { return ctx }
-        return capture(element: focusedRef as! AXUIElement, app: app, into: ctx)
+        if let el = axElement(system, kAXFocusedUIElementAttribute) { return el }
+        guard let pid = app?.processIdentifier else { return nil }
+        let axApp = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(axApp, 0.05)
+        return axElement(axApp, kAXFocusedUIElementAttribute)
     }
 
     /// Same capture aimed at a specific element — CueDay's replay windows
@@ -126,7 +133,12 @@ public enum ContextCaptor {
         ctx.field.value = String(raw.prefix(200))
         ctx.field.placeholder = axString(el, "AXPlaceholderValue") ?? ""
         ctx.fieldRect = axRect(el)
-        ctx.caretRect = caretRect(of: el)
+        ctx.caretRect = caretRect(of: el).flatMap { caret in
+            // Chromium answers an empty selection with a zero-size rect at the page's corner.
+            guard caret.height > 0, let field = ctx.fieldRect,
+                  field.insetBy(dx: -4, dy: -4).intersects(caret) else { return nil }
+            return caret
+        }
         ctx.nearby = nearbyText(of: el)
         ctx.webHost = webHost(of: el)
         ctx.windowTitle = windowTitle(of: app) ?? ""

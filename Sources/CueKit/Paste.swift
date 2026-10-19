@@ -12,6 +12,9 @@ public final class PasteExecutor {
     /// Optional hook for tests/self-check: observed instead of actually posting keys.
     public var onWouldPost: ((String) -> Void)?
 
+    /// The user's own clipboard, held while a smart paste borrows the pasteboard.
+    private var borrowed: (original: [NSPasteboardItem], changeCount: Int)?
+
     public init(monitor: ClipboardMonitor, hotkeys: HotkeyManager) {
         self.monitor = monitor
         self.hotkeys = hotkeys
@@ -35,15 +38,19 @@ public final class PasteExecutor {
         }
     }
 
-    /// Put `text` on the pasteboard and send ⌘V to the focused app.
+    /// Put `text` on the pasteboard, send ⌘V to the focused app, then give the user's clipboard back.
+    /// Leaving the pick there made the next plain ⌘V paste it while the engine had judged the latest copy.
     public func paste(_ text: String) {
         hotkeys.isSynthesizing = true
         hotkeys.suspendIntercept()
         monitor.suppressCapture = true
 
         let pb = NSPasteboard.general
+        let original = borrowed?.original ?? Self.copyItems(of: pb)
         pb.clearContents()
         pb.setString(text, forType: .string)
+        let written = pb.changeCount
+        borrowed = (original, written)
 
         if let onWouldPost {
             onWouldPost(text)
@@ -51,12 +58,28 @@ public final class PasteExecutor {
             postKey(keyCode: UInt16(kVK_ANSI_V), flags: .maskCommand)
         }
 
-        // Re-enable capture once the target app has consumed the paste.
         Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let self, self.borrowed?.changeCount == written else { return }
+            self.borrowed = nil
+            if pb.changeCount == written, !original.isEmpty {
+                pb.clearContents()
+                pb.writeObjects(original)
+            }
             try? await Task.sleep(for: .milliseconds(300))
-            self?.monitor.suppressCapture = false
-            self?.hotkeys.isSynthesizing = false
-            self?.hotkeys.resumeIntercept()
+            self.monitor.suppressCapture = false
+            self.hotkeys.isSynthesizing = false
+            self.hotkeys.resumeIntercept()
+        }
+    }
+
+    private static func copyItems(of pb: NSPasteboard) -> [NSPasteboardItem] {
+        (pb.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
         }
     }
 

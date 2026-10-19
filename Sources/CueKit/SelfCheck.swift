@@ -6,8 +6,8 @@ import Foundation
 /// labeled "Email", a real context capture, a real decision, a real pasteboard
 /// write, and a real paste: on the field editor. Run from the menu bar.
 ///
-/// Invariant checked: the field ends up holding exactly what the pasteboard
-/// holds after the decision — proving capture → decide → paste works.
+/// Invariant checked: the field ends up holding the marker clip the decision
+/// must pick — proving capture → decide → paste works.
 @MainActor
 public enum SelfCheck {
     public static func run(model: AppModel) async -> String {
@@ -16,8 +16,10 @@ public enum SelfCheck {
         }
 
         let marker = "scp-\(Int(Date().timeIntervalSince1970))@example.com"
-        model.store.add(Clip(text: "unrelated decoy", kind: .text, sourceApp: "SelfCheck"))
-        model.store.add(Clip(text: marker, kind: .text, sourceApp: "SelfCheck"))
+        let probes = [Clip(text: "unrelated decoy", kind: .text, sourceApp: "SelfCheck"),
+                      Clip(text: marker, kind: .text, sourceApp: "SelfCheck")]
+        probes.forEach(model.store.add)
+        defer { probes.forEach(model.store.remove) }
 
         // A real text field in a real window.
         let field = NSTextField()
@@ -86,10 +88,10 @@ public enum SelfCheck {
             win.close()
         }
 
-        let pasted = NSPasteboard.general.string(forType: .string) ?? ""
-        guard field.stringValue == pasted, !pasted.isEmpty else {
+        let pasted = field.stringValue
+        guard pasted == marker else {
             let fr = win.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
-            return "FAIL — field=\(field.stringValue.prefix(40)) pasteboard=\(pasted.prefix(40)) key=\(win.isKeyWindow) fr=\(fr)"
+            return "FAIL — field=\(pasted.prefix(40)) key=\(win.isKeyWindow) fr=\(fr)"
         }
         return "PASS — pasted “\(pasted.prefix(40))”"
     }

@@ -212,7 +212,8 @@ public enum ModelCatalog {
     public static let decider = ModelSpec(
         id: "decider", title: "Decider", rank: 15, reason: "Full fine-tunes", defaultPort: 8790,
         blurb: "Picks the right clip most often in Cue’s tests (1% wrong), about 200 ms on Apple silicon.",
-        kind: .shim(packages: ["decider-ai==1.9.0", "mlx==0.32.2", "mlx-lm==0.31.3"],
+        kind: .shim(packages: ["decider-ai==1.9.0", "mlx==0.32.2", "mlx-lm==0.31.3",
+                               "fastapi==0.149.0", "uvicorn==0.54.0"],
                     script: "decider_mlx_server.py", downloadsSnapshot: false),
         support: .supported,
         variants: [
