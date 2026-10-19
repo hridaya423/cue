@@ -109,6 +109,9 @@ struct MenuPanel: View {
     @State private var filter = ""
     /// Hover and arrow keys share one selection; Return pastes it.
     @State private var selection: Clip.ID?
+    /// Set only by arrow keys: hovering selects a row too, and scrolling on hover made the list jump under the pointer.
+    @State private var keyboardTarget: Clip.ID?
+    @Namespace private var highlight
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -117,7 +120,7 @@ struct MenuPanel: View {
     static let edge: CGFloat = 12
     static let fill = Color.primary.opacity(0.07)
     private static let rowHeight: CGFloat = 40
-    private static let maxListHeight: CGFloat = 300
+    private static let maxListHeight: CGFloat = 340
 
     private var matches: [Clip] {
         guard !filter.isEmpty else { return clips }
@@ -130,13 +133,22 @@ struct MenuPanel: View {
     private var navClips: [Clip] { Array(matches.prefix(30)) }
     private var clipboard: Clip? { filter.isEmpty ? clips.first : nil }
     private var listed: [Clip] { clipboard == nil ? navClips : Array(navClips.dropFirst()) }
-    private var recent: [Clip] { listed.filter { -$0.copiedAt.timeIntervalSinceNow < Self.recentWindow } }
-    private var earlier: [Clip] { listed.filter { -$0.copiedAt.timeIntervalSinceNow >= Self.recentWindow } }
+    /// Pinned first, then by age: the last 15 minutes (what smart paste draws from), the rest of today, older.
+    private var sections: [(title: String, rows: [Clip])] {
+        guard filter.isEmpty else { return [("", listed)] }
+        let unpinned = listed.filter { !$0.pinned }
+        let age = { (c: Clip) in -c.copiedAt.timeIntervalSinceNow }
+        let today = Calendar.current.startOfDay(for: Date())
+        return [("Pinned", listed.filter(\.pinned)),
+                ("Recent", unpinned.filter { age($0) < Self.recentWindow }),
+                ("Today", unpinned.filter { age($0) >= Self.recentWindow && $0.copiedAt >= today }),
+                ("Older", unpinned.filter { age($0) >= Self.recentWindow && $0.copiedAt < today })]
+            .filter { !$0.rows.isEmpty }
+    }
     private var selected: Clip.ID? { selection ?? navClips.first?.id }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             if !clips.isEmpty { searchField }
             if let clipboard { clipboardCard(clipboard) }
             list
@@ -164,6 +176,7 @@ struct MenuPanel: View {
         guard !ids.isEmpty else { return }
         let cur = ids.firstIndex(of: selected ?? "") ?? (delta > 0 ? -1 : ids.count)
         selection = ids[min(ids.count - 1, max(0, cur + delta))]
+        keyboardTarget = selection
     }
 
     private func shortcutIndex(_ clip: Clip) -> Int? {
@@ -172,21 +185,15 @@ struct MenuPanel: View {
 
     // MARK: Header
 
-    private var header: some View {
-        HStack(spacing: 7) {
+    /// Status the user rarely acts on lives in the footer; the details sit in its tooltip.
+    private var statusLabel: some View {
+        HStack(spacing: 6) {
             Circle().fill(status.color).frame(width: 7, height: 7).accessibilityHidden(true)
-            Text("Cue").font(.system(size: 13, weight: .semibold))
-            Text(status.title).font(.system(size: 12)).foregroundStyle(.secondary)
-            if let note = status.note {
-                Text("· \(note)").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 0)
+            Text(status.title).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 13)
-        .padding(.bottom, 10)
+        .padding(.leading, 12)
         .contentShape(Rectangle())
-        .help(detail.map { "Last paste: \($0)" } ?? "")
+        .help([status.note, detail.map { "Last paste: \($0)" }].compactMap { $0 }.joined(separator: "\n"))
         .accessibilityElement(children: .combine)
     }
 
@@ -213,6 +220,7 @@ struct MenuPanel: View {
         .padding(.vertical, 7)
         .background(Self.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .padding(.horizontal, Self.edge)
+        .padding(.top, 12)
         .padding(.bottom, 10)
     }
 
@@ -223,14 +231,13 @@ struct MenuPanel: View {
         return Button { actions.paste(clip) } label: {
             VStack(alignment: .leading, spacing: 5) {
                 HStack {
-                    Text("On your clipboard")
+                    Text("Clipboard")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
                     ReturnHint(visible: isSelected)
                 }
-                Text(clip.preview)
-                    .font(.system(size: 13, weight: .medium))
+                ClipLook.of(clip).title(clip, weight: .medium)
                     .lineLimit(2)
                     .truncationMode(ClipLook.of(clip).truncation)
                     .multilineTextAlignment(.leading)
@@ -243,7 +250,7 @@ struct MenuPanel: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? Color.accentColor.opacity(0.14) : Self.fill,
+            .background(isSelected ? Color.accentColor.opacity(0.1) : Self.fill,
                         in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
@@ -274,11 +281,9 @@ struct MenuPanel: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
         } else if !listed.isEmpty {
-            let sections = filter.isEmpty
-                ? [("Recent", recent), ("Earlier", earlier)].filter { !$0.1.isEmpty }
-                : [("", listed)]
+            let sections = sections
             let contentHeight = CGFloat(listed.count) * Self.rowHeight
-                + CGFloat(sections.filter { !$0.0.isEmpty }.count) * 26 + 6
+                + CGFloat(sections.filter { !$0.0.isEmpty }.count) * 22 + 6
             let overflows = contentHeight > Self.maxListHeight
             ScrollViewReader { proxy in
                 ScrollView {
@@ -289,12 +294,20 @@ struct MenuPanel: View {
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 12)
-                                    .frame(height: 26, alignment: .bottomLeading)
+                                    .frame(height: 22, alignment: .bottomLeading)
                             }
                             ForEach(rows) { clip in
                                 ClipRow(clip: clip, isSelected: selected == clip.id,
-                                        shortcut: shortcutIndex(clip), fill: Self.fill, actions: actions)
+                                        shortcut: shortcutIndex(clip), actions: actions)
                                     .frame(height: Self.rowHeight)
+                                    .background {
+                                        // One highlight that glides between rows instead of blinking row to row.
+                                        if selected == clip.id {
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .fill(Self.fill)
+                                                .matchedGeometryEffect(id: "highlight", in: highlight)
+                                        }
+                                    }
                                     .onHover { if $0 { selection = clip.id } }
                                     .id(clip.id)
                                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -303,11 +316,12 @@ struct MenuPanel: View {
                     }
                     .padding(.horizontal, Self.edge)
                     .padding(.bottom, overflows ? 14 : 6)
+                    .animation(reduceMotion ? nil : .spring(duration: 0.22, bounce: 0), value: selected)
                 }
                 .frame(height: min(contentHeight, Self.maxListHeight))
                 .mask(ScrollFade(active: overflows, height: min(contentHeight, Self.maxListHeight)))
-                .onChange(of: selection) { _, sel in
-                    if let sel { proxy.scrollTo(sel, anchor: .center) }
+                .onChange(of: keyboardTarget) { _, target in
+                    if let target { proxy.scrollTo(target) }
                 }
             }
         }
@@ -343,10 +357,11 @@ struct MenuPanel: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
+            statusLabel
+            Spacer()
             FooterButton(title: "History", icon: "clock.arrow.circlepath", action: actions.openHistory)
             FooterButton(title: "Settings", icon: "gearshape", action: actions.openSettings)
-            Spacer()
             Menu {
                 Button(paused ? "Resume Copying" : "Pause Copying") { paused.toggle() }
                 Divider()
@@ -368,7 +383,7 @@ struct MenuPanel: View {
     }
 }
 
-/// How a clip shows itself: a glyph for its kind, and truncation that keeps the part people recognize.
+/// How a clip shows itself: link, mono and plain styling, and truncation that keeps the part people recognize.
 enum ClipLook {
     case link, email, number, code, multiline, text
 
@@ -384,22 +399,33 @@ enum ClipLook {
         return .text
     }
 
-    var symbol: String {
-        switch self {
-        case .link: "link"
-        case .email: "envelope"
-        case .number: "number"
-        case .code: "chevron.left.forwardslash.chevron.right"
-        case .multiline: "text.alignleft"
-        case .text: "text.quote"
-        }
-    }
-
     /// Links keep their host and their last path part; prose keeps its opening words.
     var truncation: Text.TruncationMode { self == .link ? .middle : .tail }
 
+    /// Links read as host + path with the scheme dropped; numbers and codes are monospaced so digits line up.
+    func title(_ clip: Clip, weight: Font.Weight = .regular) -> Text {
+        switch self {
+        case .link:
+            guard let url = URL(string: clip.text.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let host = url.host() else { return Text(clip.preview).font(.system(size: 13, weight: weight)) }
+            let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+            let rest = url.path() + (url.query().map { "?\($0)" } ?? "")
+            return Text(bare).font(.system(size: 13, weight: weight == .regular ? .medium : .semibold))
+                + Text(rest == "/" ? "" : rest).font(.system(size: 13, weight: weight)).foregroundColor(.secondary)
+        case .number, .code:
+            return Text(clip.preview).font(.system(size: 13, weight: weight, design: .monospaced))
+        default:
+            return Text(clip.preview).font(.system(size: 13, weight: weight))
+        }
+    }
+
     static func meta(_ clip: Clip) -> String {
-        [clip.copiedAt.relativeAge, clip.sourceApp].filter { !$0.isEmpty }.joined(separator: " · ")
+        [age(clip.copiedAt), clip.sourceApp].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// "18d ago" says less than "1 Oct" past a week.
+    static func age(_ date: Date) -> String {
+        -date.timeIntervalSinceNow < 7 * 86400 ? date.relativeAge : date.formatted(.dateTime.day().month(.abbreviated))
     }
 }
 
@@ -407,7 +433,6 @@ private struct ClipRow: View {
     let clip: Clip
     let isSelected: Bool
     let shortcut: Int?
-    let fill: Color
     let actions: MenuPanelActions
     @State private var hovered = false
 
@@ -415,22 +440,15 @@ private struct ClipRow: View {
         let look = ClipLook.of(clip)
         Button { actions.paste(clip) } label: {
             HStack(spacing: 10) {
-                Image(systemName: look.symbol)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
+                SourceAppIcon(clip: clip, size: 18)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(clip.preview)
-                        .font(.system(size: 13))
+                    look.title(clip)
                         .lineLimit(1)
                         .truncationMode(look.truncation)
-                    HStack(spacing: 4) {
-                        SourceAppIcon(clip: clip, size: 11)
-                        Text(ClipLook.meta(clip))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                    Text(ClipLook.meta(clip))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 6)
                 if hovered {
@@ -445,8 +463,6 @@ private struct ClipRow: View {
             }
             .padding(.horizontal, 12)
             .frame(maxHeight: .infinity)
-            .background(isSelected ? fill : .clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(PressStyle())
@@ -497,17 +513,18 @@ private struct FooterButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 12))
+            Image(systemName: icon)
+                .font(.system(size: 13))
                 .foregroundStyle(hovered ? .primary : .secondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .frame(width: 28, height: 24)
                 .background(hovered ? Color.primary.opacity(0.07) : .clear,
                             in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressStyle())
         .onHover { hovered = $0 }
+        .help(title)
+        .accessibilityLabel(title)
     }
 }
 
@@ -526,7 +543,8 @@ private struct ScrollFade: View {
     let height: CGFloat
 
     var body: some View {
-        LinearGradient(stops: [.init(color: .black, location: 0),
+        LinearGradient(stops: [.init(color: active ? .clear : .black, location: 0),
+                               .init(color: .black, location: active ? 8 / max(height, 18) : 0),
                                .init(color: .black, location: active ? 1 - 18 / max(height, 18) : 1),
                                .init(color: active ? .clear : .black, location: 1)],
                        startPoint: .top, endPoint: .bottom)
