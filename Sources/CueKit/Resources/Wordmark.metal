@@ -14,8 +14,8 @@ using namespace metal;
     return half4(mix(color.rgb, half3(color.a), half(band * 0.55)), color.a);
 }
 
-// Film grain over the cobalt field: hashed per pixel and re-seeded every frame, ±2.5% luminance.
+// Film grain over the cobalt field: hashed per pixel and re-seeded every frame, ±3.5% luminance.
 [[ stitchable ]] half4 cobaltGrain(float2 p, half4 color, float2 size, float t) {
     float n = fract(sin(dot(p + fract(t * 7.0) * 97.0, float2(12.9898, 78.233))) * 43758.5453);
-    return half4(color.rgb + half((n - 0.5) * 0.05) * color.a, color.a);
+    return half4(color.rgb + half((n - 0.5) * 0.07) * color.a, color.a);
 }

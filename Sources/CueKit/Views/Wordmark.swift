@@ -10,7 +10,7 @@ struct Wordmark: View {
     /// Sweep every few seconds (welcome) or once per `replay` change (first smart paste).
     var loops = false
     var replay = 0
-    var color = OBTheme.action
+    var color = OBTheme.mark
 
     @State private var start = Date()
     @State private var animating = true

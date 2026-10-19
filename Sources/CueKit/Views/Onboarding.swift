@@ -122,35 +122,36 @@ public struct OnboardingView: View {
     // MARK: - Layout
 
     private var column: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Wordmark(height: 18, lean: lean, replay: markReplay)
-                .padding(.top, 58)
+        ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 0) {
-                Text(title)
-                    .font(.system(size: 30, weight: .bold))
-                    .tracking(-0.6)
-                    .foregroundStyle(OBTheme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 34)
-                Text(support)
-                    .font(.system(size: 15))
-                    .lineSpacing(3)
-                    .foregroundStyle(OBTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 12)
-                ScrollView(.vertical) {
+                Wordmark(height: 26, lean: lean, replay: markReplay)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title)
+                        .font(.system(size: 34, weight: .bold))
+                        .tracking(-0.8)
+                        .foregroundStyle(OBTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 28)
+                    Text(support)
+                        .font(.system(size: 15))
+                        .lineSpacing(3)
+                        .foregroundStyle(OBTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 12)
                     controls
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
+                        .padding(.top, 28)
                 }
-                .scrollIndicators(.never)
-                .scrollBounceBehavior(.basedOnSize)
-                .padding(.top, 24)
+                .id(step)
+                .transition(stepTransition)
             }
-            .id(step)
-            .transition(stepTransition)
+            .padding(.horizontal, OBLayout.margin)
+            .padding(.vertical, 24)
         }
-        .padding(.horizontal, OBLayout.margin)
+        .scrollIndicators(.never)
+        .scrollBounceBehavior(.basedOnSize)
+        .defaultScrollAnchor(.center, for: .alignment)
+        .padding(.top, 28)
         .padding(.bottom, OBLayout.footerHeight)
     }
 

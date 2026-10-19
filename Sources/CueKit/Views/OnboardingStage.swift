@@ -18,9 +18,9 @@ struct CobaltField: View {
     @State private var start = Date()
 
     private static let colors: [Color] = [
-        .init(red: 0.05, green: 0.20, blue: 0.72), .init(red: 0.08, green: 0.32, blue: 0.88), .init(red: 0.12, green: 0.42, blue: 0.95),
-        .init(red: 0.07, green: 0.30, blue: 0.86), .init(red: 0.10, green: 0.42, blue: 0.97), .init(red: 0.30, green: 0.55, blue: 1.00),
-        .init(red: 0.04, green: 0.17, blue: 0.62), .init(red: 0.09, green: 0.33, blue: 0.90), .init(red: 0.17, green: 0.46, blue: 0.98),
+        .init(red: 0.02, green: 0.09, blue: 0.42), .init(red: 0.06, green: 0.24, blue: 0.80), .init(red: 0.14, green: 0.44, blue: 0.98),
+        .init(red: 0.04, green: 0.20, blue: 0.72), .init(red: 0.16, green: 0.48, blue: 1.00), .init(red: 0.45, green: 0.68, blue: 1.00),
+        .init(red: 0.01, green: 0.06, blue: 0.30), .init(red: 0.05, green: 0.22, blue: 0.74), .init(red: 0.12, green: 0.40, blue: 0.95),
     ]
 
     var body: some View {

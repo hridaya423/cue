@@ -25,6 +25,7 @@ enum OBTheme {
     static let inputFillNS     = nsColor(0xFFFFFF, 0x22252A)
     static let inputStrokeNS   = nsColor(0xC9C6C1, 0x747D8B)
     static let actionNS        = nsColor(0x1463EC, 0x1463EC)
+    static let markNS          = nsColor(0x1463EC, 0x5C97FF)
     static let actionTopNS     = nsColor(0x2A7FF6, 0x2A7FF6)
     static let actionBottomNS  = nsColor(0x0F5FEA, 0x0F5FEA)
     static let selectionFillNS = nsColor(0xEDF4FF, 0x25374F)
@@ -44,6 +45,7 @@ enum OBTheme {
     static var inputFill: Color { Color(nsColor: inputFillNS) }
     static var inputStroke: Color { Color(nsColor: inputStrokeNS) }
     static var action: Color { Color(nsColor: actionNS) }
+    static var mark: Color { Color(nsColor: markNS) }
     static var actionGradient: LinearGradient {
         LinearGradient(colors: [Color(nsColor: actionTopNS), Color(nsColor: actionBottomNS)],
                        startPoint: .top, endPoint: .bottom)

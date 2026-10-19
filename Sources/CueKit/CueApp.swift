@@ -257,7 +257,9 @@ public final class AppModel {
         case "history": AnyView(HistoryView(model: self))
         default: AnyView(OnboardingView(model: self))
         }
-        let win = NSWindow(contentViewController: NSHostingController(rootView: view))
+        let host = NSHostingController(rootView: view)
+        if id == "onboarding" { host.sizingOptions = [] }
+        let win = NSWindow(contentViewController: host)
         if id == "onboarding" {
             // Native chrome: transparent titlebar, hidden title, real traffic
             // lights. AppKit owns the window shadow; not resizable — the
@@ -280,7 +282,11 @@ public final class AppModel {
         win.title = id == "history" ? "Clipboard History" : "Welcome to Cue"
         win.isReleasedWhenClosed = false
         let size = id == "history" ? NSSize(width: 480, height: 420) : OBLayout.window
-        win.setContentSize(size)
+        if id == "onboarding" {
+            win.setFrame(NSRect(origin: win.frame.origin, size: size), display: false)
+        } else {
+            win.setContentSize(size)
+        }
         return win
     }
 
