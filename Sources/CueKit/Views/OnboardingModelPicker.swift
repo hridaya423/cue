@@ -17,6 +17,7 @@ struct OnboardingModels: View {
     @State private var testing = false
     @State private var testResult: AppModel.ProviderConnectionResult?
     @State private var selectedID: String = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var onAdvance: () -> Void = {}
 
@@ -54,21 +55,28 @@ struct OnboardingModels: View {
         return ranked.filter { !head.contains($0.id) }
     }
 
-    @ViewBuilder
+    /// One card: the tabs, the choices, and the selected choice's detail inside its own row.
     private var activeFold: some View {
-        FoldOut(verticalPadding: 12, lowerTopPadding: 16) {
-            VStack(alignment: .leading, spacing: 16) {
-                OBSegmented(items: [(true, "Hosted"), (false, "On this Mac")],
-                            selection: $hosted)
-                    .frame(width: 240)
-                    .frame(maxWidth: .infinity)
-                if hosted { hostedUpper } else { localUpper }
-            }
-        } lower: {
-            VStack(alignment: .leading, spacing: 10) {
-                if hosted { hostedLower } else { localLower }
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return VStack(alignment: .leading, spacing: 14) {
+            OBSegmented(items: [(true, "Hosted"), (false, "On this Mac")],
+                        selection: $hosted)
+                .frame(width: 240)
+                .frame(maxWidth: .infinity)
+            if hosted {
+                hostedUpper
+                Divider()
+                hostedLower
+            } else {
+                localUpper
             }
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OBTheme.sheet, in: shape)
+        .overlay(shape.stroke(OBTheme.separator, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+        .shadow(color: .black.opacity(0.1), radius: 12, y: 6)
     }
 
     private var selectedSpec: ModelSpec? {
@@ -76,13 +84,9 @@ struct OnboardingModels: View {
     }
 
     private var localUpper: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(headline.enumerated()), id: \.element.id) { i, spec in
-                if i > 0 { Divider().padding(.leading, 68) }
-                modelRow(spec)
-            }
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(headline) { spec in modelRow(spec) }
             if !rest.isEmpty {
-                Divider().padding(.leading, 68)
                 DisclosureGroup(isExpanded: $moreExpanded) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(rest) { spec in modelRow(spec) }
@@ -93,7 +97,8 @@ struct OnboardingModels: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(OBTheme.textSecondary)
                 }
-                .padding(.vertical, 4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
             }
         }
     }
@@ -101,7 +106,7 @@ struct OnboardingModels: View {
     private func modelRow(_ spec: ModelSpec) -> some View {
         let selected = selectedID == spec.id
         return Button {
-            selectedID = spec.id
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { selectedID = spec.id }
             // Selecting is confirming: persist through the real bindings.
             settings.provider = .local
             settings.localModelID = spec.id
@@ -110,38 +115,42 @@ struct OnboardingModels: View {
                 settings.localVariantID = def.id
             }
         } label: {
-            HStack(spacing: 12) {
-                OBRadio(selected: selected)
-                ModelMark(modelID: spec.id)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(spec.title)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(OBTheme.textPrimary)
-                    Text(spec.reason)
-                        .font(.system(size: 13))
-                        .foregroundStyle(OBTheme.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    OBRadio(selected: selected)
+                    ModelMark(modelID: spec.id)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(spec.title)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(OBTheme.textPrimary)
+                        Text(spec.reason)
+                            .font(.system(size: 13))
+                            .foregroundStyle(OBTheme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    Spacer(minLength: 6)
+                    if spec.rank == 1 {
+                        Text("Recommended")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(OBTheme.action)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(selected ? OBTheme.canvas : OBTheme.selectionFill, in: Capsule())
+                            .fixedSize()
+                    }
                 }
-                Spacer(minLength: 6)
-                if spec.rank == 1 {
-                    Text("Recommended")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(OBTheme.action)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(OBTheme.selectionFill, in: Capsule())
-                        .fixedSize()
-                }
+                .frame(minHeight: 32)
+                if selected { rowDetail(spec).padding(.leading, 32) }
             }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 48)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(selected ? OBTheme.selectionFill : .clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(selected ? OBTheme.selectionStroke : .clear, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
@@ -149,39 +158,43 @@ struct OnboardingModels: View {
         .opacity(spec.support.isUnsupported ? 0.5 : 1)
     }
 
-    /// Lower sheet: the selected model's real detail — variant choice,
-    /// disk/RAM, support tier, live manager status.
-    private var localLower: some View {
-        Group {
-            if let spec = selectedSpec {
-                let v = resolvedVariant(spec)
-                let state = model.models.status(of: spec.id)
-                VStack(alignment: .leading, spacing: 8) {
-                    // First run shows what the choice means; weight sizes live in Settings.
-                    Text(spec.blurb)
-                        .font(.system(size: 12))
-                        .foregroundStyle(OBTheme.textSecondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let v { meta("Private, on this Mac · uses \(v.ramLabel) memory") }
-                    if case .experimental(let why) = spec.support {
-                        Text("Experimental · \(why)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.orange)
-                    }
-                    if case .unsupported(let why) = spec.support {
-                        Text("Unavailable here · \(why)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(OBTheme.textTertiary)
-                    }
-                    setupStatus(spec, variant: v, state: state)
-                }
+    /// The selected model's real detail: what it is, what it costs, the live manager status.
+    private func rowDetail(_ spec: ModelSpec) -> some View {
+        let v = resolvedVariant(spec)
+        let state = model.models.status(of: spec.id)
+        let notInstalled = state == .notInstalled
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(spec.blurb)
+                .font(.system(size: 12))
+                .foregroundStyle(OBTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                if let v { chip("memorychip", "\(v.ramLabel) memory") }
+                if notInstalled { chip("arrow.down.to.line", "\(v?.diskLabel ?? "Weights") download") }
             }
+            if case .experimental(let why) = spec.support {
+                Text("Experimental · \(why)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+            }
+            if case .unsupported(let why) = spec.support {
+                Text("Unavailable here · \(why)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(OBTheme.textTertiary)
+            }
+            if !notInstalled { setupStatus(spec, variant: v, state: state) }
         }
     }
 
-    private func meta(_ s: String) -> some View {
-        Text(s).font(.system(size: 12)).foregroundStyle(OBTheme.textTertiary)
+    private func chip(_ symbol: String, _ text: String) -> some View {
+        Label(text, systemImage: symbol)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(OBTheme.textSecondary)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .fixedSize()
+            .background(OBTheme.canvas, in: Capsule())
+            .overlay(Capsule().stroke(OBTheme.selectionStroke.opacity(0.7), lineWidth: 0.5))
     }
 
     @ViewBuilder

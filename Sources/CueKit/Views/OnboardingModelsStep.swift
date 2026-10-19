@@ -78,46 +78,66 @@ struct ModelsStageScene: View {
 
     let pick: Pick
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var focus: Int? = 0
-    @State private var filled = 0
-    @State private var phase: Phase = .idle
+    @State private var focus: Int? = 1
+    @State private var filled = 1
+    @State private var phase: Phase = .ranked
+
+    private static let rowHeight: CGFloat = 38
+
+    private var still: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["OB_STILL"] != nil { return true }
+        #endif
+        return reduceMotion
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            source.offset(x: 22, y: 0)
-            window.offset(x: 44, y: 134)
-            badge.frame(width: 452).offset(y: 100)
+            source
+            badge.frame(width: 372).offset(y: 108)
+            window.offset(y: 148)
             if let i = focus, phase != .idle {
                 chooser(i)
                     .id(i)
-                    .offset(x: 60, y: 338)
-                    .transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity))
+                    .offset(x: 14, y: 236 + CGFloat(i) * 44)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.96, anchor: .top).combined(with: .offset(y: -6)).combined(with: .opacity),
+                        removal: .opacity))
             }
         }
-        .frame(width: 452, height: 560, alignment: .topLeading)
+        .frame(width: 372, height: 504, alignment: .topLeading)
         .accessibilityHidden(true)
-        .task(id: reduceMotion) {
-            guard !reduceMotion else {
-                (focus, filled, phase) = (2, 2, .ranked)
+        .task(id: still) {
+            guard !still else {
+                (focus, filled, phase) = (1, 1, .ranked)
                 return
             }
             (focus, filled, phase) = (0, 0, .idle)
             while !Task.isCancelled {
                 for i in Self.beats.indices {
-                    await go(500) { focus = i }
-                    await go(900) { phase = .asking }
-                    await go(1100) { phase = .ranked }
-                    await go(500) { phase = .idle; filled = i + 1 }
+                    await go(450) { focus = i }
+                    await go(800) { phase = .asking }
+                    await go(1500) { phase = .ranked }
+                    await go(400) { phase = .idle; filled = i + 1 }
                 }
-                await go(1800) { focus = nil }
-                await go(500) { filled = 0 }
+                await go(1400) { focus = nil }
+                await go(350) { filled = 0 }
             }
         }
     }
 
     private func go(_ ms: Int, _ change: () -> Void) async {
-        withAnimation(.spring(duration: 0.4, bounce: 0.1), change)
+        withAnimation(.spring(duration: 0.3, bounce: 0.08), change)
         try? await Task.sleep(for: .milliseconds(ms))
+    }
+
+    private static let ink = Color(red: 0.01, green: 0.05, blue: 0.3)
+
+    /// A solid white card on the cobalt, lifted by the stage ink: the same card the other steps use.
+    private func lifted<S: Shape>(_ shape: S, deep: Double = 0.32) -> some View {
+        shape.fill(.white)
+            .shadow(color: Self.ink.opacity(0.28), radius: 3, y: 2)
+            .shadow(color: Self.ink.opacity(deep), radius: 28, y: 16)
     }
 
     // MARK: Source clip
@@ -130,20 +150,20 @@ struct ModelsStageScene: View {
                 Text("Mira Okonkwo")
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
-                Text("Copied 2m ago")
+                Label("Copied 2m ago", systemImage: "checkmark")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OBTheme.textTertiary)
             }
             Text(message(active: active))
                 .font(.system(size: 13.5))
+                .foregroundStyle(OBTheme.textPrimary)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
-        .frame(width: 360, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
-        .shadow(color: shadow.opacity(0.3), radius: 18, y: 10)
+        .frame(width: 372, alignment: .leading)
+        .background { lifted(RoundedRectangle(cornerRadius: 16, style: .continuous)) }
+        .environment(\.colorScheme, .light)
     }
 
     private func message(active: Int?) -> AttributedString {
@@ -180,22 +200,22 @@ struct ModelsStageScene: View {
             }
             .padding(.horizontal, 14)
             .frame(height: 34)
-            VStack(spacing: 9) {
+            VStack(spacing: 8) {
                 ForEach(Array(Self.beats.enumerated()), id: \.offset) { i, beat in field(i, beat) }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
             Spacer(minLength: 0)
         }
-        .frame(width: 384, height: 192)
-        .background(OBTheme.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(OBTheme.separator, lineWidth: 0.5))
-        .shadow(color: shadow.opacity(0.45), radius: 28, y: 16)
+        .frame(width: 372, height: 186)
+        .background { lifted(RoundedRectangle(cornerRadius: 16, style: .continuous)) }
+        .environment(\.colorScheme, .light)
     }
 
     private func field(_ i: Int, _ beat: Beat) -> some View {
         let focused = focus == i
         let done = i < filled
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
         return HStack(spacing: 10) {
             Text(beat.label)
                 .font(.system(size: 12, weight: .medium))
@@ -220,10 +240,9 @@ struct ModelsStageScene: View {
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 38)
-        .background(OBTheme.inputFill, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-            .strokeBorder(focused ? OBTheme.action : OBTheme.inputStroke.opacity(0.45), lineWidth: focused ? 1.5 : 0.5))
+        .frame(height: 36)
+        .background(focused ? Color.white : OBTheme.insetFill, in: shape)
+        .overlay(shape.strokeBorder(focused ? OBTheme.action : OBTheme.separator, lineWidth: focused ? 1.5 : 0.5))
         .shadow(color: OBTheme.action.opacity(focused ? 0.3 : 0), radius: 6)
     }
 
@@ -233,35 +252,33 @@ struct ModelsStageScene: View {
         let beat = Self.beats[i]
         let ranked = phase == .ranked
         let rows = ranked ? [beat.rows[beat.hit]] + beat.rows.filter { $0.id != beat.hit } : beat.rows
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         return VStack(alignment: .leading, spacing: 0) {
-                Text("Paste into \(beat.label)")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-                VStack(spacing: 2) {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { n, r in row(n, r, selected: ranked && n == 0) }
-                }
-                .padding(.horizontal, 6)
-                Divider().opacity(0.5).padding(.top, 4)
-                HStack(spacing: 4) {
-                    keycap("↩"); Text("paste")
-                    keycap("esc").padding(.leading, 6); Text("plain paste")
-                    Spacer()
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+            Text("Paste into \(beat.label)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(OBTheme.textTertiary)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 7)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+            VStack(spacing: 2) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { n, r in row(n, r, selected: ranked && n == 0) }
             }
-            .frame(width: 352)
-            .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.regularMaterial)
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(OBTheme.canvas.opacity(0.95))
+            .padding(.horizontal, 6)
+            Divider().padding(.top, 4)
+            HStack(spacing: 4) {
+                keycap("↩"); Text("paste")
+                keycap("esc").padding(.leading, 6); Text("plain paste")
+                Spacer()
             }
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(OBTheme.separator.opacity(0.8), lineWidth: 0.5))
-            .shadow(color: shadow.opacity(0.4), radius: 22, y: 12)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(OBTheme.textTertiary)
+            .padding(.horizontal, 14)
+            .frame(height: 30)
+        }
+        .frame(width: 344)
+        .background { lifted(shape, deep: 0.5) }
+        .overlay(shape.strokeBorder(Self.ink.opacity(0.12), lineWidth: 0.5))
+        .environment(\.colorScheme, .light)
     }
 
     private func row(_ n: Int, _ r: Row, selected: Bool) -> some View {
@@ -285,15 +302,15 @@ struct ModelsStageScene: View {
                             in: RoundedRectangle(cornerRadius: 4.5, style: .continuous))
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(selected ? OBTheme.action : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(height: Self.rowHeight)
+        .background(selected ? OBTheme.action : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private var badge: some View {
         HStack(spacing: 7) {
             Image(systemName: pick.symbol).font(.system(size: 10, weight: .semibold))
             Text(pick.name).font(.system(size: 12, weight: .semibold))
-            Text(pick.detail).font(.system(size: 11)).opacity(0.7)
+            Text(pick.detail).font(.system(size: 11)).opacity(0.75)
             Group {
                 if phase == .ranked {
                     Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
@@ -307,13 +324,12 @@ struct ModelsStageScene: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 11)
         .frame(height: 26)
-        .background(.white.opacity(0.18), in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.3), lineWidth: 0.5))
+        .background(.white.opacity(0.2), in: Capsule())
+        .overlay(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 0.5))
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: Pieces
-
-    private var shadow: Color { Color(red: 0.02, green: 0.07, blue: 0.32) }
 
     private func tile(_ app: App, _ size: CGFloat) -> some View {
         Image(systemName: app.symbol)
@@ -327,6 +343,6 @@ struct ModelsStageScene: View {
         Text(s)
             .padding(.horizontal, 4)
             .padding(.vertical, 1.5)
-            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+            .background(OBTheme.textPrimary.opacity(0.07), in: RoundedRectangle(cornerRadius: 3.5, style: .continuous))
     }
 }
