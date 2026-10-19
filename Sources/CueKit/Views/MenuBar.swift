@@ -133,16 +133,19 @@ struct MenuPanel: View {
     private var navClips: [Clip] { Array(matches.prefix(30)) }
     private var clipboard: Clip? { filter.isEmpty ? clips.first : nil }
     private var listed: [Clip] { clipboard == nil ? navClips : Array(navClips.dropFirst()) }
-    /// Pinned first, then by age: the last 2 hours (what smart paste draws from), the rest of today, older.
     private var sections: [(title: String, rows: [Clip])] {
-        guard filter.isEmpty else { return [("", listed)] }
-        let unpinned = listed.filter { !$0.pinned }
+        filter.isEmpty ? Self.sections(listed) : [("", listed)]
+    }
+
+    /// Pinned first, then by age: the last 2 hours (what smart paste draws from), the rest of today, older.
+    static func sections(_ clips: [Clip]) -> [(title: String, rows: [Clip])] {
+        let unpinned = clips.filter { !$0.pinned }
         let age = { (c: Clip) in -c.copiedAt.timeIntervalSinceNow }
         let today = Calendar.current.startOfDay(for: Date())
-        return [("Pinned", listed.filter(\.pinned)),
-                ("Recent", unpinned.filter { age($0) < Self.recentWindow }),
-                ("Today", unpinned.filter { age($0) >= Self.recentWindow && $0.copiedAt >= today }),
-                ("Older", unpinned.filter { age($0) >= Self.recentWindow && $0.copiedAt < today })]
+        return [("Pinned", clips.filter(\.pinned)),
+                ("Recent", unpinned.filter { age($0) < recentWindow }),
+                ("Today", unpinned.filter { age($0) >= recentWindow && $0.copiedAt >= today }),
+                ("Older", unpinned.filter { age($0) >= recentWindow && $0.copiedAt < today })]
             .filter { !$0.rows.isEmpty }
     }
     private var selected: Clip.ID? { selection ?? navClips.first?.id }
@@ -441,7 +444,7 @@ enum ClipLook {
     }
 }
 
-private struct ClipRow: View {
+struct ClipRow: View {
     let clip: Clip
     let isSelected: Bool
     let shortcut: Int?

@@ -367,3 +367,9 @@ Isolation check: the real `com.local.cue` defaults (backup `/tmp/cue-real-defaul
 - **Memory (top footprint, peak while answering):** jevk5lite 0.7 GB · s1qwen 2.7 · kenning 3.2 · decider 3.7 · von 3.8 · kev 4.0 · laya 6.3 (its server loads all three variants). RSS undercounts MLX models (decider read 139 MB); use footprint. Disk size is the wrong "Smallest" measure.
 - Removed SEEDED-CLIP-1421 and PASTEMARKER from the user's history (backup kept).
 - Open: user to pick the window; then re-measure every model on that engine and set roles on memory (Most accurate / Best balance / Smallest).
+
+### R23 — Chooser, paste note, History in the panel's style (2026-10-19)
+- Chooser rows use `ClipLook` (link host bold + muted path, monospaced codes/numbers). Verified off-screen dark + light.
+- After a smart paste, a note near the caret says "Pasted email from Mail": the kind and source, never the text.
+- History window is now `HistoryPanel` over plain values (renders off-screen like `MenuPanel`), reusing `ClipRow`, `MenuPanel.sections` (Pinned/Recent/Today/Older) and the gliding highlight. Verified off-screen dark + light.
+- Not live-verified on screen: outside-click close, shortcut pass-through, hover actions, the … menu, onboarding 2-card model step.

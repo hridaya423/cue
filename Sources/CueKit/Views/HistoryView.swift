@@ -1,18 +1,21 @@
 import AppKit
 import SwiftUI
 
+/// The History window. Maps the app's state onto `HistoryPanel`, which only draws plain values.
 public struct HistoryView: View {
     var model: AppModel
-    @State private var filter = ""
-    /// Shared hover/arrow-key selection, same convention as the menu panel.
-    @State private var selection: Clip.ID?
 
-    private var visible: [Clip] {
-        guard !filter.isEmpty else { return model.store.clips }
-        return model.store.clips.filter {
-            $0.preview.localizedCaseInsensitiveContains(filter)
-                || $0.sourceApp.localizedCaseInsensitiveContains(filter)
-        }
+    public var body: some View {
+        HistoryPanel(
+            clips: model.store.clips,
+            queued: model.settings.queueMode ? model.store.queue.count : nil,
+            smartPasteKeys: smartPasteKeys,
+            actions: MenuPanelActions(
+                paste: { model.pasteIntoFrontApp($0) },
+                togglePin: { model.store.togglePin($0) },
+                remove: { model.store.remove($0) },
+                openHistory: {},
+                openSettings: { model.open(id: "settings") }))
     }
 
     private var smartPasteKeys: String {
@@ -20,189 +23,140 @@ public struct HistoryView: View {
         return (model.settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
             ?? HotkeyManager.Action.smartPaste.default).displayString
     }
+}
 
-    private var pinned: [Clip] { visible.filter(\.pinned) }
-    private var recent: [Clip] { visible.filter { !$0.pinned } }
-    /// Display order flattened — arrow nav walks this list.
-    private var navList: [Clip] { pinned + recent }
+/// Every clip, in the menu panel's rows and sections, in a window that resizes.
+struct HistoryPanel: View {
+    let clips: [Clip]
+    let queued: Int?
+    let smartPasteKeys: String
+    let actions: MenuPanelActions
 
-    public var body: some View {
+    @State private var filter = ""
+    @State private var selection: Clip.ID?
+    @State private var keyboardTarget: Clip.ID?
+    @Namespace private var highlight
+    @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var matches: [Clip] {
+        guard !filter.isEmpty else { return clips }
+        return clips.filter {
+            $0.text.localizedCaseInsensitiveContains(filter) || $0.sourceApp.localizedCaseInsensitiveContains(filter)
+        }
+    }
+    private var sections: [(title: String, rows: [Clip])] {
+        filter.isEmpty ? MenuPanel.sections(matches) : [("", matches)]
+    }
+    private var navList: [Clip] { sections.flatMap(\.rows) }
+    private var selected: Clip.ID? { selection ?? navList.first?.id }
+
+    var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                TextField("Search clipboard history", text: $filter)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                if model.settings.queueMode {
-                    Text("\(model.store.queue.count) queued")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(OBTheme.insetFill, in: Capsule())
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(OBTheme.insetFill, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
-
-            Divider().opacity(0.6)
-
-            if visible.isEmpty {
+            searchField
+            Divider().opacity(0.5)
+            if matches.isEmpty {
                 ContentUnavailableView(
                     filter.isEmpty ? "Nothing copied yet" : "No matches",
                     systemImage: "doc.on.clipboard",
                     description: Text(filter.isEmpty
                         ? "Copy some text and it’ll show up here. Then press \(smartPasteKeys) in any text field."
-                        : "Try a different search.")
-                )
-                .frame(maxHeight: .infinity)
+                        : "Try a different search."))
+                    .frame(maxHeight: .infinity)
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 1, pinnedViews: .sectionHeaders) {
-                            if !pinned.isEmpty {
-                                clipSection("Pinned", pinned)
-                            }
-                            if !recent.isEmpty {
-                                clipSection(pinned.isEmpty ? nil : "Recent", recent)
-                            }
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                    }
-                    .onChange(of: selection) { _, sel in
-                        if let sel { proxy.scrollTo(sel, anchor: .center) }
-                    }
-                }
+                list
             }
         }
         .frame(minWidth: 460, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity, alignment: .top)
         .background(KeyNavHelper(
-            onArrow: { moveSelection($0) },
-            onReturn: {
-                if let c = navList.first(where: { $0.id == effectiveSelection }) {
-                    model.pasteIntoFrontApp(c)
-                }
-            },
-            hasSelection: { !navList.isEmpty },
+            onArrow: moveSelection,
+            onReturn: { if let c = navList.first(where: { $0.id == selected }) { actions.paste(c) } },
+            hasSelection: { selected != nil },
             onEscape: {
-                if filter.isEmpty { return false }
+                guard !filter.isEmpty else { return false }
                 filter = ""
                 return true
             }))
         .onChange(of: filter) { _, _ in selection = nil }
+        .task { searchFocused = true }
     }
 
-    /// Effective row highlight: the explicit selection, or the top row.
-    private var effectiveSelection: Clip.ID? { selection ?? navList.first?.id }
+    private var searchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.tertiary)
+            TextField("Search history", text: $filter)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($searchFocused)
+            if let queued {
+                Text("\(queued) queued")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(MenuPanel.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(12)
+    }
+
+    private var list: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(sections, id: \.0) { title, rows in
+                        if !title.isEmpty {
+                            Text(title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+                                .frame(height: 26, alignment: .bottomLeading)
+                        }
+                        ForEach(rows) { clip in
+                            ClipRow(clip: clip, isSelected: selected == clip.id, shortcut: nil, actions: actions)
+                                .frame(height: 40)
+                                .background {
+                                    if selected == clip.id {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .fill(MenuPanel.fill)
+                                            .matchedGeometryEffect(id: "highlight", in: highlight)
+                                    }
+                                }
+                                .onHover { if $0 { selection = clip.id } }
+                                .contextMenu { menu(clip) }
+                                .id(clip.id)
+                        }
+                    }
+                }
+                .padding(.horizontal, MenuPanel.edge)
+                .padding(.vertical, 6)
+                .animation(reduceMotion ? nil : .spring(duration: 0.22, bounce: 0), value: selected)
+            }
+            .onChange(of: keyboardTarget) { _, id in
+                if let id { proxy.scrollTo(id) }
+            }
+        }
+    }
+
+    @ViewBuilder private func menu(_ clip: Clip) -> some View {
+        Button("Paste into Current App") { actions.paste(clip) }
+        Button("Copy Again") { copyAgain(clip) }
+        Button(clip.pinned ? "Unpin" : "Pin") { actions.togglePin(clip) }
+        Divider()
+        Button("Delete", role: .destructive) { actions.remove(clip) }
+    }
 
     private func moveSelection(_ delta: Int) {
         let ids = navList.map(\.id)
         guard !ids.isEmpty else { return }
-        let cur = ids.firstIndex(of: effectiveSelection ?? "") ?? (delta > 0 ? -1 : ids.count)
+        let cur = ids.firstIndex(of: selected ?? "") ?? (delta > 0 ? -1 : ids.count)
         selection = ids[min(ids.count - 1, max(0, cur + delta))]
+        keyboardTarget = selection
     }
 
-    private func clipSection(_ title: String?, _ clips: [Clip]) -> some View {
-        Section {
-            ForEach(clips) { clip in
-                row(clip)
-            }
-        } header: {
-            if let title {
-                Text(title)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 8)
-                    .padding(.bottom, 3)
-            }
-        }
-    }
-
-    private func row(_ clip: Clip) -> some View {
-        Button {
-            model.pasteIntoFrontApp(clip)
-        } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    OBTheme.insetFill
-                    if let icon = SourceAppIcon.image(for: clip.sourceBundleID) {
-                        Image(nsImage: icon)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 18, height: 18)
-                    } else {
-                        Image(systemName: clip.isURL ? "link" : "text.alignleft")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(width: 30, height: 30)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(clip.preview)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Text(meta(clip))
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                if clip.queued {
-                    Image(systemName: "number")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-                Button { model.store.togglePin(clip) } label: {
-                    Image(systemName: clip.pinned ? "pin.fill" : "pin")
-                        .font(.system(size: 10))
-                        .foregroundStyle(clip.pinned ? OBTheme.foldEdge
-                                                    : Color(nsColor: .quaternaryLabelColor))
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(clip.pinned ? "Unpin" : "Pin — pins survive the history cap")
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(effectiveSelection == clip.id ? OBTheme.insetFill : .clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { inside in if inside { selection = clip.id } }
-        .id(clip.id)
-        .contextMenu {
-            Button("Paste into current app") { model.pasteIntoFrontApp(clip) }
-            Button("Copy again") { copyAgain(clip) }
-            Button(clip.pinned ? "Unpin" : "Pin") { model.store.togglePin(clip) }
-            Divider()
-            Button("Delete", role: .destructive) { model.store.remove(clip) }
-        }
-    }
-
-    private func meta(_ clip: Clip) -> String {
-        var parts = [clip.copiedAt.relativeAge]
-        if !clip.sourceApp.isEmpty { parts.append(clip.sourceApp) }
-        if clip.timesPasted > 0 { parts.append("pasted \(clip.timesPasted)×") }
-        return parts.joined(separator: " · ")
-    }
-
-    /// Writing the pasteboard makes it the newest clip — the monitor re-captures it.
+    /// Writing the pasteboard makes it the newest clip; the monitor records it again.
     private func copyAgain(_ clip: Clip) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(clip.text, forType: .string)
