@@ -270,57 +270,6 @@ struct OBSegmented<Item: Hashable>: View {
     }
 }
 
-struct PermissionSwitchDemo: View {
-    var granted: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var arrived = false
-    @State private var switched = false
-    @State private var pressing = false
-
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            Capsule()
-                .fill(switched || granted ? OBTheme.action : OBTheme.inputStroke)
-                .frame(width: 40, height: 24)
-                .overlay {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 20, height: 20)
-                        .shadow(color: .black.opacity(0.12), radius: 1, y: 1)
-                        .offset(x: switched || granted ? 8 : -8)
-                }
-            if !reduceMotion && !granted {
-                Image(systemName: "cursorarrow")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(OBTheme.textPrimary)
-                    .shadow(color: OBTheme.sheet, radius: 1)
-                    .scaleEffect(pressing ? 0.88 : 1, anchor: .topLeading)
-                    .offset(x: arrived ? 0 : -40, y: arrived ? 9 : 25)
-            }
-        }
-        .frame(width: 86, height: 54, alignment: .trailing)
-        .accessibilityHidden(true)
-        .task(id: granted || reduceMotion) {
-            guard !granted && !reduceMotion else {
-                arrived = false
-                pressing = false
-                switched = granted
-                return
-            }
-            switched = false
-            try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled else { return }
-            withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.62)) { arrived = true }
-            try? await Task.sleep(for: .milliseconds(660))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.12)) { pressing = true }
-            try? await Task.sleep(for: .milliseconds(120))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.2)) { switched = true; pressing = false }
-        }
-    }
-}
-
 /// What the footer's primary button should be — screens with stateful
 /// primaries (models, practice) publish one of these up to the shell.
 struct OBPrimary {
