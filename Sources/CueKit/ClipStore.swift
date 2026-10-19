@@ -62,6 +62,13 @@ public final class ClipStore {
         save()
     }
 
+    /// Settings → Privacy → Clear History: everything but pins, which the user chose to keep.
+    public func clearUnpinned() {
+        clips.removeAll { !$0.pinned }
+        queue.removeAll { !$0.pinned }
+        save()
+    }
+
     public func togglePin(_ clip: Clip) {
         guard let i = clips.firstIndex(where: { $0.id == clip.id }) else { return }
         clips[i].pinned.toggle()
@@ -113,9 +120,14 @@ public final class ClipStore {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              var decoded = try? JSONDecoder.clips.decode([Clip].self, from: data)
-        else { return }
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        guard var decoded = try? JSONDecoder.clips.decode([Clip].self, from: data) else {
+            // Unreadable history is kept aside, not overwritten by the next copy.
+            let aside = fileURL.deletingPathExtension()
+                .appendingPathExtension("unreadable-\(Int(Date().timeIntervalSince1970)).json")
+            try? FileManager.default.moveItem(at: fileURL, to: aside)
+            return
+        }
         decoded.sort { $0.copiedAt > $1.copiedAt }
         clips = decoded
         queue = decoded.filter(\.queued)

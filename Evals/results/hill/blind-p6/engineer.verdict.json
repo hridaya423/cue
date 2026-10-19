@@ -1,0 +1,31 @@
+{
+  "steps": {
+    "1": "tie", "2": "tie", "3": "tie",
+    "4": "B",
+    "5": "A",
+    "6": "B",
+    "7": "A",
+    "8": "A",
+    "9": "tie", "10": "tie", "11": "tie", "12": "tie", "13": "tie",
+    "14": "A",
+    "15": "tie", "16": "tie",
+    "17": "B",
+    "18": "tie",
+    "19": "A",
+    "20": "tie", "21": "tie", "22": "tie", "23": "tie", "24": "tie",
+    "25": "A",
+    "26": "B",
+    "27": "tie", "28": "tie", "29": "tie", "30": "tie",
+    "31": "A",
+    "32": "tie", "33": "tie", "34": "tie", "35": "tie", "36": "tie", "37": "tie",
+    "38": "A",
+    "39": "A",
+    "40": "tie", "41": "tie", "42": "tie",
+    "43": "B",
+    "44": "B",
+    "45": "B"
+  },
+  "biggest_gap": "Side B loses most often (9 steps). When the person wanted an earlier clip or a piece of one, B's hotkey path was slow and sometimes wrong: it waited 277-500 ms, then either landed the wrong clip so the person had to undo and fall back to Spotlight (steps 8, 19), or still left the person to trim by hand four times, so the 4.7-4.8 s was slower than plain paste with trimming (steps 5, 14). In step 17 and steps 43-44 B won only because A fell back to a 4.19 s Spotlight trip.",
+  "gap_steps": [5, 8, 14, 19],
+  "notes": "Side A's own failures: in steps 4 and 6 A's first paste landed the wrong text, needed an undo and a second paste (0.84 s, a surprise the person must reverse); B did the same in step 31. Step 45 on A is the worst of the day: hotkey, type, wrong pick, undo, then a full Spotlight trip, 8.03 s with a 528 ms wait. In step 26 A's hotkey path cost 602 ms of waiting and 4.98 s versus 2.75 s for B's plain paste with trim. Hotkey waits of 277-602 ms occurred in 13 steps across both sides; most are noticeable (>300 ms) and none removed the trim work needed for partial pastes (steps 5, 14, 26). The 29 ties are mostly latest-clip pastes where both did the same thing; the day is decided on the 16 steps that needed an older or partial clip."
+}

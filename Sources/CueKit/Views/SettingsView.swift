@@ -96,103 +96,188 @@ struct HotkeyRecorder: NSViewRepresentable {
     }
 }
 
+/// One pane of the Settings window; the window's toolbar switches between them (CueApp.makeWindow).
+public enum SettingsTab: String, CaseIterable {
+    case general = "General", shortcuts = "Shortcuts", model = "Model", privacy = "Privacy"
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .shortcuts: "keyboard"
+        case .model: "cpu"
+        case .privacy: "hand.raised"
+        }
+    }
+}
+
 public struct SettingsView: View {
     var model: AppModel
+    var tab: SettingsTab
     @State private var loginError: String?
+    @State private var confirmClear = false
 
     public var body: some View {
-        @Bindable var settings = model.settings
-
         Form {
-            Section("Decision model") {
-                ProviderPicker(model: model)
-                if model.providerStatus.state == .unreachable {
-                    Label("Provider unreachable — pastes pass through normally",
-                          systemImage: "exclamationmark.triangle")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                }
-            }
-
-            Section("Privacy") {
-                Picker("PII redaction", selection: redactionBinding) {
-                    Text("Auto").tag(Bool?.none)
-                    Text("On").tag(Bool?.some(true))
-                    Text("Off").tag(Bool?.some(false))
-                }
-                Text("Auto means: on for cloud providers, off for local models — scrubbing traffic that never leaves the device only costs latency. Only the scrubbed preview reaches the model; the real clip is what pastes.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                redactorStatus
-            }
-
-            Section("Trigger") {
-                Picker("Smart paste runs on", selection: triggerBinding) {
-                    Text("Its own hotkey").tag(false)
-                    Text("Intercepting ⌘V").tag(true)
-                }
-                ForEach(HotkeyManager.Action.allCases, id: \.self) { action in
-                    LabeledContent(action.title) {
-                        HotkeyRecorder(value: settings.hotkey(for: action.rawValue)) { hk in
-                            settings.setHotkey(hk, for: action.rawValue)
-                            model.hotkeys.reregister()
-                        }
-                    }
-                }
-            }
-
-            Section("Behavior") {
-                LabeledContent("Confidence threshold: \(Int(settings.confidenceThreshold * 100))%") {
-                    Slider(value: $settings.confidenceThreshold, in: 0.4...0.95, step: 0.05)
-                        .frame(width: 160)
-                }
-                Picker("When unsure", selection: $settings.lowConfidenceMode) {
-                    ForEach(AppSettings.LowConfidenceMode.allCases, id: \.self) {
-                        Text($0.rawValue).tag($0)
-                    }
-                }
-                Toggle("Show pasted confirmation", isOn: $settings.showStatusToast)
-                Toggle("Queue mode (FIFO pastes)", isOn: queueBinding)
-            }
-
-            Section("History") {
-                LabeledContent("Keep up to") {
-                    TextField("items", value: $settings.historyCap, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                }
-                LabeledContent("Never capture from") {
-                    TextField("bundle IDs, comma-separated", text: excludedBinding)
-                        .textFieldStyle(.roundedBorder)
-                }
-            }
-
-            Section("General") {
-                Toggle("Launch at login", isOn: loginBinding)
-                if let loginError {
-                    Text(loginError).font(.system(size: 11)).foregroundStyle(.red)
-                }
-                HStack {
-                    Button("Reset learned rankings") { model.feedback.reset() }
-                    Spacer()
-                    Button("Run onboarding again") { model.open(id: "onboarding") }
-                }
-                LabeledContent("Self-check") {
-                    HStack(spacing: 8) {
-                        if let result = model.selfCheckResult {
-                            Text(result)
-                                .font(.system(size: 11))
-                                .foregroundStyle(result.hasPrefix("PASS") ? Color.secondary : Color.red)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                        Button("Run") { Task { await model.runSelfCheck() } }
-                    }
-                }
+            switch tab {
+            case .general: general
+            case .shortcuts: shortcuts
+            case .model: modelPane
+            case .privacy: privacy
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480)
+        .frame(width: 520)
+        // The model list is long: a fixed pane that scrolls, not a window taller than the screen.
+        .frame(height: tab == .model ? 560 : nil)
+        .fixedSize(horizontal: false, vertical: tab != .model)
+    }
+
+    @ViewBuilder private var general: some View {
+        @Bindable var settings = model.settings
+        Section {
+            Toggle("Open Cue at login", isOn: loginBinding)
+            if let loginError {
+                Text(loginError).font(.callout).foregroundStyle(.red)
+            }
+            Toggle("Confirm each smart paste", isOn: $settings.showStatusToast)
+            Toggle("Paste in the order I copied (queue)", isOn: queueBinding)
+        } footer: {
+            Text("Queue: each ⌘V pastes the next clip you copied, oldest first, until the queue is empty.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        Section("Advanced") {
+            LabeledContent("Onboarding") {
+                Button("Show Again") { model.open(id: "onboarding") }
+            }
+            LabeledContent("Learned from undos") {
+                Button("Forget") { model.feedback.reset() }
+            }
+            LabeledContent("Self-check") {
+                HStack(spacing: 8) {
+                    if let result = model.selfCheckResult {
+                        Text(result)
+                            .font(.callout)
+                            .foregroundStyle(result.hasPrefix("PASS") ? Color.secondary : Color.red)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Button("Run") { Task { await model.runSelfCheck() } }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var shortcuts: some View {
+        @Bindable var settings = model.settings
+        Section {
+            Picker("When you press ⌘V", selection: triggerBinding) {
+                Text("Paste what fits the field").tag(true)
+                Text("Paste the latest clip, as usual").tag(false)
+            }
+            .pickerStyle(.radioGroup)
+        } footer: {
+            Text("Either way, the Show choices shortcut lists what you copied.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        Section {
+            ForEach(HotkeyManager.Action.allCases, id: \.self) { action in
+                // A plain row: LabeledContent stacks the AppKit recorder under its label.
+                HStack {
+                    Text(action.title)
+                    Spacer()
+                    // Unset means the built-in shortcut is live, so show that, not "Record".
+                    HotkeyRecorder(value: settings.hotkey(for: action.rawValue) ?? action.default) { hk in
+                        settings.setHotkey(hk, for: action.rawValue)
+                        model.hotkeys.reregister()
+                    }
+                    .frame(width: 110, height: 24)
+                }
+            }
+        } footer: {
+            Text("Click a shortcut, then press the new keys. Esc cancels.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var modelPane: some View {
+        Section {
+            ProviderPicker(model: model)
+            if model.providerStatus.state == .unreachable {
+                Label("Can’t reach the model. Pastes work normally until it’s back.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    @ViewBuilder private var privacy: some View {
+        @Bindable var settings = model.settings
+        Section {
+            Picker("Hide names and emails from the model", selection: redactionBinding) {
+                Text("Hosted models only").tag(Bool?.none)
+                Text("Always").tag(Bool?.some(true))
+                Text("Never").tag(Bool?.some(false))
+            }
+            redactorStatus
+        } footer: {
+            Text("Only what the model reads is masked. What you paste is always your original text.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        Section("History") {
+            LabeledContent("Keep up to") {
+                HStack(spacing: 6) {
+                    TextField("", value: $settings.historyCap, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 64)
+                    Text("clips").foregroundStyle(.secondary)
+                }
+            }
+            LabeledContent("Ignore copies from") {
+                VStack(alignment: .trailing, spacing: 6) {
+                    ForEach(settings.excludedBundleIDs, id: \.self) { id in
+                        HStack(spacing: 6) {
+                            if let icon = SourceAppIcon.image(for: id) {
+                                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+                            }
+                            Text(Self.appName(id))
+                            Button {
+                                settings.excludedBundleIDs.removeAll { $0 == id }
+                            } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.secondary) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Stop ignoring \(Self.appName(id))")
+                        }
+                    }
+                    Button("Add App…") { addExcludedApp() }
+                }
+            }
+            LabeledContent("Saved history") {
+                Button("Clear History…", role: .destructive) { confirmClear = true }
+            }
+        }
+        .confirmationDialog("Clear clipboard history?", isPresented: $confirmClear) {
+            Button("Clear History", role: .destructive) { model.store.clearUnpinned() }
+        } message: {
+            Text("Every clip except pinned ones is deleted from this Mac. This can’t be undone.")
+        }
+    }
+
+    private static func appName(_ bundleID: String) -> String {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+            .map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") }
+            ?? bundleID
+    }
+
+    private func addExcludedApp() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.prompt = "Ignore"
+        guard panel.runModal() == .OK, let url = panel.url,
+              let id = Bundle(url: url)?.bundleIdentifier,
+              !model.settings.excludedBundleIDs.contains(id) else { return }
+        model.settings.excludedBundleIDs.append(id)
     }
 
     @ViewBuilder
@@ -237,12 +322,6 @@ public struct SettingsView: View {
                     if !v { model.store.clearQueue() }
                 })
     }
-    private var excludedBinding: Binding<String> {
-        Binding(get: { model.settings.excludedBundleIDs.joined(separator: ", ") },
-                set: { model.settings.excludedBundleIDs = $0
-                    .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty } })
-    }
     private var loginBinding: Binding<Bool> {
         Binding(get: { model.settings.launchAtLogin }, set: { v in
             model.settings.launchAtLogin = v
@@ -251,7 +330,7 @@ public struct SettingsView: View {
                 else { try SMAppService.mainApp.unregister() }
                 loginError = nil
             } catch {
-                loginError = "Launch at login needs the app installed as a .app — run Scripts/bundle.sh first."
+                loginError = "Move Cue to your Applications folder to open it at login."
                 model.settings.launchAtLogin = false
             }
         })

@@ -70,7 +70,6 @@ struct FoldOut<Upper: View, Lower: View>: View {
     var lowerTopPadding: CGFloat = 28
     var overlap: CGFloat = 12
     var lowerInset: CGFloat = 16   // lower sheet's nominal edge is narrower by this per side
-    var arrowX: CGFloat? = nil     // sets the coral curl's origin, in upper-sheet points
     @ViewBuilder var upper: Upper
     @ViewBuilder var lower: Lower
 
@@ -100,19 +99,6 @@ struct FoldOut<Upper: View, Lower: View>: View {
                             startPoint: .top, endPoint: .bottom))
                 }
                 .overlay(FoldSeam().stroke(sheetEdge, lineWidth: 0.5))
-                .overlay(alignment: .topLeading) {
-                    if let arrowX {
-                        FoldCurl()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [OBTheme.foldEdge, OBTheme.foldEdge.opacity(0)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing),
-                                style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                            .frame(width: 26, height: 24)
-                            .offset(x: max(0, arrowX - 10), y: 8)
-                            .accessibilityHidden(true)
-                    }
-                }
                 .shadow(color: .black.opacity(shadowDeep), radius: 8, y: 4)
                 .padding(.horizontal, lowerInset - FoldSeam.flare)
         }
@@ -175,20 +161,6 @@ private struct SeamBand: Shape {
         p.addLine(to: CGPoint(x: l, y: rect.minY + height))
         p.addLine(to: CGPoint(x: l, y: rect.minY + drop))
         p.closeSubpath()
-        return p
-    }
-}
-
-/// The coral curl that peels down from under a highlighted span: starts at
-/// the seam, drops ~22 pt, bends right and fades out — no arrowhead.
-private struct FoldCurl: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        p.addCurve(
-            to: CGPoint(x: rect.maxX, y: rect.maxY),
-            control1: CGPoint(x: rect.minX + 1, y: rect.maxY * 0.55),
-            control2: CGPoint(x: rect.maxX * 0.55, y: rect.maxY))
         return p
     }
 }
@@ -353,6 +325,24 @@ struct OBPrimary {
     var title: String
     var enabled = true
     var action: () -> Void = {}
+    /// A step waiting on the user's own keystroke shows no button: a greyed one reads as broken.
+    static var none: OBPrimary { OBPrimary(title: "", enabled: false) }
+}
+
+/// A key as it looks on the keyboard — the practice step's one instruction.
+struct OBKeycap: View {
+    let keys: String
+    var body: some View {
+        Text(keys)
+            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .foregroundStyle(OBTheme.textPrimary)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 28)
+            .background(OBTheme.sheet, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(OBTheme.separator, lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 0, y: 1.5)
+    }
 }
 
 struct OBPrimaryButton: View {
@@ -385,20 +375,12 @@ private struct OBButtonStyle: ButtonStyle {
     }
 }
 
-/// Bordered rounded rect. The references differ per screen: 02/04/05 show
-/// "‹ Back", 03/06 a plain "Back" — `chevron` carries that.
+/// Bordered rounded rect, the same "‹ Back" on every step.
 struct OBBackButton: View {
-    var chevron = false
     var action: () -> Void
     var body: some View {
         Button(action: action) {
-            Group {
-                if chevron {
-                    Label("Back", systemImage: "chevron.left")
-                } else {
-                    Text("Back")
-                }
-            }
+            Label("Back", systemImage: "chevron.left")
         }
         .modifier(OBBorderedLabel())
     }
@@ -441,6 +423,8 @@ struct HighlightedParagraph: NSViewRepresentable {
     /// Fixed layout width — panels are fixed-geometry, so measure at the
     /// width the sheet actually gives us.
     var width: CGFloat
+    /// Redaction placeholders: a neutral chip, so coral keeps one meaning — the detail Cue found.
+    var masked = false
     var onHighlightRects: ([CGRect]) -> Void = { _ in }
 
     func makeNSView(context: Context) -> ParagraphNSView {
@@ -451,10 +435,12 @@ struct HighlightedParagraph: NSViewRepresentable {
 
     func updateNSView(_ v: ParagraphNSView, context: Context) {
         v.onRects = onHighlightRects
+        v.masked = masked
         v.update(text: text, highlights: highlights, fontSize: fontSize, width: width)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsview: ParagraphNSView, context: Context) -> CGSize? {
+        nsview.masked = masked
         nsview.update(text: text, highlights: highlights, fontSize: fontSize, width: width)
         return CGSize(width: width, height: nsview.contentHeight)
     }
@@ -462,6 +448,7 @@ struct HighlightedParagraph: NSViewRepresentable {
     final class ParagraphNSView: NSView {
         override var isFlipped: Bool { true }
         var onRects: ([CGRect]) -> Void = { _ in }
+        var masked = false
         private(set) var contentHeight: CGFloat = 0
 
         private let storage = NSTextStorage()
@@ -486,7 +473,7 @@ struct HighlightedParagraph: NSViewRepresentable {
                 .foregroundColor: OBTheme.textPrimaryNS,
                 .paragraphStyle: para,
             ]))
-            for span in highlights where !span.isEmpty {
+            for span in highlights where !span.isEmpty && !masked {
                 if let range = text.range(of: span) {
                     storage.addAttribute(.foregroundColor, value: OBTheme.highlightTextNS,
                                          range: NSRange(range, in: text))
@@ -539,14 +526,14 @@ struct HighlightedParagraph: NSViewRepresentable {
                                y: baseline - font.ascender,
                                width: g.width,
                                height: font.ascender - font.descender)
-                        .insetBy(dx: -3, dy: -2))
+                        .insetBy(dx: -1.5, dy: -2)) // narrower than a space, so words stay apart
                 }
             }
             return rects
         }
 
         override func draw(_ dirtyRect: NSRect) {
-            OBTheme.highlightNS.setFill()
+            (masked ? NSColor.secondaryLabelColor.withAlphaComponent(0.16) : OBTheme.highlightNS).setFill()
             let rects = highlightRects()
             for r in rects {
                 NSBezierPath(roundedRect: r, xRadius: 4, yRadius: 4).fill()

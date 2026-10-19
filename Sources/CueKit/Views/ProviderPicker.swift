@@ -20,9 +20,7 @@ public struct ProviderPicker: View {
         VStack(alignment: .leading, spacing: 10) {
             jevCard
             sectionHeader("Local models — on-device, private")
-            modelCard(ModelCatalog.von)
-            modelCard(ModelCatalog.kev)
-            modelCard(ModelCatalog.laya)
+            ForEach(ModelCatalog.featured, id: \.id) { modelCard($0) }
             othersRow
             sectionHeader("Advanced")
             customRow
@@ -100,7 +98,7 @@ public struct ProviderPicker: View {
                         HStack(spacing: 5) {
                             pill(spec.reason)
                             if spec.rank == 1 { pill("Recommended") }
-                            if state == .running { pill("Active", accent: true) }
+                            if selected { pill(state == .running ? "In use" : "Selected", accent: true) }
                             if case .experimental = spec.support { pill("Experimental") }
                         }
                     }
@@ -133,39 +131,38 @@ public struct ProviderPicker: View {
         }
     }
 
-    /// params · disk · RAM · port — the reference card's meta strip.
+    /// What it costs the Mac, in plain words; parameter counts and ports are plumbing.
     private func metaRow(_ spec: ModelSpec, variant v: WeightSpec?) -> some View {
         HStack(spacing: 14) {
+            metaItem("lock", "Runs on this Mac")
             if let v {
-                metaItem("cpuchip", "\(v.paramsLabel) params")
-                metaItem("internaldrive", v.diskLabel)
-                metaItem("memorychip", "\(v.ramLabel) RAM")
+                metaItem("arrow.down.circle", "\(v.diskLabel) download")
+                metaItem("memorychip", "\(v.ramLabel) memory")
             }
-            metaItem("network", ":\(spec.defaultPort)")
             Spacer()
         }
     }
 
     private func metaItem(_ icon: String, _ text: String) -> some View {
         Label(text, systemImage: icon)
-            .font(.system(size: 10))
-            .foregroundStyle(.tertiary)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
             .labelStyle(.titleAndIcon)
     }
 
     /// Two thin bars like the reference: accuracy and speed for the variant.
     private func meters(accuracy: Double, speed: Double) -> some View {
         VStack(alignment: .trailing, spacing: 4) {
-            meter("accuracy", accuracy)
-            meter("speed", speed)
+            meter("Accuracy", accuracy)
+            meter("Speed", speed)
         }
     }
 
     private func meter(_ label: String, _ value: Double) -> some View {
         HStack(spacing: 6) {
             Text(label)
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
             ZStack(alignment: .leading) {
                 Capsule().fill(.quaternary)
                 Capsule().fill(Color.accentColor)

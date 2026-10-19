@@ -1,0 +1,37 @@
+{
+  "endpoints" : [
+    "dmlx"
+  ],
+  "mode" : "intercept",
+  "personas" : {
+    "recruiter" : {
+      "bar_correct_pct" : 100,
+      "bar_seconds" : 76.060000000000002,
+      "chooser_rate_single_pct" : 0,
+      "cue_better" : 16,
+      "cue_correct_pct" : 72,
+      "cue_seconds" : 81.989999999999995,
+      "cue_worse" : 29,
+      "p50_decision_ms" : 289,
+      "p95_decision_ms" : 417,
+      "steps" : 46,
+      "tied" : 0,
+      "wrong_pastes" : 13
+    },
+    "total" : {
+      "bar_correct_pct" : 100,
+      "bar_seconds" : 76.060000000000002,
+      "chooser_rate_single_pct" : 0,
+      "cue_better" : 16,
+      "cue_correct_pct" : 72,
+      "cue_seconds" : 81.989999999999995,
+      "cue_worse" : 29,
+      "p50_decision_ms" : 289,
+      "p95_decision_ms" : 417,
+      "steps" : 46,
+      "tied" : 0,
+      "wrong_pastes" : 13
+    }
+  },
+  "tag" : "lead-try2"
+}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>inc-ledger-dupes (Channel) - Halyard - Slack</title>
+<style>body{font:14px/1.45 -apple-system,Helvetica,Arial,sans-serif;margin:0;color:#222}
+header,nav,main,aside,section{display:block}
+.bar{padding:8px 16px;background:#f3f3f3;border-bottom:1px solid #ddd}
+.wrap{display:flex}nav.side{width:200px;padding:12px;background:#4a154b;color:#fff;min-height:480px}
+nav.side ul{list-style:none;padding:0}main{flex:1;padding:16px;max-width:820px}
+.msg{margin:10px 0}.msg b{margin-right:6px}.msg time{color:#777;font-size:12px}
+pre,.clip{white-space:pre-wrap;font:13px/1.4 ui-monospace,Menlo,monospace;margin:4px 0}
+.row{margin:10px 0}.row label{display:block;font-weight:600;margin-bottom:3px}
+input[type=text],input[type=email],input[type=tel],input[type=password],input[type=url],input:not([type]),textarea{width:100%;max-width:520px;padding:6px;border:1px solid #bbb;border-radius:4px}
+[contenteditable]{min-height:48px;border:1px solid #bbb;border-radius:4px;padding:6px;max-width:700px}
+h1{font-size:20px}h2{font-size:16px}fieldset{border:1px solid #ddd;margin:12px 0;max-width:620px}
+</style>
+</head>
+<body>
+<header class="bar" role="banner"><button aria-label="Search Halyard">Search Halyard</button> <span>Halyard</span></header>
+<div class="wrap">
+<nav class="side" aria-label="Sidebar"><h2>Halyard</h2><ul><li><a href="#"># eng-backend</a></li><li><a href="#"># inc-ledger-dupes</a></li><li><a href="#"># eng-oncall</a></li><li><a href="#"># general</a></li><li><a href="#">Nadia Voss</a></li><li><a href="#">Sam Carter</a></li><li><a href="#">Priya Nair</a></li></ul></nav>
+<main aria-label="#inc-ledger-dupes">
+<h1 data-qa="channel_name">#inc-ledger-dupes</h1>
+<p>Incident: duplicate ledger entries. Commander: Nadia Voss.</p>
+<div role="list" aria-label="Messages">
+<div class="msg" role="listitem"><b>Nadia Voss</b><time>1:02 PM</time><div>paging everyone on payments. Customers are seeing doubled charges in the ledger view</div></div>
+<div class="msg" role="listitem"><b>Nadia Voss</b><time>1:11 PM</time><div>can you run this on a prod replica and paste the count? kubectl -n payments exec deploy/ledger-api -- python -m ledger.tools.count_dupes --since 24h</div></div>
+<div class="msg" role="listitem"><b>Kofi Mensah</b><time>1:12 PM</time><div>on it</div><a href="https://halyard.slack.com/archives/C07Q3N1KZ2P/p1792449000004200" aria-label="Copy link to message">https://halyard.slack.com/archives/C07Q3N1KZ2P/p1792449000004200</a></div>
+</div>
+<div class="c-wysiwyg_container">
+<div id="message" class="ql-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message #inc-ledger-dupes" data-qa="message_input"><p data-placeholder="Message #inc-ledger-dupes"><br></p></div>
+<button aria-label="Send now" disabled>Send</button>
+</div>
+</main>
+</div>
+</body>
+</html>

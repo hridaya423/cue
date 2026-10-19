@@ -1,0 +1,42 @@
+cue founder 1: ok ⌘V wait 42 ms
+cue founder 2: ok ⌘V wait 6 ms
+cue founder 3: ok ⌘V wait 3 ms
+cue founder 4: ok ⌘V wait 5 ms
+cue founder 5: ok ⌘V wait 14 ms
+cue founder 6: ok hotkey wait 378 ms
+cue founder 7: ok hotkey 1 wait 467 ms
+cue founder 8: ok ⌘V wait 6 ms
+cue founder 9: ok ⌘V wait 8 ms
+cue founder 10: ok ⌘V wait 4 ms
+cue founder 11: ok ⌘V wait 13 ms
+cue founder 12: ok ⌘V wait 8 ms
+cue founder 13: ok hotkey type:cale Return wait 100 ms
+cue founder 14: ok ⌘V wait 9 ms
+cue founder 15: ok ⌘V wait 8 ms
+cue founder 16: ok ⌘V wait 4 ms
+cue founder 17: ok ⌘V wait 11 ms
+cue founder 18: ok ⌘V wait 9 ms
+cue founder 19: ok ⌘V wait 8 ms
+cue founder 20: ok ⌘V wait 8 ms
+cue founder 21: ok ⌘V wait 12 ms
+cue founder 22: ok ⌘V wait 5 ms
+cue founder 23: ok ⌘V wait 13 ms
+cue founder 24: ok hotkey 5 wait 73 ms
+cue founder 25: ok ⌘V wait 3 ms
+cue founder 26: ok ⌘V wait 12 ms
+cue founder 27: ok hotkey type:wire ↓ Return wait 509 ms
+cue founder 28: ok hotkey 1 wait 2105 ms
+cue founder 29: ok hotkey type:0001 ↓ Return wait 102 ms
+cue founder 30: ok hotkey 2 wait 89 ms
+cue founder 31: ok ⌘V wait 21 ms
+cue founder 32: ok ⌘V wait 19 ms
+cue founder 33: ok ⌘V wait 5 ms
+cue founder 34: ok hotkey 1 wait 1783 ms
+cue founder 35: ok ⌘V wait 22 ms
+cue founder 36: ok hotkey type:wire Return wait 1669 ms
+cue founder 37: ok ⌘V wait 12 ms
+cue founder 38: ok ⌘V wait 4 ms
+cue founder 39: ok ⌘V wait 1 ms
+cue founder 40: ok ⌘V wait 7 ms
+cue founder 41: ok ⌘V wait 10 ms
+cue founder 42: ok ⌘V wait 7 ms

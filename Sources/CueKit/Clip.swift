@@ -57,7 +57,7 @@ public struct Clip: Codable, Identifiable, Hashable, Sendable {
         kind == .url
     }
 
-    static func classify(_ text: String) -> Kind {
+    public static func classify(_ text: String) -> Kind {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: t), let scheme = url.scheme,
               ["http", "https"].contains(scheme.lowercased()), url.host != nil

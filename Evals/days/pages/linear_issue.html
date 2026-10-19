@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HAL-482 Duplicate ledger entries on retry - Halyard</title>
+<style>body{font:14px/1.45 -apple-system,Helvetica,Arial,sans-serif;margin:0;color:#222}
+header,nav,main,aside,section{display:block}
+.bar{padding:8px 16px;background:#f3f3f3;border-bottom:1px solid #ddd}
+.wrap{display:flex}nav.side{width:200px;padding:12px;background:#4a154b;color:#fff;min-height:480px}
+nav.side ul{list-style:none;padding:0}main{flex:1;padding:16px;max-width:820px}
+.msg{margin:10px 0}.msg b{margin-right:6px}.msg time{color:#777;font-size:12px}
+pre,.clip{white-space:pre-wrap;font:13px/1.4 ui-monospace,Menlo,monospace;margin:4px 0}
+.row{margin:10px 0}.row label{display:block;font-weight:600;margin-bottom:3px}
+input[type=text],input[type=email],input[type=tel],input[type=password],input[type=url],input:not([type]),textarea{width:100%;max-width:520px;padding:6px;border:1px solid #bbb;border-radius:4px}
+[contenteditable]{min-height:48px;border:1px solid #bbb;border-radius:4px;padding:6px;max-width:700px}
+h1{font-size:20px}h2{font-size:16px}fieldset{border:1px solid #ddd;margin:12px 0;max-width:620px}
+</style>
+</head>
+<body>
+<header class="bar" role="banner"><input id="palette" type="text" role="combobox" aria-label="Type a command or search…" placeholder="Type a command or search…"></header>
+<main><h1>HAL-482 Duplicate ledger entries on retry</h1>
+<p>In Progress · Priority: Urgent · Assignee: Kofi Mensah · Project: Ledger reliability</p>
+<section aria-label="Description"><h2>Description</h2>
+<p>When a client retries POST /v1/transfers with the same Idempotency-Key, we insert a second ledger entry. Repro on local:</p>
+<pre class="clip">curl -s -X POST http://localhost:8080/v1/transfers \
+  -H &#x27;Content-Type: application/json&#x27; \
+  -H &#x27;Idempotency-Key: 7f2c9a10-2b1e-4c55-9d0e-a1b2c3d4e5f6&#x27; \
+  -d &#x27;{&quot;from&quot;:&quot;acct_1042&quot;,&quot;to&quot;:&quot;acct_2217&quot;,&quot;amount_cents&quot;:12500,&quot;currency&quot;:&quot;USD&quot;}&#x27;</pre>
+<p>Git branch: <code>kofi/hal-482-duplicate-ledger-entries-on-retry</code></p>
+<p>Issue link: https://linear.app/halyard/issue/HAL-482/duplicate-ledger-entries-on-retry</p></section>
+<section aria-label="Activity"><h2>Activity</h2><p>Nadia Voss created the issue · 2d ago</p></section>
+<section aria-label="Comment"><div id="comment" role="textbox" contenteditable="true" aria-multiline="true" aria-label="Comment" data-placeholder="Leave a comment…"></div></section>
+</main>
+</body>
+</html>

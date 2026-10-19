@@ -15,11 +15,11 @@ public final class HotkeyManager {
 
         public var title: String {
             switch self {
-            case .smartPaste: "Smart paste"
-            case .picker: "History picker"
-            case .queueToggle: "Queue mode"
-            case .settings: "Settings"
-            case .rawPaste: "Paste latest (raw)"
+            case .smartPaste: "Show choices"
+            case .picker: "Search history"
+            case .queueToggle: "Turn queue on or off"
+            case .settings: "Open Settings"
+            case .rawPaste: "Plain paste"
             }
         }
 
@@ -48,6 +48,8 @@ public final class HotkeyManager {
     public var isSynthesizing = false
 
     private var handlers: [Action: () -> Void] = [:]
+    /// The intercepted ⌘V — a plain-paste-or-better, distinct from the explicit smart-paste hotkey.
+    private var interceptHandler: (() -> Void)?
     private var bodies: [UInt32: () -> Void] = [:]
     private var hotkeyRefs: [EventHotKeyRef?] = []
     private var nextID: UInt32 = 1
@@ -63,6 +65,8 @@ public final class HotkeyManager {
         self.settings = settings
         installHandler()
     }
+
+    public func onIntercept(_ handler: @escaping () -> Void) { interceptHandler = handler }
 
     public func on(_ action: Action, handler: @escaping () -> Void) {
         handlers[action] = handler
@@ -81,7 +85,7 @@ public final class HotkeyManager {
         }
         if interceptCmdV && ContextCaptor.isTrusted {
             interceptRef = register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
-                self?.fire(.smartPaste)
+                self?.fireIntercept()
             }
         }
     }
@@ -99,7 +103,7 @@ public final class HotkeyManager {
     public func resumeIntercept() {
         guard interceptCmdV, ContextCaptor.isTrusted, interceptRef == nil else { return }
         interceptRef = register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
-            self?.fire(.smartPaste)
+            self?.fireIntercept()
         }
     }
 
@@ -126,6 +130,11 @@ public final class HotkeyManager {
     private func fire(_ action: Action) {
         guard !isSynthesizing else { return }
         handlers[action]?()
+    }
+
+    private func fireIntercept() {
+        guard !isSynthesizing else { return }
+        interceptHandler?()
     }
 
     @discardableResult

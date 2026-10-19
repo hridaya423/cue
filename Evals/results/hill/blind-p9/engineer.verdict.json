@@ -1,0 +1,16 @@
+{
+  "steps": {
+    "1": "tie", "2": "tie", "3": "tie",
+    "4": "B", "5": "B", "6": "B",
+    "7": "A", "8": "B", "9": "tie", "10": "tie", "11": "tie", "12": "tie", "13": "tie",
+    "14": "B", "15": "tie", "16": "tie", "17": "B", "18": "tie",
+    "19": "A", "20": "tie", "21": "tie", "22": "tie", "23": "tie", "24": "tie",
+    "25": "A", "26": "A", "27": "tie", "28": "tie", "29": "tie", "30": "tie",
+    "31": "tie", "32": "tie", "33": "tie", "34": "tie", "35": "tie", "36": "tie", "37": "tie",
+    "38": "B", "39": "A", "40": "tie", "41": "tie", "42": "tie",
+    "43": "B", "44": "B", "45": "B"
+  },
+  "biggest_gap": "A loses most often (10 of 15 decided steps). When the wanted text was an older clip (not the latest), the person had to grind through it: ⌘V then trim x4, or ⌘Space + ⌘4 + typed search + Return + ⌘V, costing 2.75-4.19 s, where B gave a one-key pick in ~2.0-2.5 s or 3.2-3.6 s. A also let altered text land on plain paste or pick (non-breaking spaces, curly quotes, collapsed double spaces) in a stack trace and a curl command, so the person would have to notice and fix it.",
+  "gap_steps": [4, 5, 6, 8, 14, 17, 38, 43, 44, 45],
+  "notes": "Step 45 is the worst: A's pick landed a curl command with curly quotes and non-breaking spaces after a 389 ms wait. Pasted into Slack for a colleague, that command is broken. Steps 4 and 6: A's plain paste landed altered text (curly quotes and single spaces in a Postgres error; nbsp in a Python traceback); B landed the exact text. Step 38: A's hotkey picked wrong, was undone with Cmd-Z, then fell back to Spotlight: 5.39 s with a 637 ms wait, the worst step of the day. Step 19 goes to A despite 4.19 s vs 2.13 s because B's hotkey 8 landed the curly-quote variant of the error text, not the straight-quote text wanted. Step 42: both sides pasted the stale clip '9c0e5b3' into a password field. Neither handled the secure field well for this person, so it is a tie. Steps 7, 25, 26, 39: A's hotkey won by 0.7-2 s over the manual route, but waits of 179-450 ms are noticeable. Both sides show 0-3 ms noise on plain ⌘V, so those are ties."
+}

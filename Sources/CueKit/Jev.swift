@@ -215,11 +215,13 @@ public struct JevClient: DecisionProvider {
             req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Sorted keys: the same decision must send the same bytes (small models answer differently
+        // when the option order shifts, and Swift dictionaries order differently on every launch).
         req.httpBody = try JSONSerialization.data(withJSONObject: JSONValue.object([
             "model": .string(endpoint.model),
             "state": state,
             "questions": .object(questions.mapValues(\.jsonValue)),
-        ]).toAny())
+        ]).toAny(), options: [.sortedKeys])
 
         let data: Data
         let resp: URLResponse
@@ -270,5 +272,40 @@ public struct JevClient: DecisionProvider {
         default:
             throw JevError.decoding("\(name): unknown answer type")
         }
+    }
+}
+
+/// CLI "name=base,model[,env:VAR]" endpoint spec — parsed once, shared by
+/// CueEval and CueDay.
+public struct EndpointSpec: Sendable {
+    public var name: String
+    public var endpoint: JevEndpoint
+    public var key: String
+
+    public init(name: String, endpoint: JevEndpoint, key: String = "") {
+        self.name = name
+        self.endpoint = endpoint
+        self.key = key
+    }
+
+    public struct ParseError: Error, CustomStringConvertible {
+        public var description: String
+        public init(_ s: String) { description = s }
+    }
+
+    /// "name=base,model" or "name=base,model,env:VAR"
+    public static func parse(_ s: String) throws -> EndpointSpec {
+        guard let eq = s.firstIndex(of: "=") else { throw ParseError("endpoint needs name=base,model") }
+        let name = String(s[s.startIndex..<eq])
+        let parts = s[s.index(after: eq)...].split(separator: ",").map(String.init)
+        guard parts.count >= 2 else { throw ParseError("endpoint needs base,model") }
+        guard let ep = JevEndpoint.custom(base: parts[0], model: parts[1]) else {
+            throw ParseError("bad base URL \(parts[0])")
+        }
+        var key = ""
+        if parts.count >= 3, parts[2].hasPrefix("env:") {
+            key = ProcessInfo.processInfo.environment[String(parts[2].dropFirst(4))] ?? ""
+        }
+        return EndpointSpec(name: name, endpoint: ep, key: key)
     }
 }

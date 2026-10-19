@@ -27,6 +27,16 @@ let package = Package(
             dependencies: ["CueKit"],
             path: "Sources/CueEval"
         ),
+        .executableTarget(
+            name: "CueDay",
+            dependencies: ["CueKit"],
+            path: "Sources/CueDay"
+        ),
+        .executableTarget(
+            name: "CueLive",
+            dependencies: ["CueKit"],
+            path: "Sources/CueLive"
+        ),
         .testTarget(
             name: "CueKitTests",
             dependencies: ["CueKit"],

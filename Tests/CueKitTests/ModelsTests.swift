@@ -123,6 +123,15 @@ struct ModelRolesTests {
         let r2 = ModelRoles.roles(from: [b("tail", 0.99, 0, 300, p95: 2000)])
         #expect(r2.isEmpty)
     }
+
+    @Test func aModelThatLeansOnTheChooserGetsNoRole() {
+        var asker = b("asker", 0.92, 0, 150)
+        asker.chooser = 0.48
+        var decider = b("decider", 0.85, 0.01, 112)
+        decider.chooser = 0.18
+        let r = ModelRoles.roles(from: [asker, decider])
+        #expect(r.map(\.bench.model) == ["decider"])
+    }
 }
 
 @MainActor

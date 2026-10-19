@@ -16,6 +16,8 @@ public final class AppModel {
     public let redactor: PIIRedactor
     public let models: ModelManager
     public let providerStatus: ProviderStatus
+    public let prefetch: DecisionPrefetch
+    public let prefetcher: PrefetchTriggers
     public let controller: SmartPasteController
 
     public var selfCheckResult: String?
@@ -37,12 +39,18 @@ public final class AppModel {
         redactor = PIIRedactor()
         models = ModelManager()
         providerStatus = ProviderStatus()
-        controller = SmartPasteController(
+        prefetch = DecisionPrefetch()
+        let ctl = SmartPasteController(
             store: store, settings: settings,
-            executor: executor, feedback: feedback, hud: hud, redactor: redactor
+            executor: executor, feedback: feedback, hud: hud, redactor: redactor,
+            prefetch: prefetch
         ) { [settings, providerStatus] timeout in
             settings.providerClient(timeout: timeout).map { StatusTrackingProvider($0, status: providerStatus) }
         }
+        controller = ctl
+        prefetcher = PrefetchTriggers(
+            store: store, settings: settings, prefetch: prefetch
+        ) { [ctl] in ctl.makeEngine() }
 
         hotkeys.interceptCmdV = settings.triggerMode == .intercept
         hotkeys.reregister()
@@ -50,7 +58,11 @@ public final class AppModel {
             // Practice gets first refusal: it consumes the trigger only while
             // its own field is focused; everything else is normal dispatch.
             if self?.practice?.handleTrigger() == true { return }
-            self?.controller.smartPaste()
+            self?.controller.smartPaste(intercepted: false)
+        }
+        hotkeys.onIntercept { [weak self] in
+            if self?.practice?.handleTrigger() == true { return }
+            self?.controller.smartPaste(intercepted: true)
         }
         hotkeys.on(.picker) { [weak self] in self?.controller.showPicker() }
         hotkeys.on(.rawPaste) { [weak self] in self?.controller.pasteLatest() }
@@ -58,6 +70,7 @@ public final class AppModel {
         hotkeys.on(.settings) { [weak self] in self?.open(id: "settings") }
 
         monitor.start()
+        prefetcher.start(monitor: monitor)
         #if DEBUG
         // `CUE_DEMO_WINDOW=history|settings` opens that window at launch —
         // a visual-verification hook alongside CUE_DEMO_CHOOSER.
@@ -90,11 +103,11 @@ public final class AppModel {
                 try? await Task.sleep(for: .milliseconds(800))
                 let loc = NSEvent.mouseLocation
                 let clips = [
-                    Clip(text: "mira@example.com", kind: .text, sourceApp: "Mail",
+                    Clip(text: "mira@example.com", kind: .text, sourceApp: "Mail", sourceBundleID: "com.apple.mail",
                          copiedAt: Date().addingTimeInterval(-420)),
-                    Clip(text: "priya@acme.com", kind: .text, sourceApp: "Safari",
+                    Clip(text: "priya@acme.com", kind: .text, sourceApp: "Safari", sourceBundleID: "com.apple.Safari",
                          copiedAt: Date().addingTimeInterval(-3600)),
-                    Clip(text: "hello@work.dev", kind: .text, sourceApp: "Slack",
+                    Clip(text: "hello@work.dev", kind: .text, sourceApp: "Notes", sourceBundleID: "com.apple.Notes",
                          copiedAt: Date().addingTimeInterval(-7200)),
                 ]
                 let opts = clips.enumerated().map { i, c in
@@ -214,10 +227,36 @@ public final class AppModel {
         win.makeKeyAndOrderFront(nil)
     }
 
+    /// A Mac settings window: toolbar tabs that switch panes, the window resizing to each one.
+    private func makeSettingsWindow() -> NSWindow {
+        let tabs = NSTabViewController()
+        tabs.tabStyle = .toolbar
+        tabs.canPropagateSelectedChildViewControllerTitle = true
+        for tab in SettingsTab.allCases {
+            let host = NSHostingController(rootView: SettingsView(model: self, tab: tab))
+            host.sizingOptions = .preferredContentSize
+            host.title = tab.rawValue
+            let item = NSTabViewItem(viewController: host)
+            item.label = tab.rawValue
+            item.image = NSImage(systemSymbolName: tab.symbol, accessibilityDescription: tab.rawValue)
+            tabs.addTabViewItem(item)
+        }
+        #if DEBUG
+        if let s = ProcessInfo.processInfo.environment["CUE_SETTINGS_TAB"], let i = Int(s) {
+            tabs.selectedTabViewItemIndex = i
+        }
+        #endif
+        let win = NSWindow(contentViewController: tabs)
+        win.styleMask = [.titled, .closable]
+        win.toolbarStyle = .preference
+        win.isReleasedWhenClosed = false
+        return win
+    }
+
     private func makeWindow(id: String) -> NSWindow {
+        if id == "settings" { return makeSettingsWindow() }
         let view: AnyView = switch id {
         case "history": AnyView(HistoryView(model: self))
-        case "settings": AnyView(SettingsView(model: self))
         default: AnyView(OnboardingView(model: self))
         }
         let win = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -240,17 +279,9 @@ public final class AppModel {
         } else {
             win.styleMask = [.titled, .closable, .resizable]
         }
-        win.title = switch id {
-        case "history": "Clipboard History"
-        case "settings": "Settings"
-        default: "Welcome to Cue"
-        }
+        win.title = id == "history" ? "Clipboard History" : "Welcome to Cue"
         win.isReleasedWhenClosed = false
-        let size: NSSize = switch id {
-        case "history": NSSize(width: 480, height: 420)
-        case "settings": NSSize(width: 480, height: 560)
-        default: NSSize(width: 760, height: 580)
-        }
+        let size = id == "history" ? NSSize(width: 480, height: 420) : NSSize(width: 760, height: 580)
         win.setContentSize(size)
         return win
     }

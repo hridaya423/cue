@@ -8,7 +8,8 @@ import Foundation
 /// execute.
 public struct PasteOption: Sendable, Equatable, Identifiable {
     public enum Kind: String, Sendable {
-        case email, phone, url, text
+        /// `code`: a token people lift out of a line — a commit SHA, a request id, a quoted name, an amount.
+        case email, phone, url, code, text
     }
     /// "c1"…"cN" in recency order — also the model's criteria key.
     public var id: String
@@ -39,12 +40,20 @@ public enum FieldKind: String, Sendable {
     case email, phone, url, name, generic
 
     public static func infer(label: String, placeholder: String, nearby: String = "") -> FieldKind {
-        let s = "\(label) \(placeholder) \(nearby)".lowercased()
-        func has(_ words: [String]) -> Bool { words.contains { s.contains($0) } }
-        if has(["email", "e-mail", "mail address"]) { return .email }
-        if has(["phone", "mobile", "tel", "fax", "callback"]) { return .phone }
-        if has(["url", "website", "link", "domain"]) { return .url }
-        if has(["first name", "last name", "full name", "name"]) { return .name }
+        // The field's own label and placeholder decide. `nearby` holds the rest of the form or the
+        // conversation around a message box, so it only speaks for a field with no label of its own.
+        let own = kind(in: "\(label) \(placeholder)")
+        return own == .generic && label.isEmpty ? kind(in: nearby) : own
+    }
+
+    private static func kind(in text: String) -> FieldKind {
+        // Whole words only: "hotel" is not a phone field, "username" is not a name field.
+        let s = " " + text.lowercased().split { !$0.isLetter && !$0.isNumber }.joined(separator: " ") + " "
+        func has(_ words: [String]) -> Bool { words.contains { s.contains(" \($0) ") } }
+        if s == " to " || has(["email", "e mail", "mail address", "cc", "bcc", "recipient", "recipients", "guests", "attendees", "invitees"]) { return .email }
+        if has(["phone", "mobile", "tel", "telephone", "cell", "fax", "callback"]) { return .phone }
+        if has(["url", "website", "link", "domain", "homepage"]) { return .url }
+        if has(["name"]) { return .name }
         return .generic
     }
 
@@ -55,7 +64,7 @@ public enum FieldKind: String, Sendable {
     /// one span of that type; name fields need text with no detected span.
     public func acceptsVerbatim(_ text: String) -> Bool {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let spans = SpanExtractor.spansWithContext(in: t)
+        let spans = SpanExtractor.spansWithContext(in: t).filter { $0.kind != .code }
         let want: PasteOption.Kind
         switch self {
         case .generic: return true
@@ -64,7 +73,11 @@ public enum FieldKind: String, Sendable {
         case .phone: want = .phone
         case .url: want = .url
         }
-        return spans.count == 1 && spans[0].kind == want && spans[0].text == t
+        // A list of addresses ("a@x.com, b@y.com") is what a To/Bcc field takes as-is.
+        guard !spans.isEmpty, spans.allSatisfy({ $0.kind == want }) else { return false }
+        if want != .email { return spans.count == 1 && spans[0].text == t }
+        let rest = spans.reduce(t) { $0.replacingOccurrences(of: $1.text, with: "") }
+        return rest.allSatisfy { $0 == "," || $0 == ";" || $0.isWhitespace }
     }
 
     /// Does an option satisfy this field kind?
@@ -104,12 +117,18 @@ public enum ContextSignal {
         var own: String
         switch o.kind {
         case .email: own = String(o.text.split(separator: "@").first ?? "")
-        case .url, .phone, .text: own = o.text
+        case .url, .phone, .code, .text: own = o.text
         }
         if o.kind != .text, let r = o.snippet.range(of: o.text) {
             own += " " + String(o.snippet[..<r.lowerBound].suffix(24))
         }
         return words(own, min: 2)
+    }
+
+    /// A whole clip that repeats four or more words of the window title restates the page it would be pasted
+    /// into. Spans (an email, a URL) are exempt: "Reply to Priya Shah" naming priya.shah@ is evidence.
+    public static func echoes(_ o: PasteOption, window: String) -> Bool {
+        o.kind == .text && words(o.text, min: 2).intersection(words(window, min: 2)).count >= 4
     }
 
     /// The one option with evidence, if exactly one has any.
@@ -129,10 +148,13 @@ public enum ContextSignal {
 public enum OptionBuilder {
     /// Most clips users juggle live in the last screenful of history. Beyond
     /// that, pins are the user's explicit "this matters" — so the window is
-    /// the last 20 clips plus every pin. Options cap at 30: small models
-    /// degrade with long criteria lists.
+    /// the last 20 clips plus every pin. Options cap at 20: model latency
+    /// grows with every option line, and typing in the chooser reaches the rest.
     public static let recentWindow = 20
-    public static let maxOptions = 30
+    public static let maxOptions = 20
+    /// What the model is offered is what you copied today: a clip from last week is something you'd go
+    /// looking for (typing in the chooser searches all of history), not a guess Cue should make.
+    public static let freshFor: TimeInterval = 12 * 3600
 
     /// Newest first. Each clip contributes every detected email/phone/URL
     /// span plus the clip itself (skipped when the clip IS one span —
@@ -140,25 +162,42 @@ public enum OptionBuilder {
     /// Exact-text dedupe keeps the newest occurrence.
     public static func options(from clips: [Clip],
                              recent: Int = recentWindow,
-                             maxOptions: Int = maxOptions) -> [PasteOption] {
-        let scope = clips.prefix(recent) + clips.dropFirst(recent).filter(\.pinned)
+                             maxOptions: Int = maxOptions,
+                             freshFor: TimeInterval = freshFor,
+                             naming typed: Set<String> = []) -> [PasteOption] {
+        let cutoff = Date().addingTimeInterval(-freshFor)
+        let scope = clips.prefix(recent).enumerated()
+            .filter { $0.offset == 0 || $0.element.pinned || $0.element.copiedAt >= cutoff }.map(\.element)
+            + clips.dropFirst(recent).filter(\.pinned)
         var seen = Set<String>()
-        var out: [PasteOption] = []
-        for clip in scope {
+        func options(of clip: Clip) -> [PasteOption] {
+            var own: [PasteOption] = []
             for span in SpanExtractor.spansWithContext(in: clip.text) {
                 let trimmed = span.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard seen.insert(trimmed).inserted else { continue }
-                out.append(PasteOption(
-                    id: "", text: trimmed, kind: span.kind,
-                    clip: clip, snippet: span.context))
+                own.append(PasteOption(id: "", text: trimmed, kind: span.kind,
+                                       clip: clip, snippet: span.context))
             }
             let whole = clip.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if seen.insert(whole).inserted {
-                out.append(PasteOption(id: "", text: clip.text, kind: .text,
+                own.append(PasteOption(id: "", text: clip.text, kind: .text,
                                        clip: clip, snippet: clip.preview))
             }
+            return own
         }
-        out = Array(out.prefix(maxOptions))
+        var out = scope.flatMap(options(of:))
+        // Over the cap, the oldest unpinned options go; pins always stay.
+        while out.count > maxOptions, let i = out.lastIndex(where: { !$0.clip.pinned }) {
+            out.remove(at: i)
+        }
+        // Words typed just before the caret ("Sentry:") name a clip the cap dropped: offer it after the rest.
+        if !typed.isEmpty {
+            let present = Set(out.map(\.clip.id))
+            let named = scope.filter { !present.contains($0.id)
+                && !ContextSignal.words($0.text, min: 4).isDisjoint(with: typed) }
+            seen = Set(out.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) })
+            out += named.prefix(2).flatMap(options(of:))
+        }
         for i in out.indices { out[i].id = "c\(i + 1)" }
         return out
     }
@@ -175,6 +214,8 @@ extension SpanExtractor {
 
     /// Every email/phone/URL in `text`, in document order, with context.
     public static func spansWithContext(in text: String) -> [SpanInContext] {
+        // A pasted log or dump can be megabytes; the detectors take seconds on that. Spans come from the head.
+        let text = text.utf16.count > 20_000 ? String(text.prefix(20_000)) : text
         var tagged: [(Int, SpanInContext)] = []
         func collect(_ values: [(String, NSRange)], _ kind: PasteOption.Kind) {
             for (v, r) in values {
@@ -191,6 +232,8 @@ extension SpanExtractor {
         collect(emailRanges(in: text), .email)
         collect(phoneRanges(in: text), .phone)
         collect(urlRanges(in: text), .url)
+        let taken = tagged.map { NSRange(location: $0.0, length: ($0.1.text as NSString).length) }
+        collect(codeRanges(in: text).filter { r in !taken.contains { NSIntersectionRange($0, r.1).length > 0 } }, .code)
         return tagged.sorted { $0.0 < $1.0 }.map(\.1)
     }
 
@@ -201,21 +244,63 @@ extension SpanExtractor {
         }
     }
 
+    /// Quoted or backticked names, hex SHAs, prefixed ids (req_…, txn_…), account/order numbers, and amounts with thousands
+    /// separators. Whole-clip copies of these are already options; this only splits them out of a line.
+    /// Quotes match as pairs (not the `","` between two strings), and a quoted name followed by `:` is a JSON key, not a value.
+    static let codePattern = try! NSRegularExpression(pattern: [
+        #""([^"\s:,{}\[\]][^"\n]{2,78}[^"\s:,{}\[\]])"(?!\s*:)"#,
+        #"`([^`\n]{4,80})`"#,
+        #"(?<![-\w])(?=[0-9a-f]*[0-9])(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}(?![-\w])"#,
+        #"\b[a-z]{2,8}_[A-Za-z0-9]{6,}\b"#,
+        #"(?<![\w.,-])\d{6,}(?![\w.,-])"#,
+        #"(?<![\d,])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?!\d|,\d)"#,
+    ].joined(separator: "|"))
+
+    static func codeRanges(in text: String) -> [(String, NSRange)] {
+        let range = NSRange(text.startIndex..., in: text)
+        return codePattern.matches(in: text, range: range).compactMap { m in
+            let r = [1, 2].map(m.range(at:)).first { $0.location != NSNotFound } ?? m.range
+            return Range(r, in: text).map { (String(text[$0]), r) }
+        }
+    }
+
+    // Built once: creating a data detector costs more than running it.
+    static let phoneDetector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.phoneNumber.rawValue)
+    static let linkDetector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
     static func phoneRanges(in text: String) -> [(String, NSRange)] {
         let range = NSRange(text.startIndex..., in: text)
-        let det = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.phoneNumber.rawValue)
-        return det?.matches(in: text, range: range).compactMap { m in
+        return phoneDetector.matches(in: text, range: range).compactMap { m in
             m.phoneNumber.map { ($0, m.range) }
-        } ?? []
+        }
     }
 
     static func urlRanges(in text: String) -> [(String, NSRange)] {
         let range = NSRange(text.startIndex..., in: text)
-        let det = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-        return det?.matches(in: text, range: range).compactMap { m in
+        return linkDetector.matches(in: text, range: range).compactMap { m in
             guard let s = m.url?.scheme?.lowercased(), s == "http" || s == "https",
                   let abs = m.url?.absoluteString else { return nil }
             return (abs, m.range)
-        } ?? []
+        }
+    }
+}
+
+/// The chooser's rows: the model's ranking first, then the rest of history newest-first, so typing a few
+/// letters reaches any clip or span the model ranked low or never saw. At most 9 rows (keys 1–9).
+public enum ChooserRows {
+    public static let visible = 9
+
+    public static func rows(ranked: [ScoredOption], history: [Clip], query: String) -> [ScoredOption] {
+        let rest = OptionBuilder.options(from: history, recent: .max, maxOptions: .max, freshFor: .infinity)
+            .map { ScoredOption(option: $0, probability: 0, confidence: 0) }
+        var seen = Set<String>()
+        let all = (ranked + rest).filter { seen.insert($0.option.text).inserted }
+        let q = query.trimmingCharacters(in: .whitespaces)
+        // Rows whose own text has the query come first; a span found only through its clip's text follows.
+        let own = all.filter { $0.option.text.localizedCaseInsensitiveContains(q) }
+        let hits = q.isEmpty ? all : own + all.filter {
+            !$0.option.text.localizedCaseInsensitiveContains(q) && $0.option.clip.text.localizedCaseInsensitiveContains(q)
+        }
+        return Array(hits.prefix(q.isEmpty ? ranked.count : visible))
     }
 }

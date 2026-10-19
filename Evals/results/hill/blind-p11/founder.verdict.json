@@ -1,0 +1,16 @@
+{
+  "steps": {
+    "1": "tie", "2": "tie", "3": "tie", "4": "tie", "5": "tie",
+    "6": "B", "7": "A", "8": "tie", "9": "tie", "10": "tie",
+    "11": "tie", "12": "tie", "13": "B", "14": "tie", "15": "tie",
+    "16": "tie", "17": "tie", "18": "tie", "19": "tie", "20": "tie",
+    "21": "tie", "22": "tie", "23": "tie", "24": "A", "25": "tie",
+    "26": "tie", "27": "tie", "28": "B", "29": "B", "30": "B",
+    "31": "A", "32": "tie", "33": "tie", "34": "tie", "35": "A",
+    "36": "tie", "37": "A", "38": "tie", "39": "tie", "40": "tie",
+    "41": "tie", "42": "tie", "43": "tie"
+  },
+  "biggest_gap": "The side that only does plain ⌘V plus Spotlight/trim loses every non-tie step (10 of 10). When the wanted text is a span inside a longer clip (email/phone from a signature, steps 6, 7, 29, 35) the person had to paste the whole clip and trim it four times (~2.75 s). When the wanted text is an older clip (steps 13, 24, 28, 30, 31, 37) the person had to open Spotlight, type a search and pick (4.2-6.7 s, 6.66 s when the account number also needed trimming at step 28). The A/B labels are split 5/5 only because they were shuffled.",
+  "gap_steps": [6, 7, 13, 24, 28, 29, 30, 31, 35, 37],
+  "notes": "33 of 43 steps are identical text in identical ~0.28 s, so the day is decided by only 10 steps. The side that wins them still costs 2.0-3.3 s on each: a 240-270 ms wait at the hotkey, then the person must read a chooser and press a digit (steps 13, 24, 28-31, 35, 37). Step 30 needed typed letters plus a digit (3.28 s); step 37 the same (3.29 s). Step 25: wanted a plain paste in a password field, and both sides landed 'https://brindle.example' (a stale URL) in a password field. That is a wrong thing landing, and it is the same on both sides, so I scored a tie. Neither side was better, but it is a failure for the person. Step 38 (deck or data room both fine): both pasted the data room link, which is acceptable. No wrong text landed in any other step. Steps 5, 32, 33 landed the correct large multi-line or list clip with no wait on either side."
+}

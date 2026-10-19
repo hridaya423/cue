@@ -1,13 +1,25 @@
 [
     {
+        "model": "decider",
+        "variant": "decider-0.8b",
+        "resolved": 0.85,
+        "wrong": 0.01,
+        "p50": 112,
+        "p95": 192,
+        "diskGB": 1.6,
+        "ramGB": 3.1,
+        "chooser": 0.18
+    },
+    {
         "model": "kev",
         "variant": "kev-0.8b",
-        "resolved": 0.84,
-        "wrong": 0.01,
-        "p50": 248,
-        "p95": 479,
+        "resolved": 0.92,
+        "wrong": 0.0,
+        "p50": 150,
+        "p95": 566,
         "diskGB": 2.0,
-        "ramGB": 4.0
+        "ramGB": 4.0,
+        "chooser": 0.48
     },
     {
         "model": "laya",

@@ -15,6 +15,12 @@ public struct HistoryView: View {
         }
     }
 
+    private var smartPasteKeys: String {
+        if model.settings.triggerMode == .intercept { return "⌘V" }
+        return (model.settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
+            ?? HotkeyManager.Action.smartPaste.default).displayString
+    }
+
     private var pinned: [Clip] { visible.filter(\.pinned) }
     private var recent: [Clip] { visible.filter { !$0.pinned } }
     /// Display order flattened — arrow nav walks this list.
@@ -52,9 +58,10 @@ public struct HistoryView: View {
                     filter.isEmpty ? "Nothing copied yet" : "No matches",
                     systemImage: "doc.on.clipboard",
                     description: Text(filter.isEmpty
-                        ? "Copy some text and it'll show up here."
+                        ? "Copy some text and it’ll show up here. Then press \(smartPasteKeys) in any text field."
                         : "Try a different search.")
                 )
+                .frame(maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -75,7 +82,7 @@ public struct HistoryView: View {
                 }
             }
         }
-        .frame(minWidth: 460, minHeight: 360)
+        .frame(minWidth: 460, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity, alignment: .top)
         .background(KeyNavHelper(
             onArrow: { moveSelection($0) },
             onReturn: {

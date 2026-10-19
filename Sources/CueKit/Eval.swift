@@ -79,11 +79,18 @@ public struct EvalCase: Decodable, Sendable {
         case plain
     }
 
+    /// How a person would trigger this paste (the persona days' rule): ⌘V when what they want is the
+    /// latest clip or a plain paste, the smart-paste hotkey only when they want something older.
     public var engineMode: DecisionEngine.Mode {
         switch mode {
-        case "intercept": .intercept
-        case "formFill": .formFill
-        default: .hotkey
+        case "intercept": return .intercept
+        case "formFill": return .formFill
+        default:
+            switch expect {
+            case .plain: return .intercept
+            case .paste(let want) where want == clips.first?.text: return .intercept
+            default: return .hotkey
+            }
         }
     }
 
@@ -164,9 +171,11 @@ public enum EvalVerdict: String, Sendable, Comparable {
 
 public enum EvalScore {
     /// `latestText` is what a plain ⌘V would have inserted (c1's text).
+    /// `hotkey`: the user pressed smart paste to get something other than the latest clip, so when
+    /// nothing fits, the list (Esc = plain paste) is a correct answer there; on ⌘V it is noise.
     public static func score(_ outcome: EvalNormalizedOutcome,
                              expect: EvalCase.Expectation,
-                             latestText: String) -> EvalVerdict {
+                             latestText: String, hotkey: Bool = false) -> EvalVerdict {
         switch (expect, outcome.kind) {
         case (.paste(let want), .paste):
             return outcome.texts.first == want ? .exact : .wrong
@@ -191,7 +200,84 @@ public enum EvalScore {
             // Pasting the latest verbatim is a plain paste in effect.
             return outcome.texts.first == latestText ? .exact : .wrong
         case (.plain, .choose):
-            return .wrong
+            return hotkey ? .resolvedByChooser : .wrong
         }
+    }
+}
+
+// MARK: - Record / replay providers
+
+/// Provider wrapper that records each raw response under `currentCaseID`,
+/// via the sink — one `{"case","model","answers"}` line per call.
+public final class RecordingProvider: DecisionProvider, @unchecked Sendable {
+    public let inner: any DecisionProvider
+    public let sink: (String, JevResponse) -> Void
+    public var isRemote: Bool { inner.isRemote }
+    public var currentCaseID = ""
+
+    public init(_ inner: any DecisionProvider, sink: @escaping (String, JevResponse) -> Void) {
+        self.inner = inner; self.sink = sink
+    }
+
+    public func evaluate(state: JSONValue, questions: [String: Question]) async throws -> JevResponse {
+        let r = try await inner.evaluate(state: state, questions: questions)
+        sink(currentCaseID, r)
+        return r
+    }
+}
+
+/// Serves the first recorded response per case id (the --record format).
+public final class ReplayProvider: DecisionProvider, @unchecked Sendable {
+    public var isRemote: Bool { false }
+    public var currentCaseID = ""
+    private var byCase: [String: JevResponse] = [:]
+
+    public init(path: String) throws {
+        for line in try String(contentsOfFile: path, encoding: .utf8).split(whereSeparator: \.isNewline) {
+            guard let o = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let id = o["case"] as? String, byCase[id] == nil,
+                  let raw = o["answers"] as? [String: String] else { continue }
+            byCase[id] = JevResponse(model: o["model"] as? String ?? "replay",
+                                     answers: raw.compactMapValues(Self.parse))
+        }
+    }
+
+    /// "choice:c2 conf=0.4 c1=0.1,c2=0.9" | "noul:0.3" | "score:3 conf=0.5"
+    public static func parse(_ s: String) -> Answer? {
+        let parts = s.split(separator: " ", maxSplits: 2).map(String.init)
+        guard let head = parts.first, let colon = head.firstIndex(of: ":") else { return nil }
+        let kind = head[..<colon], val = String(head[head.index(after: colon)...])
+        let conf = parts.count > 1 ? Double(parts[1].replacingOccurrences(of: "conf=", with: "")) ?? 0 : 0
+        switch kind {
+        case "noul": return Double(val).map { .noul(probability: $0) }
+        case "choice":
+            var probs: [String: Double] = [:]
+            if parts.count > 2 {
+                for kv in parts[2].split(separator: ",") {
+                    let p = kv.split(separator: "=")
+                    if p.count == 2, let v = Double(p[1]) { probs[String(p[0])] = v }
+                }
+            }
+            return .choice(key: val, confidence: conf, probabilities: probs)
+        case "score": return Double(val).map { .score(score: $0, confidence: conf, probabilities: [:]) }
+        default: return nil
+        }
+    }
+
+    /// The --record wire form of an answer — `parse` is its inverse.
+    public static func describe(_ a: Answer) -> String {
+        switch a {
+        case .choice(let k, let c, let p):
+            return "choice:\(k) conf=\(c) \(p.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ","))"
+        case .noul(let p): return "noul:\(p)"
+        case .score(let s, let c, _): return "score:\(s) conf=\(c)"
+        }
+    }
+
+    public func evaluate(state: JSONValue, questions: [String: Question]) async throws -> JevResponse {
+        guard let r = byCase[currentCaseID] else {
+            throw JevError.decoding("no recording for \(currentCaseID)")
+        }
+        return r
     }
 }

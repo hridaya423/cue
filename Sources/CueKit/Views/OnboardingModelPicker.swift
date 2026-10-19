@@ -19,17 +19,12 @@ struct OnboardingModels: View {
     @State private var selectedID: String = ""
 
     var onAdvance: () -> Void = {}
-    /// Ref 04 puts Back inside the lower sheet, beside the primary.
-    var onBack: () -> Void = {}
 
     private var settings: AppSettings { model.settings }
 
-    init(model: AppModel, primary: Binding<OBPrimary?>,
-         onBack: @escaping () -> Void = {},
-         onAdvance: @escaping () -> Void) {
+    init(model: AppModel, primary: Binding<OBPrimary?>, onAdvance: @escaping () -> Void) {
         self.model = model
         self._primary = primary
-        self.onBack = onBack
         self.onAdvance = onAdvance
     }
 
@@ -73,16 +68,6 @@ struct OnboardingModels: View {
         } lower: {
             VStack(alignment: .leading, spacing: 10) {
                 if hosted { hostedLower } else { localLower }
-                // Ref 04: Back + primary ride inside the lower sheet.
-                HStack {
-                    OBBackButton(chevron: true, action: onBack)
-                    Spacer()
-                    if let primary {
-                        OBPrimaryButton(title: primary.title, enabled: primary.enabled,
-                                        action: primary.action)
-                    }
-                }
-                .padding(.top, 4)
             }
         }
     }
@@ -173,31 +158,13 @@ struct OnboardingModels: View {
                 let v = resolvedVariant(spec)
                 let state = model.models.status(of: spec.id)
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 12) {
-                        Text(spec.blurb)
-                            .font(.system(size: 12))
-                            .foregroundStyle(OBTheme.textSecondary)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 6)
-                        if spec.variants.count > 1 {
-                            Picker("Weights", selection: variantBinding(spec)) {
-                                ForEach(spec.variants) { w in
-                                    Text(w.paramsLabel).tag(w.id)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .controlSize(.small)
-                            .fixedSize()
-                        }
-                    }
-                    HStack(spacing: 14) {
-                        if let v {
-                            meta(v.paramsLabel)
-                            meta("\(v.diskLabel) download")
-                            meta("\(v.ramLabel) memory")
-                        }
-                    }
+                    // First run shows what the choice means; weight sizes live in Settings.
+                    Text(spec.blurb)
+                        .font(.system(size: 12))
+                        .foregroundStyle(OBTheme.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let v { meta("Private, on this Mac · uses \(v.ramLabel) memory") }
                     if case .experimental(let why) = spec.support {
                         Text("Experimental · \(why)")
                             .font(.system(size: 11))
@@ -478,7 +445,9 @@ struct OnboardingModels: View {
     // MARK: - Actions
 
     private func seedSelection() {
-        hosted = settings.provider != .local
+        // On-device is the default: nothing to sign up for, nothing leaves the Mac. Hosted opens first
+        // only for someone who already chose it.
+        hosted = settings.provider == .jevDirect || settings.provider == .jevGateway
         selectedID = ModelCatalog.model(settings.localModelID)?.id ?? headline.first?.id ?? ""
         moreExpanded = rest.contains { $0.id == selectedID }
         syncPrimary()
@@ -487,11 +456,6 @@ struct OnboardingModels: View {
     private func resolvedVariant(_ spec: ModelSpec) -> WeightSpec? {
         spec.variants.first { $0.id == settings.localVariantID }
             ?? ModelCatalog.defaultVariant(of: spec)
-    }
-
-    private func variantBinding(_ spec: ModelSpec) -> Binding<String> {
-        Binding(get: { resolvedVariant(spec)?.id ?? "" },
-                set: { settings.localVariantID = $0 })
     }
 
     private func setupSelected(_ spec: ModelSpec) {

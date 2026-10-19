@@ -7,10 +7,11 @@ import SwiftUI
 @MainActor
 public final class HUDController {
     private var panel: NSPanel?
-    private var keyMonitor: Any?
+    fileprivate var keyTap: CFMachPort?
+    private var keyTapSource: CFRunLoopSource?
     private var resignObserver: NSObjectProtocol?
     private var dismissTask: Task<Void, Never>?
-    private var onKey: ((NSEvent) -> Bool)?
+    fileprivate var onKey: ((NSEvent) -> Bool)?
 
     public var isShowing: Bool { panel != nil }
 
@@ -19,15 +20,16 @@ public final class HUDController {
     /// Caret-anchored disambiguation: the model's top options, 1/2/3 or
     /// arrows+Return to pick, Esc/⌘V = plain paste. Non-activating.
     /// `fieldLabel` names the destination ("Paste into To:") when known.
-    public func showChooser(options: [ScoredOption], near rect: CGRect?,
+    public func showChooser(options: [ScoredOption], history: [Clip] = [], near rect: CGRect?,
                             fieldLabel: String? = nil,
                             onPick: @escaping (ScoredOption?) -> Void) {
-        let state = ChooserState(options: options)
+        let state = ChooserState(options: options, history: history)
         state.fieldLabel = fieldLabel ?? ""
         state.onPick = { [weak self] i in
             guard let self else { return }
+            let row = state.rows[i]
             self.dismiss()
-            onPick(state.options[i])
+            onPick(row)
         }
         show(view: ChooserView(state: state), near: rect, dismissOnResign: true)
         // The entrance scales out of the edge nearest the caret: flipped
@@ -45,19 +47,48 @@ public final class HUDController {
             if e.modifierFlags.contains(.command), Int(e.keyCode) == kVK_ANSI_V {
                 self.dismiss(); onPick(nil); return true
             }
-            switch Int(e.keyCode) {
-            case kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4,
-                 kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9:
-                let i = Int(e.keyCode) - kVK_ANSI_1
-                if i < state.options.count { state.pick(i) }
+            // A digit held back for the search window: Return confirms it as a pick, Esc drops it,
+            // any other key means it began a search ("1291").
+            if let d = state.pendingDigit {
+                state.pendingDigit = nil
+                if Int(e.keyCode) == kVK_Return || Int(e.keyCode) == kVK_ANSI_KeypadEnter {
+                    if d <= state.rows.count { state.pick(d - 1) }
+                    return true
+                }
+                if Int(e.keyCode) != kVK_Escape { state.append(String(d)) }
+            }
+            // A typed digit picks its row — by character, not key code: kVK_ANSI_1…9 aren't
+            // contiguous, and on AZERTY the digit keys type "&é\"'" unless Shift is held. It waits
+            // 180 ms first: a second key inside that window (people type ~100 ms apart) makes it a search.
+            // Once a search has started, digits belong to it ("0143"); Return or the arrows pick.
+            if state.filter.isEmpty, let c = e.characters, let d = Int(c), (1...9).contains(d),
+               e.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+                state.pendingDigit = d
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(180))
+                    guard let self, self.onKey != nil, state.pendingDigit == d else { return }
+                    state.pendingDigit = nil
+                    if d <= state.rows.count { state.pick(d - 1) }
+                }
                 return true
+            }
+            switch Int(e.keyCode) {
             case kVK_DownArrow: state.move(1); return true
             case kVK_UpArrow: state.move(-1); return true
             case kVK_Return, kVK_ANSI_KeypadEnter:
-                let sel = state.options.indices.contains(state.selection) ? state.options[state.selection] : nil
+                // A resting pointer hovers a row that typing may have filtered away: take the nearest one.
+                let rows = state.rows
+                let sel = rows.isEmpty ? nil : rows[min(state.selection, rows.count - 1)]
                 self.dismiss(); onPick(sel); return true
             case kVK_Escape: self.dismiss(); onPick(nil); return true
-            default: return true // swallow everything else
+            case kVK_Delete: state.backspace(); return true
+            default:
+                // Letters filter all of history; digits above pick rows.
+                if let chars = e.characters, let first = chars.unicodeScalars.first,
+                   first.value >= 0x20, !e.modifierFlags.contains(.command) {
+                    state.append(chars)
+                }
+                return true
             }
         }
     }
@@ -107,10 +138,12 @@ public final class HUDController {
     public func dismiss() {
         dismissTask?.cancel()
         dismissTask = nil
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        keyMonitor = nil
+        if let keyTap { CGEvent.tapEnable(tap: keyTap, enable: false) }
+        if let keyTapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), keyTapSource, .commonModes) }
+        keyTap = nil
+        keyTapSource = nil
         onKey = nil
-        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+        if let resignObserver { NSWorkspace.shared.notificationCenter.removeObserver(resignObserver) }
         resignObserver = nil
         panel?.orderOut(nil)
         panel = nil
@@ -122,8 +155,8 @@ public final class HUDController {
         hosting.setFrameSize(hosting.fittingSize)
 
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: hosting.fittingSize),
-                            styleMask: [.borderless, .nonactivatingPanel],
-                            backing: .buffered, defer: false)
+                                   styleMask: [.borderless, .nonactivatingPanel],
+                                   backing: .buffered, defer: false)
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.isOpaque = false
@@ -133,18 +166,35 @@ public final class HUDController {
         panel.contentView = hosting
         panel.setFrameOrigin(Self.position(near: rect, size: hosting.fittingSize))
         panel.orderFront(nil)
-        panel.makeKey()
         self.panel = panel
 
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            guard let self, let onKey = self.onKey else { return e }
-            return onKey(e) ? nil : e
+        guard dismissOnResign else { return }
+        // The chooser never takes key focus: a key panel blurs the field being pasted into (web views
+        // don't take it back), so the paste would land nowhere. A session event tap reads the keys
+        // instead, consuming the ones the chooser uses while it's up.
+        keyTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
+            eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+            callback: { _, type, event, refcon in
+                guard let refcon else { return Unmanaged.passUnretained(event) }
+                let hud = Unmanaged<HUDController>.fromOpaque(refcon).takeUnretainedValue()
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    MainActor.assumeIsolated { if let t = hud.keyTap { CGEvent.tapEnable(tap: t, enable: true) } }
+                    return Unmanaged.passUnretained(event)
+                }
+                guard type == .keyDown, let e = NSEvent(cgEvent: event) else { return Unmanaged.passUnretained(event) }
+                let consumed = MainActor.assumeIsolated { hud.onKey?(e) ?? false }
+                return consumed ? nil : Unmanaged.passUnretained(event)
+            },
+            userInfo: Unmanaged.passUnretained(self).toOpaque())
+        if let keyTap, let src = CFMachPortCreateRunLoopSource(nil, keyTap, 0) {
+            keyTapSource = src
+            CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         }
-        if dismissOnResign {
-            resignObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
-            ) { [weak self] _ in Task { @MainActor in self?.dismiss() } }
-        }
+        // Switching apps or clicking elsewhere closes it, as resigning key used to.
+        resignObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] _ in Task { @MainActor in self?.dismiss() } }
     }
 
     /// Below the field if it fits, otherwise above; clamped to the screen.
@@ -166,6 +216,7 @@ public final class HUDController {
         return origin
     }
 
+
     private static func screenContaining(_ rect: CGRect) -> NSScreen? {
         NSScreen.screens.first { $0.frame.intersects(rect) }
     }
@@ -183,15 +234,21 @@ final class ChooserState {
     var onPick: ((Int) -> Void)?
     /// Destination field label for the header ("Paste into To:").
     var fieldLabel = ""
+    var filter = ""
+    var pendingDigit: Int?
     let options: [ScoredOption]
-    init(options: [ScoredOption]) { self.options = options }
+    let history: [Clip]
+    init(options: [ScoredOption], history: [Clip] = []) { self.options = options; self.history = history }
+    var rows: [ScoredOption] { ChooserRows.rows(ranked: options, history: history, query: filter) }
     func move(_ delta: Int) {
-        selection = min(max(selection + delta, 0), max(options.count - 1, 0))
+        selection = min(max(selection + delta, 0), max(rows.count - 1, 0))
     }
     func pick(_ i: Int) {
-        guard options.indices.contains(i) else { return }
+        guard rows.indices.contains(i) else { return }
         onPick?(i)
     }
+    func append(_ s: String) { filter += s; selection = 0 }
+    func backspace() { if !filter.isEmpty { filter.removeLast(); selection = 0 } }
 }
 
 // MARK: - Picker state
@@ -246,28 +303,42 @@ struct ChooserView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(state.fieldLabel.isEmpty ? "Which one?" : "Paste into \(state.fieldLabel)")
+            Group {
+                if state.filter.isEmpty {
+                    Text(state.fieldLabel.isEmpty ? "Which one?" : "Paste into \(state.fieldLabel)")
+                } else {
+                    Label(state.filter, systemImage: "magnifyingglass")
+                }
+            }
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
                 .padding(.bottom, 6)
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(state.options.enumerated()), id: \.offset) { i, so in
+                ForEach(Array(state.rows.enumerated()), id: \.offset) { i, so in
                     row(i, so)
                 }
             }
             .padding(.horizontal, 6)
             Divider().opacity(0.5).padding(.top, 4)
             HStack(spacing: 4) {
-                hintKey("1–\(state.options.count)")
-                Text("choose")
-                Spacer()
+                hintKey("↩")
+                Text("paste")
+                if state.filter.isEmpty {
+                    hintKey("1–\(max(state.rows.count, 1))").padding(.leading, 6)
+                    Text("pick")
+                    Text("· type to search").foregroundStyle(.tertiary)
+                } else {
+                    hintKey("↑↓").padding(.leading, 6)
+                    Text("move")
+                }
+                Spacer(minLength: 12)
                 hintKey("esc")
                 Text("plain paste")
             }
-            .font(.system(size: 9, weight: .medium))
-            .foregroundStyle(.tertiary)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
         }
@@ -295,37 +366,33 @@ struct ChooserView: View {
             state.pick(i)
         } label: {
             HStack(alignment: .center, spacing: 9) {
-                SourceAppIcon(clip: so.option.clip, size: 16)
-                    .frame(width: 16)
+                SourceAppIcon(clip: so.option.clip, size: 18)
+                    .frame(width: 18)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(so.option.text)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(selected ? OBTheme.highlightText : .primary)
+                        .foregroundStyle(selected ? .white : .primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(contextLine(for: so.option))
-                        .font(.system(size: 10))
-                        .foregroundStyle(selected
-                            ? OBTheme.highlightText.opacity(0.65)
-                            : .secondary)
+                        .font(.system(size: 11))
+                        .foregroundStyle(selected ? .white.opacity(0.8) : .secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
                 Spacer(minLength: 8)
                 Text("\(i + 1)")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(selected ? OBTheme.highlightText.opacity(0.7) : .secondary)
+                    .foregroundStyle(selected ? .white : .secondary)
                     .frame(width: 18, height: 18)
-                    .background(
-                        selected ? Color.white.opacity(0.45) : Color(nsColor: .controlBackgroundColor),
-                        in: RoundedRectangle(cornerRadius: 4.5, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                            .strokeBorder(.black.opacity(selected ? 0.12 : 0.18), lineWidth: 0.5))
+                    .background(selected ? Color.white.opacity(0.22) : Color.primary.opacity(0.07),
+                                in: RoundedRectangle(cornerRadius: 4.5, style: .continuous))
+                    .opacity(state.filter.isEmpty ? 1 : 0) // while searching, digits type, so no badge
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(selected ? OBTheme.highlight : .clear,
+            // The user's own accent colour, like every other selected row on the Mac.
+            .background(selected ? Color.accentColor : .clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
@@ -401,16 +468,16 @@ struct PickerView: View {
             }
 
             HStack(spacing: 4) {
-                KbdCap(s: "↑↓")
-                Text("choose")
-                KbdCap(s: "⏎")
+                KbdCap(s: "↩")
                 Text("paste")
+                KbdCap(s: "↑↓").padding(.leading, 6)
+                Text("move")
                 Spacer()
                 KbdCap(s: "esc")
                 Text("plain paste")
             }
-            .font(.system(size: 9, weight: .medium))
-            .foregroundStyle(.tertiary)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
         }
@@ -429,23 +496,24 @@ struct PickerView: View {
                 .frame(width: 15)
             Text(cand.clip.preview)
                 .font(.system(size: 13))
-                .foregroundStyle(sel ? OBTheme.highlightText : .primary)
+                .foregroundStyle(sel ? .white : .primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
             if cand.clip.pinned {
                 Image(systemName: "pin.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(sel ? OBTheme.highlightText.opacity(0.7) : OBTheme.foldEdge)
+                    .font(.system(size: 10))
+                    .foregroundStyle(sel ? .white.opacity(0.8) : .secondary)
             }
             Text(cand.clip.copiedAt.relativeAge)
                 .font(.system(size: 11))
-                .foregroundStyle(sel ? OBTheme.highlightText.opacity(0.7)
-                                     : Color(nsColor: .tertiaryLabelColor))
+                .foregroundStyle(sel ? .white.opacity(0.8) : .secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(sel ? OBTheme.highlight : .clear)
+        .background(sel ? Color.accentColor : .clear,
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .padding(.horizontal, 5)
         .id(i)
     }
 }

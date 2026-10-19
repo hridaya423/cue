@@ -107,6 +107,18 @@ struct OptionBuilderTests {
         #expect(FieldKind.infer(label: "", placeholder: "(___) ___-____", nearby: "phone") == .phone)
         #expect(FieldKind.infer(label: "Website", placeholder: "", nearby: "") == .url)
         #expect(FieldKind.infer(label: "Search", placeholder: "Search…", nearby: "") == .generic)
+        // A form's other labels sit in `nearby`: the field's own label must win over them.
+        #expect(FieldKind.infer(label: "Phone", placeholder: "+1 555 000 0000", nearby: "Work email Phone Website") == .phone)
+        #expect(FieldKind.infer(label: "Website", placeholder: "company.com", nearby: "Work email Phone Website") == .url)
+        #expect(FieldKind.infer(label: "Hotel", placeholder: "", nearby: "") == .generic)
+        #expect(FieldKind.infer(label: "Username", placeholder: "", nearby: "") == .generic)
+        #expect(FieldKind.infer(label: "Tell us about yourself", placeholder: "", nearby: "") == .generic)
+        #expect(FieldKind.infer(label: "E-mail", placeholder: "", nearby: "") == .email)
+        #expect(FieldKind.infer(label: "To:", placeholder: "", nearby: "") == .email)
+        #expect(FieldKind.infer(label: "Bcc:", placeholder: "", nearby: "") == .email)
+        #expect(FieldKind.infer(label: "Add guests", placeholder: "", nearby: "") == .email)
+        #expect(FieldKind.infer(label: "Add to cart", placeholder: "", nearby: "") == .generic)
+        #expect(FieldKind.infer(label: "Message body", placeholder: "", nearby: "Mira Chen <mira@acme.example> wrote: what's your email?") == .generic)
     }
 }
 
@@ -161,12 +173,11 @@ final class StubRedactor: Redacting, @unchecked Sendable {
 /// (spans first, then the whole clip, per clip) plus "none".
 private func pickResponse(pick: String, conf: Double,
                           probs: [String: Double],
-                          form: Double? = nil, useLatest: Double? = nil) -> JevResponse {
+                          form: Double? = nil) -> JevResponse {
     var answers: [String: Answer] = [
         "pick": .choice(key: pick, confidence: conf, probabilities: probs),
     ]
     if let form { answers["form"] = .noul(probability: form) }
-    if let useLatest { answers["use_latest"] = .noul(probability: useLatest) }
     return JevResponse(model: "jev-latest", answers: answers, inputTokens: 100)
 }
 
@@ -208,13 +219,14 @@ struct DecisionEngineTests {
         #expect(opts.first?.option.text == "latest clip") // ranked by probability
     }
 
-    @Test func noneLeadingIsPlainPaste() async {
+    @Test func hotkeyWithNothingFittingShowsTheListNotTheLatest() async {
+        // The hotkey means "not the latest": an unsure model ranks history; Esc still plain-pastes.
         var engine = DecisionEngine(provider: StubProvider(response: pickResponse(
             pick: "none", conf: 0.9, probs: ["c1": 0.1, "c2": 0.1, "none": 0.8])))
         engine.confidenceThreshold = 0.6
         let outcome = await engine.decide(context: makeContext(label: "Notes"), candidates: clips, mode: .hotkey)
-        guard case .pasteLatest(let r) = outcome, r == .nothingFits else {
-            Issue.record("expected pasteLatest(.nothingFits), got \(outcome)"); return
+        guard case .choose(let rows) = outcome, rows.count == 2 else {
+            Issue.record("expected the list, got \(outcome)"); return
         }
     }
 
@@ -250,28 +262,18 @@ struct DecisionEngineTests {
 
     @Test func interceptDecisiveLeaderStillPastes() async {
         var engine = DecisionEngine(provider: StubProvider(response: pickResponse(
-            pick: "c1", conf: 0.5, probs: ["c1": 0.76, "c2": 0.19, "none": 0.05], useLatest: 0.2)))
+            pick: "c1", conf: 0.5, probs: ["c1": 0.76, "c2": 0.19, "none": 0.05])))
         engine.confidenceThreshold = 0.6
-        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .intercept)
+        // A phone field with no phone among the options: the model's confident leader pastes.
+        let outcome = await engine.decide(context: makeContext(label: "Phone"), candidates: clips, mode: .intercept)
         guard case .paste(let d) = outcome else { Issue.record("expected paste, got \(outcome)"); return }
         #expect(d.clip.text == "latest clip")
-    }
-
-    @Test func interceptModeRespectsUseLatest() async {
-        var engine = DecisionEngine(provider: StubProvider(
-            response: pickResponse(pick: "c2", conf: 0.99,
-                                   probs: ["c1": 0.1, "c2": 0.9], useLatest: 0.9)))
-        engine.confidenceThreshold = 0.6
-        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .intercept)
-        guard case .pasteLatest(let r) = outcome, r == .useLatest else {
-            Issue.record("expected pasteLatest(.useLatest), got \(outcome)"); return
-        }
     }
 
     @Test func interceptUndecidedOffersChooser() async {
         // User answer: popup when the latest doesn't fit — even on ⌘V.
         var engine = DecisionEngine(provider: StubProvider(response: pickResponse(
-            pick: "c1", conf: 0.4, probs: ["c1": 0.45, "c2": 0.45, "none": 0.1], useLatest: 0.1)))
+            pick: "c1", conf: 0.4, probs: ["c1": 0.45, "c2": 0.45, "none": 0.1])))
         engine.confidenceThreshold = 0.6
         // Phone field: c1 doesn't fit, and no option is a phone.
         let outcome = await engine.decide(context: makeContext(label: "Phone"), candidates: clips, mode: .intercept)
@@ -280,10 +282,10 @@ struct DecisionEngineTests {
     }
 
     @Test func interceptLatestThatFitsSkipsTheModel() async {
-        // ⌘V with a fitting latest clip: plain paste, no provider call —
-        // even if the model would have pushed an older option.
+        // ⌘V into a typed field whose latest clip fits: plain paste, no provider call — even if the
+        // model would have pushed an older option.
         let stub = StubProvider(response: pickResponse(
-            pick: "c2", conf: 0.99, probs: ["c1": 0.01, "c2": 0.99], useLatest: 0.0))
+            pick: "c2", conf: 0.99, probs: ["c1": 0.01, "c2": 0.99]))
         let engine = DecisionEngine(provider: stub)
         let emailFirst = [Clip(text: "dana@acme.example.com", kind: .text),
                           Clip(text: "me@example.com", kind: .text)]
@@ -294,23 +296,30 @@ struct DecisionEngineTests {
                 Issue.record("\(label): expected plain paste, got \(outcome)"); continue
             }
         }
+        #expect(stub.box.calls == 0)
         #expect(FieldKind.email.acceptsVerbatim(" a@b.example.com "))
         #expect(!FieldKind.email.acceptsVerbatim("mail a@b.example.com"))
+        #expect(FieldKind.email.acceptsVerbatim("a@b.example.com, c@d.example.org; e@f.example.net"))
         #expect(!FieldKind.name.acceptsVerbatim("a@b.example.com"))
         #expect(FieldKind.url.acceptsVerbatim("https://example.com/x"))
     }
 
     @Test func providerErrorPastesLatestOrChoosesFallback() async {
-        // No heuristics: a dead/unreachable provider degrades to a normal
-        // paste — or, on the hotkey with ≥2 kind-matching options, a chooser
-        // (history still helps when the model doesn't answer).
+        // A dead provider: ⌘V pastes the latest like Cue isn't there; the hotkey, pressed because the
+        // latest isn't wanted, offers recent history instead of pasting it anyway.
         let engine = DecisionEngine(provider: StubProvider(
             response: pickResponse(pick: "c1", conf: 1, probs: [:]),
             error: JevError.http(500, "boom")))
-        let outcome = await engine.decide(context: makeContext(label: "Search box"),
-                                          candidates: clips, mode: .hotkey)
-        guard case .pasteLatest(let r) = outcome, r == .unreachable else {
-            Issue.record("expected pasteLatest(.unreachable), got \(outcome)"); return
+        let hotkey = await engine.decide(context: makeContext(label: "Search box"),
+                                         candidates: clips, mode: .hotkey)
+        guard case .choose(let rows) = hotkey, rows.first?.option.clip.id == clips.first?.id else {
+            Issue.record("expected a recent-history chooser, got \(hotkey)"); return
+        }
+        let email = Clip(text: "a@b.example.com", kind: .text)
+        let cmdV = await engine.decide(context: makeContext(label: "Phone"),
+                                       candidates: [email] + clips, mode: .intercept)
+        guard case .pasteLatest(let r) = cmdV, r == .unreachable else {
+            Issue.record("expected pasteLatest(.unreachable), got \(cmdV)"); return
         }
     }
 
@@ -330,7 +339,7 @@ struct DecisionEngineTests {
     @Test func noProviderPastesLatest() async {
         let engine = DecisionEngine(provider: nil)
         let outcome = await engine.decide(
-            context: makeContext(label: "Email"), candidates: clips, mode: .hotkey)
+            context: makeContext(label: "Notes"), candidates: clips, mode: .hotkey)
         guard case .pasteLatest = outcome else { Issue.record("expected pasteLatest, got \(outcome)"); return }
     }
 
@@ -341,7 +350,7 @@ struct DecisionEngineTests {
         engine.decisivenessMargin = 0.1
         // c2 was undone before → multiplier 0.5 → .429 vs .571 → c1 wins.
         let feedback = [clips[1].id: 0.5]
-        let outcome = await engine.decide(context: makeContext(), candidates: clips,
+        let outcome = await engine.decide(context: makeContext(label: "Notes"), candidates: clips,
                                           mode: .hotkey, feedback: feedback)
         guard case .paste(let d) = outcome else { Issue.record("expected paste"); return }
         #expect(d.clip.text == "latest clip")
@@ -393,7 +402,7 @@ struct DecisionEngineTests {
             pick: "c2", conf: 0.95, probs: ["c2": 0.95]))
         var engine = DecisionEngine(provider: provider, redactor: redactor)
         engine.confidenceThreshold = 0.6
-        _ = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        _ = await engine.decide(context: makeContext(label: "Notes"), candidates: clips, mode: .hotkey)
 
         // The pick criteria must carry placeholders, never the raw clip text.
         guard let pick = provider.box.questions.first?["pick"]?.jsonValue["criteria"],
@@ -427,7 +436,7 @@ struct DecisionEngineTests {
             pick: "c2", conf: 0.95, probs: ["c2": 0.95]))
         var engine = DecisionEngine(provider: provider, redactor: redactor)
         engine.confidenceThreshold = 0.6
-        let outcome = await engine.decide(context: makeContext(label: "Email"), candidates: clips, mode: .hotkey)
+        let outcome = await engine.decide(context: makeContext(label: "Notes"), candidates: clips, mode: .hotkey)
         #expect(provider.box.calls == 0) // nothing was sent
         guard case .pasteLatest = outcome else {
             Issue.record("expected pasteLatest, got \(outcome)"); return
@@ -478,7 +487,7 @@ struct DecisionEngineTests {
             pick: "c1", conf: 0.9, probs: ["c1": 0.9, "none": 0.1]))
         var engine = DecisionEngine(provider: provider)
         engine.confidenceThreshold = 0.6
-        _ = await engine.decide(context: makeContext(), candidates: [long, clips[0]], mode: .hotkey)
+        _ = await engine.decide(context: makeContext(label: "Notes"), candidates: [long, clips[0]], mode: .hotkey)
 
         guard let pick = provider.box.questions.first?["pick"]?.jsonValue["criteria"],
               case .object(let criteria) = pick else {
@@ -493,7 +502,7 @@ struct DecisionEngineTests {
             pick: "c1", conf: 0.9, probs: ["c1": 0.9]))
         var engine = DecisionEngine(provider: provider)
         engine.confidenceThreshold = 0.6
-        _ = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        _ = await engine.decide(context: makeContext(label: "Notes"), candidates: clips, mode: .hotkey)
         guard case .object(let criteria) = provider.box.questions
                 .first?["pick"]?.jsonValue["criteria"] else {
             Issue.record(); return
@@ -509,7 +518,9 @@ struct DecisionEngineTests {
             pick: "c1", conf: 0.9, probs: ["c1": 0.9]))
         var engine = DecisionEngine(provider: provider)
         engine.confidenceThreshold = 0.6
-        _ = await engine.decide(context: ctx, candidates: clips, mode: .hotkey)
+        // Two addresses, so the model is genuinely asked (one would answer itself).
+        _ = await engine.decide(context: ctx, candidates: clips + [Clip(text: "second@example.com", kind: .text)],
+                                mode: .hotkey)
         guard case .object(let state) = provider.box.states.first else {
             Issue.record("no state captured"); return
         }
@@ -522,7 +533,7 @@ struct DecisionEngineTests {
     @Test func pasteLatestCarriesReason() async {
         // Menu bar breadcrumb: every plain-paste outcome says why.
         let engine = DecisionEngine(provider: nil)
-        let outcome = await engine.decide(context: makeContext(), candidates: clips, mode: .hotkey)
+        let outcome = await engine.decide(context: makeContext(label: "Notes"), candidates: clips, mode: .hotkey)
         guard case .pasteLatest(let reason) = outcome, reason == .noProvider else {
             Issue.record("expected pasteLatest(.noProvider), got \(outcome)"); return
         }
@@ -539,7 +550,7 @@ struct DecisionPolicyTests {
 
     @Test func threeNearEqualEmailsChoose() {
         let ranked = [opt("a@x.com", 0.34), opt("b@x.com", 0.33), opt("c@x.com", 0.31)]
-        let o = DecisionPolicy.outcome(ranked: ranked, noneProb: 0.02, useLatest: nil,
+        let o = DecisionPolicy.outcome(ranked: ranked, noneProb: 0.02,
                                        isForm: false, mode: .hotkey, threshold: 0.6, margin: 0.25)
         guard case .choose(let opts) = outcome(o), opts.count == 3 else {
             Issue.record("expected choose(3), got \(o)"); return
@@ -606,10 +617,131 @@ struct ContextSignalTests {
     @Test func signalOrdersTheChooserButNeverPastes() {
         let o = opts(["a@x.example.com", "b@x.example.com"])
         let ranked = o.map { ScoredOption(option: $0, probability: 0.4, confidence: 0.2) }
-        let out = DecisionPolicy.outcome(ranked: ranked, noneProb: 0.2, useLatest: nil, isForm: false,
+        let out = DecisionPolicy.outcome(ranked: ranked, noneProb: 0.2, isForm: false,
                                          mode: .hotkey, threshold: 0.7, margin: 0.25,
                                          expects: .email, signal: o[1].id)
         guard case .choose(let c) = out else { Issue.record("expected choose, got \(out)"); return }
         #expect(c.first?.option.text == "b@x.example.com")
+    }
+
+    @Test func signalAgainstADecisiveLeaderAsks() {
+        // ms-07: the model is sure of finance@, the Cc label points at legal@ → chooser, legal first.
+        let o = opts(["Send to finance@acme.example.com, cc legal@acme.example.com today"])
+        let ranked = [ScoredOption(option: o[0], probability: 0.9, confidence: 0.8),
+                      ScoredOption(option: o[1], probability: 0.05, confidence: 0.8)]
+        let out = DecisionPolicy.outcome(ranked: ranked, noneProb: 0.05, isForm: false,
+                                         mode: .intercept, threshold: 0.7, margin: 0.25,
+                                         expects: .email, signal: o[1].id)
+        guard case .choose(let c) = out else { Issue.record("expected choose, got \(out)"); return }
+        #expect(c.first?.option.text == "legal@acme.example.com")
+    }
+}
+
+struct UserReportTests {
+    @Test func anEmailFieldTakesTheAddressNotTheSentenceAroundIt() {
+        let clip = Clip(text: "weiuhfhuew hridayahoney@gmail.com", kind: .text)
+        let opts = OptionBuilder.options(from: [clip])
+        let whole = opts.first { $0.kind == .text }!, email = opts.first { $0.kind == .email }!
+        // The model is sure of the whole clip; the To field still gets the address.
+        let ranked = [ScoredOption(option: whole, probability: 0.9, confidence: 0.9),
+                      ScoredOption(option: email, probability: 0.08, confidence: 0.9)]
+        for mode in [DecisionEngine.Mode.intercept, .hotkey] {
+            let out = DecisionPolicy.outcome(ranked: ranked, noneProb: 0.02, isForm: false, mode: mode,
+                                             threshold: 0.7, margin: 0.25, expects: .email)
+            guard case .paste(let d) = out, d.text == "hridayahoney@gmail.com" else {
+                Issue.record("\(mode): expected the address, got \(out)"); return
+            }
+        }
+    }
+
+    @Test func clipsFromDaysAgoAreNotOffered() {
+        let old = Clip(text: "SEEDED-CLIP-1421", kind: .text, copiedAt: Date().addingTimeInterval(-18 * 86400))
+        let pinnedOld = Clip(text: "my address", kind: .text, copiedAt: Date().addingTimeInterval(-30 * 86400), pinned: true)
+        let fresh = Clip(text: "today", kind: .text)
+        let texts = OptionBuilder.options(from: [fresh, old, pinnedOld]).map(\.text)
+        #expect(texts == ["today", "my address"])
+        // The latest clip is always offered, however old; typing in the chooser still finds the rest.
+        #expect(OptionBuilder.options(from: [old]).map(\.text) == ["SEEDED-CLIP-1421"])
+        #expect(ChooserRows.rows(ranked: [], history: [fresh, old], query: "SEEDED").count == 1)
+    }
+}
+
+struct TypedFieldWithoutModelTests {
+    @Test func oneAddressInAnEmailFieldPastesWithNoModel() async {
+        let clip = Clip(text: "weiuhfhuew hridayahoney@gmail.com", kind: .text)
+        var ctx = ContextSnapshot(); ctx.appName = "Helium"; ctx.field.role = "AXComboBox"
+        ctx.field.label = "To recipients"
+        // No provider at all, and a dead one: the address still lands, in both triggers.
+        for engine in [DecisionEngine(provider: nil),
+                       DecisionEngine(provider: StubProvider(response: pickResponse(pick: "c1", conf: 1, probs: [:]),
+                                                             error: JevError.http(500, "down")))] {
+            for mode in [DecisionEngine.Mode.intercept, .hotkey] {
+                let out = await engine.decide(context: ctx, candidates: [clip], mode: mode)
+                guard case .paste(let d) = out, d.text == "hridayahoney@gmail.com" else {
+                    Issue.record("\(mode): expected the address, got \(out)"); return
+                }
+            }
+        }
+    }
+}
+
+struct PageEchoTests {
+    @Test func aClipRestatingThePageTitleIsNotAutoPasted() {
+        let branch = Clip(text: "kofi/hal-482-duplicate-ledger-entries-on-retry", kind: .text)
+        let opts = OptionBuilder.options(from: [branch, Clip(text: "priya.shah@acme.example.com", kind: .text)])
+        let title = "HAL-482 Duplicate ledger entries on retry - Halyard - Google Chrome"
+        #expect(ContextSignal.echoes(opts[0], window: title))
+        // An address naming the person in the title is evidence, not an echo.
+        #expect(!ContextSignal.echoes(opts[1], window: "Re: intro - Priya Shah - Gmail"))
+        let ranked = [ScoredOption(option: opts[0], probability: 0.9, confidence: 0.9),
+                      ScoredOption(option: opts[1], probability: 0.05, confidence: 0.9)]
+        let out = DecisionPolicy.outcome(ranked: ranked, noneProb: 0.05, isForm: false, mode: .hotkey,
+                                         threshold: 0.7, margin: 0.25, leaderEchoesPage: true)
+        guard case .choose = out else { Issue.record("expected the chooser, got \(out)"); return }
+    }
+}
+
+struct ChooserRowsTests {
+    @Test func typingReachesClipsTheModelNeverRanked() {
+        let history = (0..<40).map { Clip(text: "note \($0)", kind: .text) }
+            + [Clip(text: "PR is up: https://github.com/acme/ledger/pull/1287 please review", kind: .text)]
+        let ranked = OptionBuilder.options(from: Array(history.prefix(3)))
+            .map { ScoredOption(option: $0, probability: 0.3, confidence: 0.3) }
+        #expect(ChooserRows.rows(ranked: ranked, history: history, query: "").count == 3)
+        let hits = ChooserRows.rows(ranked: ranked, history: history, query: "pull")
+        #expect(hits.first?.option.text == "https://github.com/acme/ledger/pull/1287")
+        #expect(hits.count == 2) // the URL span, then the message it came from
+        // A span found only through its clip's text ranks after the clip that has the word itself.
+        let curl = Clip(text: #"curl -X POST http://localhost:8080/v1/transfers -d '{"from":"acct_1042"}'"#, kind: .text)
+        let rows = ChooserRows.rows(ranked: [], history: [curl], query: "curl")
+        #expect(rows.first?.option.text == curl.text)
+    }
+}
+
+struct CodeSpanTests {
+    @Test func liftsTokensPeopleCopyOutOfALine() {
+        let spans = { (t: String) in SpanExtractor.spansWithContext(in: t).filter { $0.kind == .code }.map(\.text) }
+        #expect(spans("e41b7d9 ledger: return original entry on duplicate") == ["e41b7d9"])
+        #expect(spans("request failed (req_8f21c0d3a5) after 3 retries") == ["req_8f21c0d3a5"])
+        #expect(spans(#"violates unique constraint "ledger_entries_idempotency_key_idx""#) == ["ledger_entries_idempotency_key_idx"])
+        #expect(spans("Approved: base $185,000, 0.1% equity") == ["185,000"])
+        // Long digit runs become rows (the phone detector may claim a 10-digit one first).
+        let wire = SpanExtractor.spansWithContext(in: "Bank: Northgate\nRouting: 121000358\nAccount: 0001234567").map(\.text)
+        #expect(wire.contains("121000358") && wire.contains { $0.filter(\.isNumber) == "0001234567" })
+        // A JSON blob gives its values, not its keys or the separators between strings.
+        #expect(spans(#"{"id":"txn_01JBX4M7Q2N8","status":"completed","amount_cents":12500,"currency":"USD"}"#) == ["txn_01JBX4M7Q2N8", "completed"])
+        #expect(spans("key 7f2c9a10-2b1e-4c55-9d0e-a1b2c3d4e5f6 and see https://x.example.com/abc1234def").isEmpty)
+    }
+}
+
+struct CaretNamingTests {
+    @Test func wordsBeforeTheCaretBringBackAClipTheCapDropped() {
+        let sentry = Clip(text: "https://halyard.sentry.io/issues/4812207311/", kind: .text)
+        let newer = (0..<25).map { Clip(text: "note \($0) about the ledger", kind: .text) }
+        let history = newer + [sentry]
+        #expect(!OptionBuilder.options(from: history).contains { $0.clip.id == sentry.id })
+        let named = OptionBuilder.options(from: history, recent: 30, naming: ["sentry"])
+        #expect(named.contains { $0.clip.id == sentry.id })
+        #expect(named.prefix(OptionBuilder.maxOptions).allSatisfy { $0.clip.id != sentry.id }) // appended, ids stable
     }
 }

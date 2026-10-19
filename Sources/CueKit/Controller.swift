@@ -37,7 +37,8 @@ public final class FeedbackTracker {
         ClipStore.defaultFileURL.deletingLastPathComponent().appendingPathComponent("feedback.json")
     }
 
-    static func contextKey(bundleID: String, fieldLabel: String) -> String {
+    /// Pure key derivation — nonisolated so non-UI callers (CueDay) share it.
+    nonisolated public static func contextKey(bundleID: String, fieldLabel: String) -> String {
         let label = fieldLabel.lowercased().components(separatedBy: .whitespaces).joined()
         return "\(bundleID)|\(label)"
     }
@@ -110,12 +111,13 @@ public final class SmartPasteController {
     private let feedback: FeedbackTracker
     private let hud: HUDController
     private let redactor: (any Redacting)?
+    private let prefetch: DecisionPrefetch
     private let makeProvider: (TimeInterval) -> (any DecisionProvider)?
     private var formFiller: FormFiller?
 
     public init(store: ClipStore, settings: AppSettings,
                 executor: PasteExecutor, feedback: FeedbackTracker, hud: HUDController,
-                redactor: (any Redacting)?,
+                redactor: (any Redacting)?, prefetch: DecisionPrefetch,
                 makeProvider: @escaping (TimeInterval) -> (any DecisionProvider)?) {
         self.store = store
         self.settings = settings
@@ -123,6 +125,7 @@ public final class SmartPasteController {
         self.feedback = feedback
         self.hud = hud
         self.redactor = redactor
+        self.prefetch = prefetch
         self.makeProvider = makeProvider
         // Assigned last: the closure weak-captures self, legal once every
         // stored property above is initialized.
@@ -132,9 +135,9 @@ public final class SmartPasteController {
         }
     }
 
-    /// Entry point for the smart-paste hotkey (and ⌘V when intercepting).
-    public func smartPaste() {
-        let intercepted = settings.triggerMode == .intercept
+    /// Entry point for an intercepted ⌘V (`intercepted`) and for the smart-paste hotkey, which is
+    /// always an explicit pick — even when ⌘V is intercepted too.
+    public func smartPaste(intercepted: Bool) {
         // Intercept contract: the real keystroke was already eaten — every
         // exit must produce a paste. Hotkey mode ate nothing, so a bail just
         // informs instead.
@@ -198,14 +201,15 @@ public final class SmartPasteController {
                 busy = false
             }
             let engine = makeEngine()
-            let mode: DecisionEngine.Mode = settings.triggerMode == .intercept ? .intercept : .hotkey
-            let outcome = await engine.decide(
+            let mode: DecisionEngine.Mode = intercepted ? .intercept : .hotkey
+            let outcome = await prefetch.outcome(
                 context: ctx,
                 candidates: store.clips,
                 mode: mode,
-                feedback: feedback.multipliers(for: ctx)
+                feedback: feedback.multipliers(for: ctx),
+                engine: engine
             )
-            await handle(outcome, ctx: ctx, since: startedAt)
+            await handle(outcome, ctx: ctx, since: startedAt, intercepted: intercepted)
         }
     }
 
@@ -236,18 +240,19 @@ public final class SmartPasteController {
     }
 
     private func handle(_ outcome: PasteOutcome, ctx: ContextSnapshot,
-                        since startedAt: ContinuousClock.Instant) async {
+                        since startedAt: ContinuousClock.Instant, intercepted: Bool) async {
         let e = startedAt.duration(to: .now).components
         let ms = " · \(Int(e.seconds * 1000 + e.attoseconds / 1_000_000_000_000_000)) ms"
         // lastAction is a status line: action + kind + latency, never content.
         switch outcome {
         case .paste(let d):
             lastAction = "pasted" + (d.detail.map { " · \($0)" } ?? "") + ms
+            hud.dismiss() // a shown deciding indicator must not linger
             paste(d.text, clip: d.clip, ctx: ctx, note: d.detail)
             if d.isForm { await formFiller?.run() }
         case .choose(let opts):
             lastAction = "showed chooser" + ms
-            hud.showChooser(options: opts, near: ctx.caretRect ?? ctx.fieldRect,
+            hud.showChooser(options: opts, history: store.clips, near: ctx.caretRect ?? ctx.fieldRect,
                             fieldLabel: ctx.field.label) { [weak self] pick in
                 guard let self else { return }
                 // Esc/⌘V means "plain paste" — the chooser promises it.
@@ -256,10 +261,10 @@ public final class SmartPasteController {
                 self.paste(pick.option.text, clip: pick.option.clip, ctx: ctx)
             }
         case .pasteLatest(let reason):
-            lastAction = "plain paste · \(reason.label)" + ms
+            lastAction = "plain paste · \(reason.label) · \(Self.fieldNote(ctx))" + ms
             hud.dismiss() // a shown deciding indicator must not linger
             // Hotkey mode only — intercept is the user's normal ⌘V and stays silent.
-            if case .nothingFits = reason, settings.triggerMode != .intercept {
+            if case .nothingFits = reason, !intercepted {
                 hud.showStatus("Nothing here fits this field")
             }
             pasteLatest()
@@ -281,6 +286,12 @@ public final class SmartPasteController {
         return d
     }
 
+    /// What Cue could see of the field, for the menu-bar note — never the field's contents.
+    static func fieldNote(_ ctx: ContextSnapshot) -> String {
+        if ctx.field.role.isEmpty { return "no field visible to Cue" }
+        return ctx.field.label.isEmpty ? "unlabelled field" : "field “\(ctx.field.label.prefix(30))”"
+    }
+
     private func paste(_ text: String, clip: Clip, ctx: ContextSnapshot?, note: String? = nil) {
         executor.paste(text)
         store.markPasted(clip)
@@ -291,12 +302,11 @@ public final class SmartPasteController {
     }
 
     /// Internal: the practice session builds its engine through the same path.
-    func makeEngine(timeout: TimeInterval = 10) -> DecisionEngine {
+    func makeEngine(timeout: TimeInterval = 2.5) -> DecisionEngine {
         var engine = DecisionEngine(
             provider: makeProvider(timeout),
             redactor: settings.effectivePIIRedaction ? redactor : nil
         )
-        engine.confidenceThreshold = settings.confidenceThreshold
         engine.timeout = timeout
         return engine
     }

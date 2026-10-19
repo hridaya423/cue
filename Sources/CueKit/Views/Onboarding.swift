@@ -42,6 +42,8 @@ public struct OnboardingView: View {
     @State private var practice: OnboardingPractice?
     @State private var escMonitor: Any?
     @State private var openedPermissionSettings = false
+    /// Which way the last step change went: content slides in from the side it's travelling to.
+    @State private var forward = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(model: AppModel) { self.model = model }
@@ -58,21 +60,25 @@ public struct OnboardingView: View {
                     .foregroundStyle(OBTheme.textPrimary)
                     .padding(.top, 24)
 
-                Text(title)
-                    .font(.system(size: 28, weight: .semibold))
-                    .tracking(-0.4)
-                    .foregroundStyle(OBTheme.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 680)
-                    .padding(.top, 21)
+                VStack(spacing: 0) {
+                    Text(title)
+                        .font(.system(size: 28, weight: .semibold))
+                        .tracking(-0.4)
+                        .foregroundStyle(OBTheme.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 680)
+                        .padding(.top, 21)
 
-                Text(support)
-                    .font(.system(size: 16))
-                    .foregroundStyle(OBTheme.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 680)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 10)
+                    Text(support)
+                        .font(.system(size: 16))
+                        .foregroundStyle(OBTheme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 680)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 10)
+                }
+                .id(step)
+                .transition(stepTransition)
 
                 // Content column: 600 wide, top-anchored at y≈166. The
                 // window is fixed — a route that grows scrolls inside,
@@ -80,12 +86,12 @@ public struct OnboardingView: View {
                 ScrollView(.vertical) {
                     ZStack {
                         switch step {
-                        case .welcome: welcomeStep.transition(.opacity)
-                        case .accessibility: permissionStep.transition(.opacity)
-                        case .trigger: triggerStep.transition(.opacity)
-                        case .models: modelsStep.transition(.opacity)
-                        case .privacy: privacyStep.transition(.opacity)
-                        case .practice: practiceStep.transition(.opacity)
+                        case .welcome: welcomeStep.transition(stepTransition)
+                        case .accessibility: permissionStep.transition(stepTransition)
+                        case .trigger: triggerStep.transition(stepTransition)
+                        case .models: modelsStep.transition(stepTransition)
+                        case .privacy: privacyStep.transition(stepTransition)
+                        case .practice: practiceStep.transition(stepTransition)
                         }
                     }
                     .padding(.vertical, 12)
@@ -102,7 +108,7 @@ public struct OnboardingView: View {
         }
         .frame(width: 760, height: 580)
         .ignoresSafeArea()
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: step)
+        .animation(.timingCurve(0.23, 1, 0.32, 1, duration: reduceMotion ? 0.15 : 0.28), value: step)
         .onAppear {
             trusted = ContextCaptor.isTrusted
             #if DEBUG
@@ -155,7 +161,7 @@ public struct OnboardingView: View {
         case .accessibility: "Allow Accessibility access"
         case .trigger: "Make it your shortcut."
         case .models: "Choose your model."
-        case .privacy: "Choose what leaves your Mac"
+        case .privacy: "Choose what leaves your Mac."
         case .practice:
             if let p = practice, case .succeeded = p.phase {
                 "That's your first smart paste."
@@ -186,19 +192,16 @@ public struct OnboardingView: View {
     /// The references put the footer inside the lower sheet on Accessibility
     /// (primary, centered) and Models (Back left, primary right); every other
     /// screen keeps Back + centered primary outside the panels.
-    private var footerInsideSheet: Bool { step == .accessibility || step == .models }
-
-    /// Refs 02/04/05 draw "‹ Back"; 03/06 a plain "Back".
-    private var backChevron: Bool { step == .accessibility || step == .privacy }
-
     private var footer: some View {
+        // One footer for every step, outside the scrolling content: the primary sits in the same
+        // place on each screen and can never scroll out of a fixed-height window.
         ZStack {
-            if !footerInsideSheet {
+            if !primarySpec.title.isEmpty {
                 HStack { primaryCluster }.frame(maxWidth: .infinity)
             }
             HStack {
-                if step != .welcome && step != .models {
-                    OBBackButton(chevron: backChevron, action: goBack)
+                if step != .welcome {
+                    OBBackButton(action: goBack)
                 }
                 Spacer()
                 if showsFinishLater {
@@ -254,9 +257,18 @@ public struct OnboardingView: View {
         }
     }
 
+    /// Forward slides left, Back slides right; Reduce Motion keeps only the crossfade.
+    private var stepTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        let d: CGFloat = forward ? 18 : -18
+        return .asymmetric(insertion: .opacity.combined(with: .offset(x: d)),
+                           removal: .opacity.combined(with: .offset(x: -d)))
+    }
+
     private func advance() {
         trusted = ContextCaptor.isTrusted
         guard let next = step.next(trusted: trusted, remote: privacyIsRemote) else { return }
+        forward = true
         step = next
         stepPrimary = nil
         if step == .practice { enterPractice() }
@@ -265,6 +277,7 @@ public struct OnboardingView: View {
     private func goBack() {
         trusted = ContextCaptor.isTrusted
         guard let previous = step.previous(trusted: trusted, remote: privacyIsRemote) else { return }
+        forward = false
         step = previous
         stepPrimary = nil
         if step != .practice { leavePractice() }
@@ -340,11 +353,6 @@ public struct OnboardingView: View {
                 .foregroundStyle(trusted ? .green : OBTheme.textTertiary)
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity)
-                // Ref 02: the primary lives inside the lower sheet, centered.
-                OBPrimaryButton(title: primarySpec.title, enabled: primarySpec.enabled,
-                                action: primarySpec.action)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 14)
             }
             .frame(maxWidth: .infinity)
         }
@@ -404,17 +412,16 @@ public struct OnboardingView: View {
                                 ?? HotkeyManager.Action.smartPaste.default
                         ) { hk in recordSmartPaste(hk) }
                         .frame(width: 116, height: 34)
-                        Text("Click to record")
-                            .font(.system(size: 11))
-                            .foregroundStyle(OBTheme.textTertiary)
+                        Text("Click to change")
+                            .font(.system(size: 12))
+                            .foregroundStyle(OBTheme.textSecondary)
                     }
-                    .disabled(settings.triggerMode == .intercept)
-                    .opacity(settings.triggerMode == .intercept ? 0.4 : 1)
+                    // Live in both modes: with ⌘V on, this shortcut still opens the list of choices.
                 }
                 Divider().padding(.leading, 68).padding(.vertical, 4)
                 triggerRow(
                     title: "Use ⌘V",
-                    detail: "Let Cue choose the relevant text when you paste.",
+                    detail: "Cue pastes what fits the field. The shortcut still shows your choices.",
                     selected: settings.triggerMode == .intercept
                 ) {
                     setTrigger(.intercept)
@@ -510,7 +517,7 @@ public struct OnboardingView: View {
         for action in HotkeyManager.Action.allCases where action != .smartPaste {
             let other = settings.hotkey(for: action.rawValue) ?? action.default
             if other.keyCode == hk.keyCode && other.modifiers == hk.modifiers {
-                recorderConflict = "That shortcut is already \(action.title)."
+                recorderConflict = "That shortcut is already used for “\(action.title)”."
                 return
             }
         }
@@ -522,8 +529,7 @@ public struct OnboardingView: View {
     // MARK: - Screen 4: Models
 
     private var modelsStep: some View {
-        OnboardingModels(model: model, primary: $stepPrimary,
-                         onBack: { goBack() }) {
+        OnboardingModels(model: model, primary: $stepPrimary) {
             advance()
         }
     }
@@ -546,35 +552,31 @@ public struct OnboardingView: View {
         remotePrivacy
     }
 
-    @State private var privacyRects: [CGRect] = []
-
     private var remotePrivacy: some View {
         VStack(alignment: .leading, spacing: 14) {
-            FoldOut(arrowX: privacyRects.first.map { 24 + $0.midX }) {
+            FoldOut {
                 VStack(alignment: .leading, spacing: 8) {
                     OBCaption("Example copied text")
                     HighlightedParagraph(
                         text: "Send the launch brief to Mira at mira@example.com.",
                         highlights: ["Mira", "mira@example.com"],
-                        fontSize: 16, width: 552) { rects in
-                        privacyRects = rects
-                    }
+                        fontSize: 16, width: 552)
                 }
             } lower: {
                 VStack(alignment: .leading, spacing: 8) {
                     OBCaption(settings.effectivePIIRedaction
                               ? "Example sent to the model" : "Example sent without redaction")
-                    // [NAME]/[EMAIL] style tokens render as coral chips, in
-                    // the static example or live redactor output alike.
+                    // [NAME]/[EMAIL] tokens render as neutral chips, in the static example or live
+                    // redactor output alike.
                     HighlightedParagraph(
                         text: scrubbedSample,
                         highlights: Self.placeholderTokens(in: scrubbedSample),
-                        fontSize: 16, width: 552)
+                        fontSize: 16, width: 552, masked: true)
                 }
             }
 
             VStack(spacing: 8) {
-                Toggle("Redact personal details", isOn: redactionToggle)
+                Toggle("Hide names and emails from hosted models", isOn: redactionToggle)
                     .toggleStyle(.switch)
                     .font(.system(size: 15))
                     .fixedSize()
@@ -632,10 +634,11 @@ public struct OnboardingView: View {
         case .idle:
             EmptyView()
         case .downloading(let f):
-            VStack(spacing: 6) {
-                ProgressView(value: f)
-                Text("Downloading… \(Int(f * 100))%")
+            HStack(spacing: 8) {
+                ProgressView(value: f).frame(width: 120)
+                Text("Getting the redaction model… \(Int(f * 100))%")
                     .font(.system(size: 12)).foregroundStyle(OBTheme.textSecondary)
+                    .monospacedDigit()
             }
             .frame(maxWidth: .infinity)
         case .ready:
@@ -694,12 +697,8 @@ public struct OnboardingView: View {
     private var practicePrimary: OBPrimary {
         guard let p = practice else { return OBPrimary(title: "Continue", enabled: false) }
         switch p.phase {
-        case .intro:
-            return OBPrimary(title: "Preparing sample…", enabled: false)
-        case .armed:
-            return OBPrimary(title: "Waiting for \(p.triggerHint)…", enabled: false)
-        case .deciding:
-            return OBPrimary(title: "Deciding…", enabled: false)
+        case .intro, .armed, .deciding:
+            return .none
         case .succeeded:
             return OBPrimary(title: "Start using Cue") {
                 model.settings.onboardingDone = true
@@ -710,7 +709,13 @@ public struct OnboardingView: View {
         case .lostPermission:
             return OBPrimary(title: "Grant access") { step = .accessibility; leavePractice() }
         case .unavailable:
-            return OBPrimary(title: "Finish setup later") { finishLater() }
+            // No model yet: the way forward is setting one up, not leaving.
+            return OBPrimary(title: "Set up a model") {
+                forward = false
+                step = .models
+                stepPrimary = nil
+                leavePractice()
+            }
         }
     }
 
@@ -753,7 +758,7 @@ private struct WelcomeDemo: View {
     }
 
     var body: some View {
-        FoldOut(arrowX: arrowX) {
+        FoldOut {
             VStack(alignment: .leading, spacing: 16) {
                 OBCaption("Example copied message")
                 HighlightedParagraph(
@@ -807,10 +812,6 @@ private struct WelcomeDemo: View {
     }
 
     private var span: String { target.expected }
-
-    private var arrowX: CGFloat? {
-        paragraphLocalRects.first.map { 24 + $0.midX }
-    }
 
     /// The field shows the extracted value — after the chip lands during a
     /// retarget animation, immediately otherwise.
@@ -876,10 +877,12 @@ private struct WelcomeDemo: View {
 private struct PracticeScreen: View {
     var practice: OnboardingPractice
 
-    @State private var paraRects: [CGRect] = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var succeeded: Bool { if case .succeeded = practice.phase { return true }; return false }
 
     var body: some View {
-        FoldOut(arrowX: paraRects.first.map { 24 + $0.midX }) {
+        FoldOut {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     OBCaption("Sample copied message")
@@ -891,9 +894,7 @@ private struct PracticeScreen: View {
                 HighlightedParagraph(
                     text: practice.sampleText,
                     highlights: [practice.expected],
-                    fontSize: 16, width: 552) { rects in
-                    paraRects = rects
-                }
+                    fontSize: 16, width: 552)
             }
         } lower: {
             VStack(alignment: .leading, spacing: 10) {
@@ -908,13 +909,16 @@ private struct PracticeScreen: View {
                         .frame(height: 36)
                         .overlay(alignment: .trailing) {
                             // Ref 06: the confirmation sits inside the field.
-                            if case .succeeded = practice.phase {
-                                Text("✓ \(practice.target.rawValue) pasted")
-                                    .font(.system(size: 12, weight: .medium))
+                            if succeeded {
+                                Label("\(practice.target.rawValue.capitalized) pasted", systemImage: "checkmark.circle.fill")
+                                    .font(.system(size: 12, weight: .semibold))
                                     .foregroundStyle(.green)
                                     .padding(.trailing, 10)
+                                    .transition(reduceMotion ? .opacity
+                                                : .scale(scale: 0.85, anchor: .trailing).combined(with: .opacity))
                             }
                         }
+                        .animation(.spring(duration: 0.35, bounce: 0.25), value: succeeded)
                     if case .succeeded = practice.phase, practice.round == 0 {
                         OBBorderedButton(
                             title: practice.target == .website ? "Try Email" : "Try Website"
@@ -941,9 +945,14 @@ private struct PracticeScreen: View {
             Text("Preparing your sample…")
                 .font(.system(size: 12)).foregroundStyle(OBTheme.textTertiary)
         case .armed:
-            Text("Now press \(practice.triggerHint)")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(OBTheme.textSecondary)
+            HStack(spacing: 8) {
+                Text("Now press")
+                OBKeycap(keys: practice.triggerHint)
+            }
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(OBTheme.textSecondary)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
         case .deciding:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)

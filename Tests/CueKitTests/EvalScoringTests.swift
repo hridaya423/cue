@@ -32,6 +32,8 @@ struct EvalScoringTests {
         #expect(EvalScore.score(out(.paste, ["latest clip text"]), expect: .plain, latestText: latest) == .exact)
         #expect(EvalScore.score(out(.paste, ["other"]), expect: .plain, latestText: latest) == .wrong)
         #expect(EvalScore.score(out(.choose, ["a"]), expect: .plain, latestText: latest) == .wrong)
+        // The hotkey asked for "not the latest": a list there is a fine answer when nothing fits.
+        #expect(EvalScore.score(out(.choose, ["a"]), expect: .plain, latestText: latest, hotkey: true) == .resolvedByChooser)
     }
 
     @Test func caseDecodes() throws {

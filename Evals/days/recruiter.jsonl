@@ -1,0 +1,77 @@
+{"t": "09:01", "copy": {"text": "Marisol", "from": "gmail_reply_marisol"}}
+{"t": "09:01", "paste": {"into": "gh_add_candidate#first_name", "want": {"paste": "Marisol"}, "why": "Creating Marisol's profile from her reply, first name"}}
+{"t": "09:02", "copy": {"text": "Reyes", "from": "gmail_reply_marisol"}}
+{"t": "09:02", "paste": {"into": "gh_add_candidate#last_name", "want": {"paste": "Reyes"}, "why": "Last name"}}
+{"t": "09:02", "copy": {"text": "marisol.reyes@example.org", "from": "gmail_reply_marisol"}}
+{"t": "09:03", "paste": {"into": "gh_add_candidate#email", "want": {"paste": "marisol.reyes@example.org"}, "why": "Email from her signature"}}
+{"t": "09:03", "copy": {"text": "(212) 555-0176", "from": "gmail_reply_marisol"}}
+{"t": "09:03", "paste": {"into": "gh_add_candidate#phone", "want": {"paste": "(212) 555-0176"}, "why": "Phone from her signature"}}
+{"t": "09:04", "copy": {"text": "https://www.linkedin.com/in/marisol-reyes-4c82a1", "from": "gmail_reply_marisol"}}
+{"t": "09:04", "paste": {"into": "gh_add_candidate#website", "want": {"paste": "https://www.linkedin.com/in/marisol-reyes-4c82a1"}, "why": "LinkedIn goes in the website field"}}
+{"t": "09:08", "copy": {"text": "@Renata Marisol can do the onsite Thu 10/22 after 2pm PT or any time Fri 10/23. Panel is Wen Zhao (wen.zhao@acme.example), Ilya Morozov (ilya.morozov@acme.example) and me. Please book the Birch room, we need the whiteboard.", "from": "slack_recruiting"}}
+{"t": "09:09", "paste": {"into": "gh_cand_marisol#note", "value_before": "Onsite availability and panel, from Jonas in #recruiting:\n", "want": {"paste": "@Renata Marisol can do the onsite Thu 10/22 after 2pm PT or any time Fri 10/23. Panel is Wen Zhao (wen.zhao@acme.example), Ilya Morozov (ilya.morozov@acme.example) and me. Please book the Birch room, we need the whiteboard."}, "why": "Saving Jonas's panel message on Marisol's profile"}}
+{"t": "09:12", "paste": {"into": "gcal_event#guests", "want": {"paste": "wen.zhao@acme.example"}, "why": "Inviting the panel to the onsite hold"}}
+{"t": "09:12", "paste": {"into": "gcal_event#guests", "want": {"paste": "ilya.morozov@acme.example"}, "why": "Second panelist"}}
+{"t": "09:13", "paste": {"into": "gcal_event#guests", "want": {"paste": "marisol.reyes@example.org"}, "why": "Adding Marisol to the hold"}}
+{"t": "09:14", "paste": {"into": "gcal_event#description", "value_before": "Staff Frontend Engineer onsite. Candidate profile: ", "want": {"paste": "https://www.linkedin.com/in/marisol-reyes-4c82a1"}, "why": "Panelists get her LinkedIn in the invite description"}}
+{"t": "09:20", "copy": {"text": "https://calendly.com/renata-acme/phone-screen-30?back=1&month=2026-10", "from": "calendly_book"}}
+{"t": "09:21", "paste": {"into": "gmail_reply_dev#reply", "value_before": "Hi Dev,\n\nGreat to hear from you. Pick any slot that works for you here: ", "want": {"paste": "https://calendly.com/renata-acme/phone-screen-30?back=1&month=2026-10"}, "why": "Sending Dev the phone-screen booking link"}}
+{"t": "09:23", "paste": {"into": "gmail_reply_samir#reply", "value_before": "Hi Samir,\n\nThanks for the quick reply. You can book a 30 minute intro call here: ", "want": {"paste": "https://calendly.com/renata-acme/phone-screen-30?back=1&month=2026-10"}, "why": "Same link for Samir"}}
+{"t": "09:25", "paste": {"into": "gmail_reply_imani#reply", "value_before": "Hi Imani,\n\nHappy to find a time. Grab a slot here: ", "want": {"paste": "https://calendly.com/renata-acme/phone-screen-30?back=1&month=2026-10"}, "why": "Same link for Imani"}}
+{"t": "09:36", "copy": {"text": "nikhil.rao@example.net", "from": "linkedin_profile"}}
+{"t": "09:37", "paste": {"into": "gmail_compose#to", "want": {"paste": "nikhil.rao@example.net"}, "why": "Nikhil's email from LinkedIn contact info"}}
+{"t": "09:38", "copy": {"text": "Hi {first_name},\n\nI'm Renata, a recruiter at Acme Robotics. We build warehouse picking arms, we're 40 people, and we're hiring a Senior Backend Engineer to own our fleet telemetry pipeline.\n\nYour work on streaming ingestion at {company} stood out. Would you be open to a 30 minute intro call this week or next?\n\nBest,\nRenata", "from": "notes_scratch"}}
+{"t": "09:38", "paste": {"into": "gmail_compose#body", "want": {"paste": "Hi {first_name},\n\nI'm Renata, a recruiter at Acme Robotics. We build warehouse picking arms, we're 40 people, and we're hiring a Senior Backend Engineer to own our fleet telemetry pipeline.\n\nYour work on streaming ingestion at {company} stood out. Would you be open to a 30 minute intro call this week or next?\n\nBest,\nRenata"}, "why": "Outreach template, placeholders get edited by hand"}}
+{"t": "09:41", "copy": {"text": "https://acme.example/careers/senior-backend-engineer?gh_src=7c41d0b2", "from": "slack_recruiting"}}
+{"t": "09:42", "paste": {"into": "gmail_compose#body", "value_before": "Hi {first_name},\n\nI'm Renata, a recruiter at Acme Robotics. We build warehouse picking arms, we're 40 people, and we're hiring a Senior Backend Engineer to own our fleet telemetry pipeline.\n\nYour work on streaming ingestion at {company} stood out. Would you be open to a 30 minute intro call this week or next?\n\nBest,\nRenata\n\nJD: ", "want": {"paste": "https://acme.example/careers/senior-backend-engineer?gh_src=7c41d0b2"}, "why": "Adding the JD link under the template"}}
+{"t": "09:52", "copy": {"text": "+1 (415) 555-0143", "from": "gmail_reply_dev"}}
+{"t": "09:53", "paste": {"into": "gh_cand_dev#phone", "want": {"paste": "+1 (415) 555-0143"}, "why": "Adding the phone from his signature"}}
+{"t": "10:15", "copy": {"text": "$165,000 - $205,000 base plus equity, 4 weeks PTO, 2 remote days a week", "from": "notes_scratch"}}
+{"t": "10:16", "paste": {"into": "gmail_reply_imani#reply", "value_before": "Hi Imani,\n\nThe range for this role is ", "want": {"paste": "$165,000 - $205,000 base plus equity, 4 weeks PTO, 2 remote days a week"}, "why": "Answering her comp question from the band in her notes"}}
+{"t": "10:31", "copy": {"text": "elise.mahoney@example.org", "from": "gmail_reply_tobias"}}
+{"t": "10:32", "paste": {"into": "gmail_compose#to", "want": {"paste": "elise.mahoney@example.org"}, "why": "Reference's email from Tobias's reply"}}
+{"t": "10:34", "copy": {"text": "Hi Elise,\n\nTobias Lindqvist gave us your name as a reference for a Senior Backend Engineer role at Acme Robotics. Would you have 15 minutes for a call this week?\n\nThank you,\nRenata", "from": "notes_scratch"}}
+{"t": "10:34", "paste": {"into": "gmail_compose#body", "want": {"paste": "Hi Elise,\n\nTobias Lindqvist gave us your name as a reference for a Senior Backend Engineer role at Acme Robotics. Would you have 15 minutes for a call this week?\n\nThank you,\nRenata"}, "why": "Reference-check template"}}
+{"t": "11:03", "copy": {"text": "Approved for Aiko Tanaka (EM): base $185,000, 40,000 options (0.11%), $15,000 sign-on, start date Monday Nov 16. Offer letter has to go out by 5pm today.", "from": "slack_dm_leila"}}
+{"t": "11:04", "paste": {"into": "gh_offer_aiko#salary", "want": {"paste": "185,000"}, "why": "Base salary from Leila's approval"}}
+{"t": "11:06", "paste": {"into": "gh_offer_aiko#notes", "value_before": "Approved by Leila in Slack: ", "want": {"paste": "Approved for Aiko Tanaka (EM): base $185,000, 40,000 options (0.11%), $15,000 sign-on, start date Monday Nov 16. Offer letter has to go out by 5pm today."}, "why": "Recording the approval on the offer"}}
+{"t": "11:16", "copy": {"text": "Aiko Tanaka\nEngineering Manager, Quillfeather Inc.\naiko.tanaka@example.com\nM: +1 (646) 555-0138", "from": "gmail_reply_aiko"}}
+{"t": "11:17", "paste": {"into": "gcal_event#guests", "want": {"paste": "aiko.tanaka@example.com"}, "why": "Inviting Aiko to the offer call"}}
+{"t": "11:19", "copy": {"text": "https://meet.google.com/kqz-fhvw-dpm", "from": "gcal_event"}}
+{"t": "11:20", "paste": {"into": "gmail_reply_aiko#reply", "value_before": "Hi Aiko,\n\nLooking forward to our chat at 2pm PT today. Here is the link: ", "want": {"paste": "https://meet.google.com/kqz-fhvw-dpm"}, "why": "Link in the email confirming the call"}}
+{"t": "11:26", "paste": {"into": "slack_dm_jonas#message", "value_before": "Aiko's cell for after the offer call: ", "want": {"paste": "+1 (646) 555-0138"}, "why": "Giving Jonas Aiko's cell for his congratulations call"}}
+{"t": "11:42", "copy": {"text": "Imani Brooks", "from": "gmail_reply_imani"}}
+{"t": "11:43", "paste": {"into": "gmail_inbox#search", "want": {"plain": true}, "why": "Finding Imani's original application, name goes in the search box"}}
+{"t": "13:06", "secure": {"into": "sso_login#password", "why": "Okta session expired; password typed from memory or the password manager"}}
+{"t": "13:08", "copy": {"text": "482913", "from": "messages_verify"}}
+{"t": "13:08", "paste": {"into": "sso_login#otp", "want": {"plain": true}, "why": "SMS code from the short-code thread"}}
+{"t": "13:33", "copy": {"text": "dev.patel@example.com", "from": "gmail_reply_dev"}}
+{"t": "13:34", "paste": {"into": "calendly_book#email", "want": {"paste": "dev.patel@example.com"}, "why": "Booking on Dev's behalf, his email"}}
+{"t": "13:35", "paste": {"into": "calendly_book#notes", "value_before": "Phone screen, Senior Backend Engineer. Dev's number: ", "want": {"paste": "+1 (415) 555-0143"}, "why": "His phone for the interviewer, from his signature this morning"}}
+{"t": "13:52", "copy": {"text": "312-555-0199", "from": "gmail_reply_tobias"}}
+{"t": "13:53", "paste": {"into": "gcal_event#description", "value_before": "Reference check for Tobias Lindqvist. Elise's number: ", "want": {"paste": "312-555-0199"}, "why": "Elise's number for the reference call hold"}}
+{"t": "13:54", "paste": {"into": "gcal_event#guests", "want": {"paste": "elise.mahoney@example.org"}, "why": "Adding Elise as a guest"}}
+{"t": "14:02", "copy": {"text": "My take on Tobias: great on the pipeline design question, he talked through backpressure and idempotent consumers without being asked. Solid Python, a bit light on Go but says he has shipped it. Strong hire from me.", "from": "slack_recruiting"}}
+{"t": "14:03", "paste": {"into": "gh_cand_tobias#note", "value_before": "Onsite debrief 10/16\n\n", "want": {"paste": "My take on Tobias: great on the pipeline design question, he talked through backpressure and idempotent consumers without being asked. Solid Python, a bit light on Go but says he has shipped it. Strong hire from me."}, "why": "Debrief notes, Wen first"}}
+{"t": "14:05", "copy": {"text": "Ilya on Tobias: agree with Wen. System design was crisp, he asked about our failure modes before drawing anything. I would hire. Level: senior.", "from": "slack_recruiting"}}
+{"t": "14:06", "paste": {"into": "gh_cand_tobias#note", "value_before": "Onsite debrief 10/16\n\nMy take on Tobias: great on the pipeline design question, he talked through backpressure and idempotent consumers without being asked. Solid Python, a bit light on Go but says he has shipped it. Strong hire from me.\n\n", "want": {"paste": "Ilya on Tobias: agree with Wen. System design was crisp, he asked about our failure modes before drawing anything. I would hire. Level: senior."}, "why": "Ilya's feedback under Wen's"}}
+{"t": "14:21", "copy": {"text": "Acme Robotics\n480 Harlan Street, Suite 400\nSan Francisco, CA 94107", "from": "notes_scratch"}}
+{"t": "14:22", "paste": {"into": "messages_marisol#main", "value_before": "Hi Marisol, it's Renata from Acme. Here is the address for Thursday: ", "want": {"paste": "Acme Robotics\n480 Harlan Street, Suite 400\nSan Francisco, CA 94107"}, "why": "Texting Marisol where to come on Thursday"}}
+{"t": "14:35", "paste": {"into": "slack_dm_jonas#message", "value_before": "Her profile: ", "want": {"paste": "https://www.linkedin.com/in/marisol-reyes-4c82a1"}, "why": "Jonas asked for Marisol's LinkedIn before the loop"}}
+{"t": "15:28", "copy": {"text": "https://app.greenhouse.io/people/412398007?application_id=519304118", "from": "gh_cand_marisol"}}
+{"t": "15:29", "paste": {"into": "slack_dm_jonas#message", "value_before": "Marisol's loop is scheduled, scorecards are set up here: ", "want": {"paste": "https://app.greenhouse.io/people/412398007?application_id=519304118"}, "why": "Pointing Jonas at her scorecard setup"}}
+{"t": "15:46", "copy": {"text": "Marisol Reyes - Onsite loop (Staff Frontend)", "from": "gcal_event"}}
+{"t": "15:47", "paste": {"into": "gmail_compose#subject", "want": {"paste": "Marisol Reyes - Onsite loop (Staff Frontend)"}, "why": "Same title as the calendar hold"}}
+{"t": "16:04", "paste": {"into": "gmail_reply_nikhil#reply", "value_before": "Hi Nikhil,\n\nGreat, thank you. You can book the intro call here: ", "want": {"paste": "https://calendly.com/renata-acme/phone-screen-30?back=1&month=2026-10"}, "why": "Booking link again, this time for Nikhil"}}
+{"t": "16:49", "copy": {"text": "https://app.greenhouse.io/offers/88213001", "from": "gh_offer_aiko"}}
+{"t": "16:50", "paste": {"into": "slack_dm_leila#message", "value_before": "Offer sent to Aiko, tracking here: ", "want": {"paste": "https://app.greenhouse.io/offers/88213001"}, "why": "Telling Leila the offer is out"}}
+{"t": "17:02", "copy": {"text": "samir.haddad@example.net", "from": "gmail_reply_samir"}}
+{"t": "17:03", "copy": {"text": "imani.brooks@example.org", "from": "gmail_reply_imani"}}
+{"t": "17:05", "paste": {"into": "gmail_compose#to", "want": {"choose": ["samir.haddad@example.net", "imani.brooks@example.org"]}, "why": "First of two identical prep emails, order does not matter"}}
+{"t": "17:09", "paste": {"into": "gmail_compose#to", "want": {"choose": ["samir.haddad@example.net", "imani.brooks@example.org"]}, "why": "Second prep email, the other candidate"}}
+{"t": "17:16", "copy": {"text": "Reminder: Marisol's loop starts at 2pm Thursday, front desk needs her name for a badge", "from": "slack_recruiting"}}
+{"t": "17:17", "paste": {"into": "notes_scratch#main", "value_before": "Thursday:\n- ", "want": {"paste": "Reminder: Marisol's loop starts at 2pm Thursday, front desk needs her name for a badge"}, "why": "Parking the reminder in her Thursday list"}}
+{"t": "17:41", "paste": {"into": "gmail_reply_marisol#reply", "value_before": "Hi Marisol,\n\nYour onsite is confirmed for Thursday 10/22 at 2pm PT. We are at ", "want": {"paste": "Acme Robotics\n480 Harlan Street, Suite 400\nSan Francisco, CA 94107"}, "why": "Address in the onsite confirmation email"}}
+{"t": "17:58", "paste": {"into": "gmail_compose#body", "value_before": "Hi Bryn,\n\nHere is the posting we are hiring against: ", "want": {"paste": "https://acme.example/careers/senior-backend-engineer?gh_src=7c41d0b2"}, "why": "JD link for an agency recruiter"}}
+{"t": "18:17", "copy": {"text": "Tuesday 10/20 after 3pm PT works for me.", "from": "gmail_reply_samir"}}
+{"t": "18:18", "paste": {"into": "notes_scratch#main", "value_before": "Tomorrow:\n- ", "want": {"paste": "Tuesday 10/20 after 3pm PT works for me."}, "why": "Samir's slot goes on tomorrow's list"}}

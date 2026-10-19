@@ -13,11 +13,14 @@ public struct ModelBenchmark: Codable, Sendable, Equatable {
     public var p95: Double      // ms
     public var diskGB: Double
     public var ramGB: Double
+    /// Share of clear cases where the chooser showed instead of the paste (nil = not measured).
+    public var chooser: Double? = nil
 
     /// Accuracy that charges a wrong paste double — a wrong paste costs an
     /// undo plus a re-paste, a miss costs one keypress.
     public var quality: Double { resolved - 2 * wrong }
-    public var meetsLatency: Bool { p50 <= 500 && p95 <= 1200 }
+    /// The engine's gates: inside the latency budget, and not leaning on the chooser for clear cases.
+    public var meetsGates: Bool { p50 <= 500 && p95 <= 1200 && (chooser ?? 0) <= 0.2 }
 }
 
 public enum ModelRole: String, Sendable, CaseIterable {
@@ -47,9 +50,9 @@ public enum ModelRoles {
     /// - Most accurate: highest `quality`, ties → fewer wrong pastes.
     /// - Fastest: lowest p50 with resolved ≥ 80%.
     /// - Best balance: highest `quality − 0.10·p50/500 − 0.05·diskGB/2`.
-    /// Only models inside the latency budget (p50 ≤ 500, p95 ≤ 1200) qualify.
+    /// Only models that meet the gates (p50 ≤ 500, p95 ≤ 1200, chooser on clear ≤ 20%) qualify.
     public static func roles(from data: [ModelBenchmark]) -> [(role: ModelRole, bench: ModelBenchmark)] {
-        var pool = data.filter(\.meetsLatency)
+        var pool = data.filter(\.meetsGates)
         var out: [(ModelRole, ModelBenchmark)] = []
         func take(_ role: ModelRole, _ best: ModelBenchmark?) {
             guard let best else { return }

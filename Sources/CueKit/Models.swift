@@ -82,16 +82,21 @@ public struct ModelSpec: Sendable, Identifiable {
 
 public enum ModelCatalog {
     /// The ranked list. Rank drives ordering in "Other local models" and the
-    /// recommended badge; kev/laya also get top-level rows in the picker.
+    /// recommended badge; the role holders also get top-level rows in the picker.
     public static let all: [ModelSpec] = ModelRoles.apply(to: [
         kev, laya, von, jevons, jevlite,
         jevstyle, jevk5, startlux, vsr, clef, intern, jevnano, minicpm, s1qwen,
         decider, pplxdecider, s1lite, jevk5lite, kenning, truetype, gliner, scorer, openthai, bekko,
     ])
 
-    /// kev and laya are top-level picker rows; everything else is "Others".
+    /// The role holders (Recommended first) are the picker's top-level rows; everything else is "Others".
+    public static var featured: [ModelSpec] {
+        ModelRoles.roles(from: ModelRoles.benchmarks).compactMap { model($0.bench.model) }
+    }
+
     public static var others: [ModelSpec] {
-        all.filter { $0.id != "kev" && $0.id != "laya" }.sorted { $0.rank < $1.rank }
+        let top = Set(featured.map(\.id))
+        return all.filter { !top.contains($0.id) }.sorted { $0.rank < $1.rank }
     }
 
     public static func model(_ id: String) -> ModelSpec? {
@@ -201,24 +206,22 @@ public enum ModelCatalog {
                        serveModel: "jev-lite-gemma4-e4b", hfRepo: "vagmi/jev-lite"),
         ])
 
-    /// flash-linear-attention is a hard dep and Triton has no macOS wheels —
-    /// listed so the catalog is complete, but not installable here.
+    /// Runs on Metal through mlx-lm (`decider_mlx_server.py`): decider's own prompt building and readout,
+    /// fp16 weights, padded batches split when that's faster. Parity with decider's torch path: max |Δp|
+    /// 0.0099, no argmax flips. The default local model: it meets the chooser gate kev doesn't.
     public static let decider = ModelSpec(
-        id: "decider", title: "Decider", rank: 15, reason: "Full fine-tunes", defaultPort: 8769,
-        blurb: "Mapika's full fine-tune family — one-pass typed decisions, well calibrated.",
-        kind: .venv(packages: ["decider-ai[serve]"],
-                    serveArgv: ["python", "-m", "decider.serve", "--port", "{port}"]),
-        support: .unsupported("needs NVIDIA/Triton kernels (flash-linear-attention)"),
+        id: "decider", title: "Decider", rank: 15, reason: "Full fine-tunes", defaultPort: 8790,
+        blurb: "Picks the right clip most often in Cue’s tests (1% wrong), about 200 ms on Apple silicon.",
+        kind: .shim(packages: ["decider-ai==1.9.0", "mlx==0.32.2", "mlx-lm==0.31.3"],
+                    script: "decider_mlx_server.py", downloadsSnapshot: false),
+        support: .supported,
         variants: [
+            WeightSpec(id: "decider-0.8b", paramsLabel: "0.8B", diskLabel: "~1.6 GB", ramLabel: "~3 GB",
+                       recommended: true, accuracy: 0.83, speed: 0.95,
+                       serveModel: "decider-0.8b", hfRepo: "Mapika/decider-0.8b"),
             WeightSpec(id: "decider-2b", paramsLabel: "1.9B", diskLabel: "~4 GB", ramLabel: "~5 GB",
-                       accuracy: 0.8, speed: 0.4,
+                       accuracy: 0.8, speed: 0.6,
                        serveModel: "decider-2b", hfRepo: "Mapika/decider-2b"),
-            WeightSpec(id: "decider-4b", paramsLabel: "4B", diskLabel: "~8 GB", ramLabel: "~9 GB",
-                       accuracy: 0.85, speed: 0.3,
-                       serveModel: "decider-4b", hfRepo: "Mapika/decider-4b"),
-            WeightSpec(id: "decider-35b", paramsLabel: "35B-A3B", diskLabel: "~70 GB", ramLabel: "~72 GB",
-                       accuracy: 0.9, speed: 0.15,
-                       serveModel: "decider-35b-a3b", hfRepo: "Mapika/decider-35b-a3b"),
         ])
 
     /// Cloudflare's Clef decision models — the joint-schema-head readout ships

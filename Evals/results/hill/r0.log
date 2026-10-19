@@ -1,0 +1,233 @@
+cueeval: starting
+endpoint         case                               verdict            kind    pasted                           ms
+----------------------------------------------------------------------------------------------------------------------
+kev              ex-01                              exact              paste   sarah.lee@example.com            728
+kev              ex-02                              exact              paste   415-555-0168                     224
+kev              ex-03                              resolved_chooser   choose  https://example.com/deck         204
+kev              ex-04                              resolved_chooser   choose  jane.doe@example.com             183
+kev              ex-05                              exact              paste   +1 (415) 555-0132                143
+kev              ex-06                              miss               plain   -                                149
+kev              ex-07                              exact              paste   https://example.com/invoices/CU- 181
+kev              ex-08                              resolved_chooser   choose  priya@example.com                171
+kev              ex-09                              exact              paste   +44 7700 900123                  162
+kev              ex-10                              resolved_chooser   choose  x                                128
+kev              ex-11                              resolved_chooser   choose  careers@example.org              140
+kev              ex-12                              exact              plain   -                                124
+kev              ex-13                              exact              paste   nora@example.com                 127
+kev              ex-14                              lucky_guess        paste   +1-800-555-0142                  146
+kev              ex-15                              exact              paste   https://docs.example.com/spec-v2 142
+kev              ms-01                              resolved_chooser   choose  billing@acme.example.com         187
+kev              ms-02                              resolved_chooser   choose  dana@acme.example.com            241
+kev              ms-03                              exact              choose  dana@acme.example.com            244
+kev              ms-04                              exact              choose  +1 917 555 0199                  271
+kev              ms-05                              exact              paste   docs@example.com                 455
+kev              ms-06                              resolved_chooser   choose  https://example.com/archive      613
+kev              ms-07                              resolved_chooser   choose  legal@acme.example.com           230
+kev              ms-08                              exact              choose  415-555-0199                     261
+kev              ms-09                              resolved_chooser   choose  support@vendor.example.com       194
+kev              ms-10                              exact              paste   https://vendor.example.com       220
+kev              amb-01                             resolved_chooser   choose  priya.shah@acme.example.com      216
+kev              amb-02                             exact              choose  ravi.chen@acme.example.com       200
+kev              amb-03                             resolved_chooser   choose  sam.lee@acme.example.com         172
+kev              amb-04                             resolved_chooser   choose  nadia.aziz@acme.example.com      158
+kev              amb-05                             resolved_chooser   choose  alex.rivera@acme.example.com     123
+kev              amb-06                             resolved_chooser   choose  noreply@shop.example.io          149
+kev              amb-07                             exact              choose  +1 415 555 0177                  167
+kev              amb-08                             resolved_chooser   choose  dana.kim@example.org             145
+kev              amb-09                             exact              choose  tom.w@gmail.example.com          164
+kev              amb-10                             resolved_chooser   choose  y.tanaka@globex.example.com      176
+kev              amb-11                             exact              choose  zoe.lin@gmail.example.com        139
+kev              amb-12                             resolved_chooser   choose  me@gmail.example.com             122
+kev              amb-13                             resolved_chooser   choose  contracts@acme.example.com       145
+kev              amb-14                             exact              choose  sam.baker@icloud.example.com     182
+kev              amb-15                             resolved_chooser   choose  k.osei@mysite.example.com        129
+kev              amb-16                             resolved_chooser   choose  alex.k@example.com               156
+kev              amb-17                             resolved_chooser   choose  nadia.aziz@acme.example.com      124
+kev              amb-18                             resolved_chooser   choose  accounts@vendor.example.com      151
+kev              amb-19                             exact              choose  r.agrawal@gmail.example.com      156
+kev              amb-20                             exact              choose  emma.walks.dogs@example.com      147
+kev              no-01                              exact              choose  noreply@shop.example.io          147
+kev              no-02                              exact              choose  415-555-0101                     171
+kev              no-03                              exact              choose  https://blog.example.com/post-1  156
+kev              no-04                              exact              choose  a@example.com                    143
+kev              no-05                              exact              choose  second@example.com               127
+kev              no-06                              exact              choose  +1 415 555 0177                  159
+kev              no-07                              exact              choose  d@e.example.com                  154
+kev              no-08                              exact              choose  https://b.example.com/2          131
+kev              no-09                              exact              choose  +1 415 555 0177                  182
+kev              no-10                              exact              choose  y@example.com                    137
+kev              ty-01                              resolved_chooser   choose  Jane                             123
+kev              ty-02                              exact              paste   94105                            124
+kev              ty-03                              resolved_chooser   choose  Alexandra Rivera                 144
+kev              ty-04                              exact              plain   -                                146
+kev              ty-05                              exact              plain   -                                136
+kev              ty-06                              exact              plain   -                                123
+kev              ty-07                              exact              paste   1200 Market St, San Francisco, C 124
+kev              ty-08                              resolved_chooser   choose  haruki@example.com               125
+kev              ty-09                              exact              paste   10/03/2026                       132
+kev              ty-10                              exact              plain   -                                133
+kev              ty-11                              exact              plain   -                                125
+kev              ty-12                              resolved_chooser   choose  me@example.com                   113
+kev              ty-13                              lucky_guess        paste   order confirmation #4821         132
+kev              ty-14                              exact              plain   -                                126
+kev              ty-15                              exact              plain   -                                135
+kev              ty-16                              exact              plain   -                                130
+kev              ty-17                              exact              plain   -                                125
+kev              ty-18                              exact              plain   -                                118
+kev              ty-19                              exact              plain   -                                117
+kev              ty-20                              exact              plain   -                                142
+kev              nz-01                              exact              paste   pmorgan@properties.example.com   1721
+kev              nz-02                              exact              paste   +1 415 555 0177                  2046
+kev              nz-03                              exact              choose  me@acme.example.com              957
+kev              nz-04                              miss               plain   -                                456
+kev              nz-05                              exact              choose  me@gmail.example.com             1295
+kev              nz-06                              exact              paste   signup.me@example.com            814
+kev              nz-07                              resolved_chooser   choose  6                                287
+kev              nz-08                              miss               plain   -                                349
+kev              nz-09                              exact              choose  94105                            138
+kev              nz-10                              miss               plain   -                                152
+kev              iv-01                              exact              plain   -                                1
+kev              iv-02                              resolved_chooser   choose  mira@acme.example.com            244
+kev              iv-03                              exact              plain   -                                1
+kev              iv-04                              lucky_guess        paste   +1 415 555 0177                  136
+kev              iv-05                              exact              plain   -                                1
+kev              iv-06                              exact              choose  one@example.com                  192
+kev              iv-07                              exact              plain   -                                1
+kev              iv-08                              exact              choose  https://example.com/a            211
+kev              iv-09                              exact              plain   -                                1
+kev              iv-10                              exact              plain   -                                0
+kev              iv-11                              exact              plain   -                                1
+kev              iv-12                              lucky_guess        paste   +1 415 555 0177                  157
+kev              iv-13                              exact              plain   -                                1
+kev              iv-14                              exact              plain   -                                1
+kev              iv-15                              exact              paste   https://haruki.example.com       174
+kev              nf-01                              exact              plain   -                                179
+kev              nf-02                              exact              plain   -                                161
+kev              nf-03                              miss               plain   -                                159
+kev              nf-04                              exact              plain   -                                143
+kev              nf-05                              exact              plain   -                                144
+kev              nf-06                              exact              plain   -                                183
+kev              nf-07                              exact              plain   -                                221
+kev              nf-08                              exact              plain   -                                200
+kev              nf-09                              exact              plain   -                                173
+kev              nf-10                              exact              plain   -                                121
+kev              TOTAL                              72+29 ok, 4 lucky, 5 miss, 0 wrong
+----------------------------------------------------------------------------------------------------------------------
+decider          ex-01                              exact              paste   sarah.lee@example.com            1407
+decider          ex-02                              exact              paste   415-555-0168                     709
+decider          ex-03                              resolved_chooser   choose  https://example.com/deck         634
+decider          ex-04                              resolved_chooser   choose  jane.doe@example.com             526
+decider          ex-05                              exact              paste   +1 (415) 555-0132                426
+decider          ex-06                              miss               plain   -                                420
+decider          ex-07                              exact              paste   https://example.com/invoices/CU- 524
+decider          ex-08                              resolved_chooser   choose  Invoice #CU-1847 is approved for 456
+decider          ex-09                              exact              paste   +44 7700 900123                  529
+decider          ex-10                              exact              paste   The Grand Budapest Hotel, 94102  348
+decider          ex-11                              resolved_chooser   choose  careers@example.org              485
+decider          ex-12                              exact              plain   -                                482
+decider          ex-13                              exact              paste   nora@example.com                 552
+decider          ex-14                              lucky_guess        paste   +1-800-555-0142                  482
+decider          ex-15                              exact              paste   https://docs.example.com/spec-v2 489
+decider          ms-01                              resolved_chooser   choose  billing@acme.example.com         577
+decider          ms-02                              resolved_chooser   choose  dana@acme.example.com            572
+decider          ms-03                              miss               plain   -                                594
+decider          ms-04                              exact              choose  +1 212 555 0100                  797
+decider          ms-05                              exact              paste   docs@example.com                 759
+decider          ms-06                              resolved_chooser   choose  https://example.com/archive      578
+decider          ms-07                              miss               plain   -                                810
+decider          ms-08                              exact              choose  415-555-0101                     1009
+decider          ms-09                              resolved_chooser   choose  support@vendor.example.com       817
+decider          ms-10                              exact              paste   https://vendor.example.com       976
+decider          amb-01                             exact              paste   priya.shah@acme.example.com      830
+decider          amb-02                             exact              choose  ravi.chen@acme.example.com       1298
+decider          amb-03                             exact              paste   sam.lee@acme.example.com         1035
+decider          amb-04                             exact              paste   nadia.aziz@acme.example.com      617
+decider          amb-05                             exact              paste   alex.rivera@acme.example.com     671
+decider          amb-06                             resolved_chooser   choose  noreply@shop.example.io          958
+decider          amb-07                             exact              choose  +1 415 555 0177                  1048
+decider          amb-08                             resolved_chooser   choose  dana.kim@example.org             1282
+decider          amb-09                             exact              choose  tom.w@gmail.example.com          626
+decider          amb-10                             exact              paste   y.tanaka@globex.example.com      676
+decider          amb-11                             lucky_guess        paste   zoe.lin@gmail.example.com        622
+decider          amb-12                             exact              paste   me@gmail.example.com             719
+decider          amb-13                             exact              paste   contracts@acme.example.com       984
+decider          amb-14                             exact              choose  sam.baker@icloud.example.com     914
+decider          amb-15                             exact              paste   k.osei@mysite.example.com        633
+decider          amb-16                             resolved_chooser   choose  alex.k@example.com               651
+decider          amb-17                             wrong              paste   nadia.aziz@acme.example.com      754
+decider          amb-18                             exact              paste   accounts@vendor.example.com      768
+decider          amb-19                             exact              choose  r.agrawal@gmail.example.com      801
+decider          amb-20                             exact              choose  emma.walks.dogs@example.com      634
+decider          no-01                              exact              choose  noreply@shop.example.io          625
+decider          no-02                              exact              choose  +1 415 555 0177                  753
+decider          no-03                              exact              choose  https://blog.example.com/post-1  597
+decider          no-04                              miss               plain   -                                513
+decider          no-05                              exact              choose  first@example.com                384
+decider          no-06                              exact              choose  +1 415 555 0177                  558
+decider          no-07                              exact              choose  x@y.example.com                  504
+decider          no-08                              lucky_guess        paste   https://a.example.com/1          545
+decider          no-09                              exact              choose  +1 415 555 0177                  615
+decider          no-10                              miss               plain   -                                471
+decider          ty-01                              exact              paste   Jane                             498
+decider          ty-02                              exact              paste   94105                            439
+decider          ty-03                              exact              paste   Alexandra Rivera                 417
+decider          ty-04                              exact              plain   -                                358
+decider          ty-05                              exact              plain   -                                390
+decider          ty-06                              exact              plain   -                                414
+decider          ty-07                              exact              paste   1200 Market St, San Francisco, C 462
+decider          ty-08                              exact              plain   -                                475
+decider          ty-09                              exact              paste   10/03/2026                       502
+decider          ty-10                              exact              plain   -                                535
+decider          ty-11                              exact              plain   -                                491
+decider          ty-12                              exact              plain   -                                460
+decider          ty-13                              lucky_guess        paste   order confirmation #4821         461
+decider          ty-14                              exact              paste   BlueCabin_5G                     421
+decider          ty-15                              exact              paste   UA1847                           473
+decider          ty-16                              exact              plain   -                                447
+decider          ty-17                              exact              plain   -                                427
+decider          ty-18                              exact              plain   -                                442
+decider          ty-19                              exact              plain   -                                437
+decider          ty-20                              exact              plain   -                                457
+decider          nz-01                              exact              paste   pmorgan@properties.example.com   1242
+decider          nz-02                              exact              paste   +1 415 555 0177                  773
+decider          nz-03                              exact              choose  k@m.example.com                  810
+decider          nz-04                              miss               plain   -                                788
+decider          nz-05                              exact              choose  https://tickets.example.com/orde 524
+decider          nz-06                              exact              paste   signup.me@example.com            736
+decider          nz-07                              exact              plain   -                                489
+decider          nz-08                              miss               plain   -                                752
+decider          nz-09                              miss               plain   -                                485
+decider          nz-10                              miss               plain   -                                522
+decider          iv-01                              exact              plain   -                                9
+decider          iv-02                              resolved_chooser   choose  mira@acme.example.com            617
+decider          iv-03                              exact              plain   -                                12
+decider          iv-04                              lucky_guess        paste   +1 415 555 0177                  510
+decider          iv-05                              exact              plain   -                                6
+decider          iv-06                              miss               plain   -                                508
+decider          iv-07                              exact              plain   -                                9
+decider          iv-08                              exact              choose  https://example.com/a            519
+decider          iv-09                              exact              plain   -                                8
+decider          iv-10                              exact              plain   -                                3
+decider          iv-11                              exact              plain   -                                8
+decider          iv-12                              miss               plain   -                                517
+decider          iv-13                              exact              plain   -                                5
+decider          iv-14                              exact              plain   -                                5
+decider          iv-15                              exact              paste   https://haruki.example.com       456
+decider          nf-01                              exact              plain   -                                464
+decider          nf-02                              exact              plain   -                                379
+decider          nf-03                              miss               plain   -                                535
+decider          nf-04                              exact              plain   -                                386
+decider          nf-05                              exact              plain   -                                354
+decider          nf-06                              exact              plain   -                                349
+decider          nf-07                              exact              plain   -                                454
+decider          nf-08                              exact              plain   -                                342
+decider          nf-09                              exact              plain   -                                336
+decider          nf-10                              exact              plain   -                                420
+decider          TOTAL                              80+12 ok, 5 lucky, 12 miss, 1 wrong
+----------------------------------------------------------------------------------------------------------------------
+
+=== SUMMARY ===
+kev: resolved 92.0%  wrong 0.0%  p50 150.0ms  p95 566.0ms  chooser-on-unambiguous 48.0%
+decider: resolved 84.0%  wrong 1.0%  p50 514.0ms  p95 1027.0ms  chooser-on-unambiguous 20.0%
+recorded 603 raw responses → Evals/results/hill/r0-raw.jsonl
+summary → Evals/results/hill/r0.json

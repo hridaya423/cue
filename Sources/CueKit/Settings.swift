@@ -171,16 +171,6 @@ public final class AppSettings {
         set { set("triggerMode", newValue) }
     }
 
-    public var confidenceThreshold: Double {
-        get { load("confidenceThreshold") ?? 0.7 }
-        set { store(newValue, forKey: "confidenceThreshold") }
-    }
-
-    public var lowConfidenceMode: LowConfidenceMode {
-        get { get("lowConfidenceMode", .top3) }
-        set { set("lowConfidenceMode", newValue) }
-    }
-
     public var showStatusToast: Bool {
         get { load("showStatusToast") ?? true }
         set { store(newValue, forKey: "showStatusToast") }

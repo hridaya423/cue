@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ledger: return original entry on duplicate Idempotency-Key (HAL-482) by kofi · Pull Request #1291 · halyard-dev/ledger · GitHub</title>
+<style>body{font:14px/1.45 -apple-system,Helvetica,Arial,sans-serif;margin:0;color:#222}
+header,nav,main,aside,section{display:block}
+.bar{padding:8px 16px;background:#f3f3f3;border-bottom:1px solid #ddd}
+.wrap{display:flex}nav.side{width:200px;padding:12px;background:#4a154b;color:#fff;min-height:480px}
+nav.side ul{list-style:none;padding:0}main{flex:1;padding:16px;max-width:820px}
+.msg{margin:10px 0}.msg b{margin-right:6px}.msg time{color:#777;font-size:12px}
+pre,.clip{white-space:pre-wrap;font:13px/1.4 ui-monospace,Menlo,monospace;margin:4px 0}
+.row{margin:10px 0}.row label{display:block;font-weight:600;margin-bottom:3px}
+input[type=text],input[type=email],input[type=tel],input[type=password],input[type=url],input:not([type]),textarea{width:100%;max-width:520px;padding:6px;border:1px solid #bbb;border-radius:4px}
+[contenteditable]{min-height:48px;border:1px solid #bbb;border-radius:4px;padding:6px;max-width:700px}
+h1{font-size:20px}h2{font-size:16px}fieldset{border:1px solid #ddd;margin:12px 0;max-width:620px}
+</style>
+</head>
+<body>
+<header class="bar" role="banner"><input id="query-builder-test" type="text" aria-label="Search or jump to…" placeholder="Search or jump to…"> halyard-dev / ledger</header><main><h1>ledger: return original entry on duplicate Idempotency-Key (HAL-482) <small>#1291</small></h1>
+<p>kofi wants to merge 1 commit into <code>main</code> from <code>kofi/hal-482-duplicate-ledger-entries-on-retry</code></p>
+<nav aria-label="Pull request tabs">Conversation · Commits · Checks · Files changed</nav>
+<section aria-label="Description"><div class="clip">## What
+
+A retried POST /v1/transfers with the same Idempotency-Key now returns the original entry.
+
+Fixes HAL-482.</div></section>
+<section aria-label="Commits"><h2>Commits</h2><p>kofi committed 9c0e5b3: https://github.com/halyard-dev/ledger/commit/9c0e5b3a7d1f84e26b5a0cd3317f8a29e4b6d701</p><p>Failing test: test_retry_returns_original</p></section>
+<section aria-label="Checks"><h2>Checks</h2><ul><li>test (python 3.12) — failing</li></ul><pre>FAILED tests/test_transfers.py::test_retry_returns_original - AssertionError: assert 201 == 200</pre></section>
+<aside aria-label="Page text"><h2>Page text</h2>
+<pre class="clip">FAILED tests/test_transfers.py::test_retry_returns_original - AssertionError: assert 201 == 200</pre>
+<pre class="clip">test_retry_returns_original</pre>
+<pre class="clip">https://github.com/halyard-dev/ledger/pull/1291</pre>
+<pre class="clip">https://github.com/halyard-dev/ledger/commit/9c0e5b3a7d1f84e26b5a0cd3317f8a29e4b6d701</pre>
+</aside>
+<form><h2>Add a comment</h2>
+<textarea id="comment" name="comment[body]" rows="6" aria-label="Comment body" placeholder="Leave a comment"></textarea>
+<button type="submit">Comment</button></form></main>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "steps": {
+    "1": "tie", "2": "tie", "3": "tie", "4": "tie",
+    "5": "B", "6": "tie", "7": "A", "8": "B", "9": "tie", "10": "tie",
+    "11": "tie", "12": "tie", "13": "tie", "14": "B", "15": "tie", "16": "tie",
+    "17": "B", "18": "tie", "19": "B", "20": "tie", "21": "tie", "22": "tie",
+    "23": "tie", "24": "tie", "25": "A", "26": "A", "27": "tie", "28": "tie",
+    "29": "tie", "30": "tie", "31": "tie", "32": "tie", "33": "tie", "34": "tie",
+    "35": "tie", "36": "tie", "37": "tie", "38": "B", "39": "A", "40": "tie",
+    "41": "tie", "42": "tie", "43": "B", "44": "B", "45": "A"
+  },
+  "biggest_gap": "When the wanted text was not the latest clip, side A made the person do the work by hand: either plain ⌘V followed by four trim presses (2.75 s, steps 5, 8, 14) or the full ⌘Space, ⌘4, type, Return, ⌘V Spotlight route (4.19 s, steps 17, 19, 43, 44). Side B reached the same text in about 2.1-3.5 s with one hotkey and an index. Worst case is step 38: A put the wrong clip in the field, the person had to press ⌘Z, and then ran the Spotlight route anyway, so 5.39 s and an undo for a link that B delivered in 4.19 s without a surprise.",
+  "gap_steps": [5, 8, 14, 17, 19, 38, 43, 44],
+  "notes": "32 of 45 steps are identical 0.28 s ⌘V pastes with the same text, so the comparison hangs on 13 steps. A loses 8, B loses 5. A is not uniformly worse: on steps 7, 25, 26, 39, 45 B was the one doing trim x4 or Spotlight and A's hotkey was 0.7-1 s faster. A's hotkey path has noticeable waits (199 ms, 197 ms, 389 ms, 450 ms) but they still beat the manual route. B's hotkey path also waits noticeably on steps 8 (255 ms), 14 (219 ms), 19 (222 ms), 43 (542 ms) and 44 (520 ms); 520-540 ms is borderline bad, and on step 44 it is only about 0.6 s better than Spotlight because the person also types a query. Both sides pasted the stale clip into the github_sudo password field at step 42 (identical, so tie), and both resolved the choose case at step 35 the same way. Neither side handled the earlier-clip cases (step 25 curl, 45 curl) without typing a query. Step 38 is the only wrong-text-landed-then-undone failure in the packet and it belongs to A."
+}

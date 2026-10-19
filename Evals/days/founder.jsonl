@@ -1,0 +1,75 @@
+{"t": "09:04", "copy": {"text": "$41,280", "from": "stripe_dashboard"}}
+{"t": "09:05", "paste": {"into": "notion_update#metrics", "value_before": "- MRR: ", "want": {"paste": "$41,280"}, "why": "MRR line in the update draft"}}
+{"t": "09:06", "copy": {"text": "63", "from": "stripe_dashboard"}}
+{"t": "09:07", "paste": {"into": "notion_update#metrics", "value_before": "- MRR: $41,280\n- Paying stores: ", "want": {"paste": "63"}, "why": "Paying stores"}}
+{"t": "09:08", "copy": {"text": "112%", "from": "stripe_dashboard"}}
+{"t": "09:09", "paste": {"into": "notion_update#metrics", "value_before": "- MRR: $41,280\n- Paying stores: 63\n- Net revenue retention: ", "want": {"paste": "112%"}, "why": "Net revenue retention"}}
+{"t": "09:12", "copy": {"text": "Brightfield signed! 14 stores across Portland and Boise, pilot converts to annual in March", "from": "slack_dm_tavi"}}
+{"t": "09:13", "paste": {"into": "notion_update#highlights", "value_before": "- ", "want": {"paste": "Brightfield signed! 14 stores across Portland and Boise, pilot converts to annual in March"}, "why": "Brightfield win goes under highlights"}}
+{"t": "09:27", "copy": {"text": "Brindle Inc. wire instructions\nBank: Northbridge Business Bank\nAccount name: Brindle Inc.\nAccount number: 0001234567\nRouting (ABA): 123456789\nSWIFT: NBBKUS33\nBank address: 500 Lakeshore Drive, Oakland, CA 94612\nReference: Brindle Seed SAFE", "from": "notes_company"}}
+{"t": "09:28", "paste": {"into": "gmail_reply_marcus#reply", "value_before": "Hi Marcus,\n\nHere are our wire details:\n\n", "want": {"paste": "Brindle Inc. wire instructions\nBank: Northbridge Business Bank\nAccount name: Brindle Inc.\nAccount number: 0001234567\nRouting (ABA): 123456789\nSWIFT: NBBKUS33\nBank address: 500 Lakeshore Drive, Oakland, CA 94612\nReference: Brindle Seed SAFE"}, "why": "Wire instructions for the Larchmont check"}}
+{"t": "09:36", "copy": {"text": "Marcus Webb\nPartner, Larchmont Ventures\nmarcus@larchmont.example | +1 (650) 555-0127", "from": "gmail_reply_marcus"}}
+{"t": "09:37", "paste": {"into": "crm_person_new#email", "want": {"paste": "marcus@larchmont.example"}, "why": "Email from his signature"}}
+{"t": "09:37", "paste": {"into": "crm_person_new#phone", "want": {"paste": "+1 (650) 555-0127"}, "why": "Phone from his signature"}}
+{"t": "09:39", "copy": {"text": "https://www.linkedin.com/in/marcus-webb-larchmont", "from": "linkedin_investor"}}
+{"t": "09:40", "paste": {"into": "crm_person_new#linkedin", "want": {"paste": "https://www.linkedin.com/in/marcus-webb-larchmont"}, "why": "LinkedIn on the record"}}
+{"t": "10:03", "copy": {"text": "https://calendly.com/ines-brindle/investor-intro-30", "from": "calendly_settings"}}
+{"t": "10:04", "paste": {"into": "gmail_reply_elena#reply", "value_before": "Hi Elena,\n\nHappy to talk this week. Pick a slot here: ", "want": {"paste": "https://calendly.com/ines-brindle/investor-intro-30"}, "why": "Elena asked for a time to meet"}}
+{"t": "10:06", "paste": {"into": "gmail_reply_sunil#reply", "value_before": "Hi Sunil,\n\nThanks for reaching out. Easiest is to grab a time here: ", "want": {"paste": "https://calendly.com/ines-brindle/investor-intro-30"}, "why": "Same link for Sunil"}}
+{"t": "10:18", "copy": {"text": "sunil@rooftopfund.example", "from": "gmail_reply_sunil"}}
+{"t": "10:19", "paste": {"into": "crm_person_new#email", "want": {"paste": "sunil@rooftopfund.example"}, "why": "Sunil's email"}}
+{"t": "10:19", "copy": {"text": "+1 (415) 555-0171", "from": "gmail_reply_sunil"}}
+{"t": "10:20", "paste": {"into": "crm_person_new#phone", "want": {"paste": "+1 (415) 555-0171"}, "why": "Sunil's phone"}}
+{"t": "10:42", "paste": {"into": "messages_rhea#main", "value_before": "Hi Rhea, happy to catch up. Book any time that works: ", "want": {"paste": "https://calendly.com/ines-brindle/investor-intro-30"}, "why": "Rhea wants to talk, she answers texts not email"}}
+{"t": "11:02", "copy": {"text": "marcus@larchmont.example", "from": "gmail_reply_marcus"}}
+{"t": "11:03", "paste": {"into": "dataroom_share#invitee", "want": {"paste": "marcus@larchmont.example"}, "why": "Giving Larchmont access"}}
+{"t": "11:04", "copy": {"text": "elena.voss@quarry.example", "from": "gmail_reply_elena"}}
+{"t": "11:05", "paste": {"into": "dataroom_share#invitee", "want": {"paste": "elena.voss@quarry.example"}, "why": "Giving Quarry access"}}
+{"t": "11:08", "copy": {"text": "https://docs.brindle.example/deck/seed-v7?token=Zr3vK81dQp", "from": "notes_company"}}
+{"t": "11:09", "paste": {"into": "dataroom_share#message", "value_before": "Welcome to the Brindle data room. Latest deck: ", "want": {"paste": "https://docs.brindle.example/deck/seed-v7?token=Zr3vK81dQp"}, "why": "Deck link in the invite message"}}
+{"t": "11:32", "paste": {"into": "slack_dm_tavi#message", "value_before": "deck: ", "want": {"paste": "https://docs.brindle.example/deck/seed-v7?token=Zr3vK81dQp"}, "why": "Tavi needs the deck for a customer call"}}
+{"t": "13:12", "copy": {"text": "Brindle Inc.", "from": "notes_company"}}
+{"t": "13:13", "paste": {"into": "bank_onboarding#legal_name", "want": {"paste": "Brindle Inc."}, "why": "Legal business name"}}
+{"t": "13:14", "copy": {"text": "82-0001234", "from": "notes_company"}}
+{"t": "13:14", "paste": {"into": "bank_onboarding#ein", "want": {"paste": "82-0001234"}, "why": "EIN"}}
+{"t": "13:15", "copy": {"text": "1840 Alder Street, Floor 2", "from": "notes_company"}}
+{"t": "13:16", "paste": {"into": "bank_onboarding#address1", "want": {"paste": "1840 Alder Street, Floor 2"}, "why": "Street address"}}
+{"t": "13:17", "copy": {"text": "94607", "from": "notes_company"}}
+{"t": "13:17", "paste": {"into": "bank_onboarding#zip", "want": {"paste": "94607"}, "why": "ZIP, city and state were typed"}}
+{"t": "13:18", "copy": {"text": "(510) 555-0142", "from": "notes_company"}}
+{"t": "13:19", "paste": {"into": "bank_onboarding#phone", "want": {"paste": "(510) 555-0142"}, "why": "Business phone"}}
+{"t": "13:20", "copy": {"text": "https://brindle.example", "from": "notes_company"}}
+{"t": "13:21", "paste": {"into": "bank_onboarding#website", "want": {"paste": "https://brindle.example"}, "why": "Company website"}}
+{"t": "13:25", "paste": {"into": "gmail_reply_dana#reply", "value_before": "Hi Dana,\n\nGreat, let's find a time. Here is my calendar: ", "want": {"paste": "https://calendly.com/ines-brindle/investor-intro-30"}, "why": "Booking link for Dana"}}
+{"t": "13:41", "secure": {"into": "bank_login#password", "why": "Bank session timed out"}}
+{"t": "13:43", "copy": {"text": "716204", "from": "messages_verify"}}
+{"t": "13:43", "paste": {"into": "bank_login#code", "want": {"plain": true}, "why": "Bank's SMS code"}}
+{"t": "14:18", "copy": {"text": "https://na4.docusign.net/Signing/EmailStart.aspx?a=3f2a91c0-77d1-4d02-b8a3-5e60c1f4d9aa&etti=24&acct=a1f7c2d4&er=b4e19d77", "from": "gmail_reply_elena"}}
+{"t": "14:19", "paste": {"into": "slack_dm_tavi#message", "value_before": "Quarry SAFE to sign: ", "want": {"paste": "https://na4.docusign.net/Signing/EmailStart.aspx?a=3f2a91c0-77d1-4d02-b8a3-5e60c1f4d9aa&etti=24&acct=a1f7c2d4&er=b4e19d77"}, "why": "Tavi has to sign as well"}}
+{"t": "14:33", "paste": {"into": "messages_rhea#main", "value_before": "Account number: ", "want": {"paste": "0001234567"}, "why": "Rhea just needs the account number first"}}
+{"t": "14:41", "copy": {"text": "Please loop in our counsel, Priya Raman (priya.raman@quarry.example), on the signature pages.", "from": "gmail_reply_elena"}}
+{"t": "14:42", "paste": {"into": "gmail_reply_elena#cc", "want": {"paste": "priya.raman@quarry.example"}, "why": "Cc'ing Quarry's counsel on the reply"}}
+{"t": "15:04", "paste": {"into": "payroll_signup#ein", "want": {"paste": "82-0001234"}, "why": "EIN again, copied earlier for the bank (browser autofill skips it)"}}
+{"t": "15:05", "paste": {"into": "payroll_signup#phone", "want": {"paste": "(510) 555-0142"}, "why": "Same phone as the bank form"}}
+{"t": "15:34", "copy": {"text": "Brindle - Q3 2026 update\n\nHighlights\n- MRR $41,280 (up 14% MoM)\n- 63 paying stores, net revenue retention 112%\n- Closed the Brightfield pilot: 14 stores, 3 more regions\n\nAsks\n- Intros to regional grocery buyers in the Pacific Northwest\n- Anyone who has hired a first sales leader at seed\n\nThanks as always,\nInes", "from": "notion_update"}}
+{"t": "15:35", "paste": {"into": "gmail_compose_f#body", "value_before": "Hi all,\n\n", "want": {"paste": "Brindle - Q3 2026 update\n\nHighlights\n- MRR $41,280 (up 14% MoM)\n- 63 paying stores, net revenue retention 112%\n- Closed the Brightfield pilot: 14 stores, 3 more regions\n\nAsks\n- Intros to regional grocery buyers in the Pacific Northwest\n- Anyone who has hired a first sales leader at seed\n\nThanks as always,\nInes"}, "why": "The update, pasted from the draft"}}
+{"t": "15:38", "copy": {"text": "marcus@larchmont.example, elena.voss@quarry.example, rhea.kapoor@example.com, sunil@rooftopfund.example, dana.whitlock@example.org, priyank.shah@example.net, lucia.ferrer@example.com, ben.oyelaran@example.org", "from": "notes_company"}}
+{"t": "15:39", "paste": {"into": "gmail_compose_f#bcc", "want": {"paste": "marcus@larchmont.example, elena.voss@quarry.example, rhea.kapoor@example.com, sunil@rooftopfund.example, dana.whitlock@example.org, priyank.shah@example.net, lucia.ferrer@example.com, ben.oyelaran@example.org"}, "why": "Investor list goes in Bcc"}}
+{"t": "16:12", "copy": {"text": "$495,360", "from": "stripe_dashboard"}}
+{"t": "16:13", "paste": {"into": "gmail_reply_elena#reply", "value_before": "Hi Elena,\n\nARR is ", "want": {"paste": "$495,360"}, "why": "ARR figure for Elena"}}
+{"t": "16:18", "copy": {"text": "Marcus asked about Brightfield, here's the summary doc https://docs.brindle.example/c/brightfield-summary?v=3 - public link, no login", "from": "slack_dm_tavi"}}
+{"t": "16:19", "paste": {"into": "gmail_reply_marcus#reply", "value_before": "Hi Marcus,\n\nBrightfield summary: ", "want": {"paste": "https://docs.brindle.example/c/brightfield-summary?v=3"}, "why": "Sending Marcus the summary"}}
+{"t": "16:22", "copy": {"text": "ops@larchmont.example", "from": "gmail_reply_marcus"}}
+{"t": "16:23", "paste": {"into": "gmail_compose_f#to", "want": {"paste": "ops@larchmont.example"}, "why": "Larchmont's ops address for the wire"}}
+{"t": "16:25", "paste": {"into": "gmail_compose_f#body", "value_before": "Hi,\n\nWire details for the Larchmont closing:\n\n", "want": {"paste": "Brindle Inc. wire instructions\nBank: Northbridge Business Bank\nAccount name: Brindle Inc.\nAccount number: 0001234567\nRouting (ABA): 123456789\nSWIFT: NBBKUS33\nBank address: 500 Lakeshore Drive, Oakland, CA 94612\nReference: Brindle Seed SAFE"}, "why": "Wire instructions again for their ops team"}}
+{"t": "16:32", "copy": {"text": "https://data.brindle.example/room/seed-2026?k=4f9a1c", "from": "dataroom_share"}}
+{"t": "16:35", "paste": {"into": "slack_dm_tavi#message", "value_before": "link for Paul: ", "want": {"choose": ["https://docs.brindle.example/deck/seed-v7?token=Zr3vK81dQp", "https://data.brindle.example/room/seed-2026?k=4f9a1c"]}, "why": "Tavi asked for the link to send his friend at a fund, deck or data room both work"}}
+{"t": "17:00", "paste": {"into": "gmail_reply_sunil#reply", "value_before": "Hi Sunil,\n\nGood to talk. The data room is here: ", "want": {"paste": "https://data.brindle.example/room/seed-2026?k=4f9a1c"}, "why": "Data room link for Sunil, copied this afternoon"}}
+{"t": "17:05", "copy": {"text": "Funds will land Friday, can you send the signed SAFE tonight?", "from": "gmail_reply_marcus"}}
+{"t": "17:06", "paste": {"into": "notes_company#main", "value_before": "Closing:\n- ", "want": {"paste": "Funds will land Friday, can you send the signed SAFE tonight?"}, "why": "Parking Marcus's note in the closing checklist"}}
+{"t": "17:12", "copy": {"text": "let's do a pro-rata side letter, I'll ask our counsel to send a draft Monday", "from": "gmail_reply_marcus"}}
+{"t": "17:13", "paste": {"into": "crm_person_new#notes", "want": {"paste": "let's do a pro-rata side letter, I'll ask our counsel to send a draft Monday"}, "why": "Call outcome on his CRM record"}}
+{"t": "17:20", "copy": {"text": "Larchmont Ventures", "from": "slack_dm_tavi"}}
+{"t": "17:21", "paste": {"into": "gmail_inbox_f#search", "want": {"plain": true}, "why": "Looking for the old Larchmont term-sheet thread"}}
+{"t": "18:05", "copy": {"text": "20261019-RK-0042", "from": "messages_rhea"}}
+{"t": "18:06", "paste": {"into": "notes_company#main", "value_before": "Rhea wire ref: ", "want": {"paste": "20261019-RK-0042"}, "why": "Her wire reference for the closing checklist"}}

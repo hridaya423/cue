@@ -39,6 +39,8 @@ public struct ContextSnapshot: Sendable, Equatable {
     /// Caret rect inside the field (Cocoa coordinates), when AX provides one.
     public var caretRect: CGRect? = nil
 
+    public init() {}
+
     public static let empty = ContextSnapshot()
 }
 
@@ -54,12 +56,39 @@ public enum ContextCaptor {
         AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary)
     }
 
+    private static var webAXEnabled = Set<pid_t>()
+
+    /// Chromium and Electron apps publish a page's fields to other processes only after a client asks.
+    /// Without this a browser's To: field has no label and Cue reads it as a generic text box.
+    /// Asked at app activation so the tree is built before the first paste; harmless to other apps.
+    public static func enableWebAccessibility(pid: pid_t) {
+        guard isTrusted, webAXEnabled.insert(pid).inserted else { return }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.05)
+        // Chrome and Electron take AXManualAccessibility. Forks like Helium don't know it but take
+        // AXEnhancedUserInterface (it returns an error code yet turns the page tree on — measured).
+        // That one also stops window animations in native apps, so it is only for Chromium-style bundles.
+        if AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue) == .attributeUnsupported,
+           isChromiumStyle(pid: pid) {
+            AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        }
+    }
+
+    /// Chromium-based browsers ship "<Name> Framework.framework" inside the bundle.
+    private static func isChromiumStyle(pid: pid_t) -> Bool {
+        guard let url = NSRunningApplication(processIdentifier: pid)?.bundleURL else { return false }
+        let frameworks = url.appendingPathComponent("Contents/Frameworks")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: frameworks.path)) ?? []
+        return names.contains { $0.hasSuffix(" Framework.framework") }
+    }
+
     public static func capture() -> ContextSnapshot {
         var ctx = ContextSnapshot()
         let app = NSWorkspace.shared.frontmostApplication
         ctx.appName = app?.localizedName ?? ""
         ctx.bundleID = app?.bundleIdentifier ?? ""
         guard isTrusted else { return ctx }
+        if let pid = app?.processIdentifier { enableWebAccessibility(pid: pid) }
 
         let system = AXUIElementCreateSystemWide()
         // A hung target app must not stall a paste — 50 ms per AX call.
@@ -67,8 +96,19 @@ public enum ContextCaptor {
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
               let focusedRef, CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else { return ctx }
-        let el = focusedRef as! AXUIElement
+        return capture(element: focusedRef as! AXUIElement, app: app, into: ctx)
+    }
 
+    /// Same capture aimed at a specific element — CueDay's replay windows
+    /// focus their own fields without ever becoming the frontmost app.
+    public static func capture(element: AXUIElement, app: NSRunningApplication?) -> ContextSnapshot {
+        capture(element: element, app: app, into: ContextSnapshot())
+    }
+
+    private static func capture(element el: AXUIElement, app: NSRunningApplication?,
+                                into base: ContextSnapshot) -> ContextSnapshot {
+        var ctx = base
+        AXUIElementSetMessagingTimeout(el, 0.05)
         ctx.field.role = axString(el, kAXRoleAttribute) ?? ""
         ctx.field.isSecure = ctx.field.role == "AXSecureTextField"
         if ctx.field.isSecure {

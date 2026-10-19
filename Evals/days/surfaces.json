@@ -1,0 +1,554 @@
+[
+  {
+    "id": "gmail_inbox",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Inbox (4) - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_inbox.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_compose",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Inbox (4) - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_compose.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_dev",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Senior Backend Engineer at Acme Robotics - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_reply_dev.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_samir",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Data Engineer role at Acme Robotics - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_reply_samir.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_imani",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Senior Backend Engineer - application received - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_reply_imani.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_marisol",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Intro: Marisol Reyes (Staff Frontend) - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_reply_marisol.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_nikhil",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Fleet telemetry at Acme Robotics - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_reply_nikhil.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_aiko",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Engineering Manager at Acme Robotics - next steps - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_reply_aiko.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_tobias",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Tobias Lindqvist - references - renata@acme.example - Gmail - Google Chrome",
+    "kind": "web",
+    "page": "gmail_reply_tobias.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gh_add_candidate",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Add a Candidate - Greenhouse - Google Chrome",
+    "kind": "web",
+    "page": "gh_add_candidate.html",
+    "host": "app.greenhouse.io"
+  },
+  {
+    "id": "gh_cand_dev",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Dev Patel - Candidate - Greenhouse - Google Chrome",
+    "kind": "web",
+    "page": "gh_cand_dev.html",
+    "host": "app.greenhouse.io"
+  },
+  {
+    "id": "gh_cand_marisol",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Marisol Reyes - Candidate - Greenhouse - Google Chrome",
+    "kind": "web",
+    "page": "gh_cand_marisol.html",
+    "host": "app.greenhouse.io"
+  },
+  {
+    "id": "gh_cand_tobias",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Tobias Lindqvist - Candidate - Greenhouse - Google Chrome",
+    "kind": "web",
+    "page": "gh_cand_tobias.html",
+    "host": "app.greenhouse.io"
+  },
+  {
+    "id": "gh_offer_aiko",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Offer for Aiko Tanaka - Greenhouse - Google Chrome",
+    "kind": "web",
+    "page": "gh_offer_aiko.html",
+    "host": "app.greenhouse.io"
+  },
+  {
+    "id": "gcal_event",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Google Calendar - Event details - Google Chrome",
+    "kind": "web",
+    "page": "gcal_event.html",
+    "host": "calendar.google.com"
+  },
+  {
+    "id": "calendly_book",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "30 Minute Phone Screen - Renata Alvarez - Google Chrome",
+    "kind": "web",
+    "page": "calendly_book.html",
+    "host": "calendly.com"
+  },
+  {
+    "id": "linkedin_profile",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Nikhil Rao | LinkedIn - Google Chrome",
+    "kind": "web",
+    "page": "linkedin_profile.html",
+    "host": "www.linkedin.com"
+  },
+  {
+    "id": "sso_login",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Acme Robotics - Sign In - Google Chrome",
+    "kind": "web",
+    "page": "sso_login.html",
+    "host": "acme.okta.com"
+  },
+  {
+    "id": "slack_recruiting",
+    "app": "Slack",
+    "bundle": "com.tinyspeck.slackmacgap",
+    "window": "recruiting (Channel) - Acme Robotics - Slack",
+    "kind": "web",
+    "page": "slack_recruiting.html",
+    "host": "app.slack.com"
+  },
+  {
+    "id": "slack_dm_jonas",
+    "app": "Slack",
+    "bundle": "com.tinyspeck.slackmacgap",
+    "window": "Jonas Berg (DM) - Acme Robotics - Slack",
+    "kind": "web",
+    "page": "slack_dm_jonas.html",
+    "host": "app.slack.com"
+  },
+  {
+    "id": "slack_dm_leila",
+    "app": "Slack",
+    "bundle": "com.tinyspeck.slackmacgap",
+    "window": "Leila Ferrante (DM) - Acme Robotics - Slack",
+    "kind": "web",
+    "page": "slack_dm_leila.html",
+    "host": "app.slack.com"
+  },
+  {
+    "id": "notes_scratch",
+    "app": "Notes",
+    "bundle": "com.apple.Notes",
+    "window": "Notes",
+    "kind": "native-text",
+    "field": {
+      "role": "AXTextArea",
+      "label": "",
+      "placeholder": ""
+    }
+  },
+  {
+    "id": "messages_marisol",
+    "app": "Messages",
+    "bundle": "com.apple.MobileSMS",
+    "window": "Marisol Reyes",
+    "kind": "native-field",
+    "field": {
+      "role": "AXTextArea",
+      "label": "Message",
+      "placeholder": "iMessage"
+    }
+  },
+  {
+    "id": "messages_verify",
+    "app": "Messages",
+    "bundle": "com.apple.MobileSMS",
+    "window": "22395",
+    "kind": "native-field",
+    "field": {
+      "role": "AXTextArea",
+      "label": "Message",
+      "placeholder": "Text Message"
+    }
+  },
+  {
+    "id": "github_pr_new",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Comparing main...kofi/hal-482-duplicate-ledger-entries-on-retry · halyard-dev/ledger · GitHub - Google Chrome",
+    "kind": "web",
+    "page": "github_pr_new.html",
+    "host": "github.com"
+  },
+  {
+    "id": "github_pr_1287",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Send Retry-After on 429 responses (HAL-479) by samc · Pull Request #1287 · halyard-dev/ledger · GitHub - Google Chrome",
+    "kind": "web",
+    "page": "github_pr_1287.html",
+    "host": "github.com"
+  },
+  {
+    "id": "github_pr_1291",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "ledger: return original entry on duplicate Idempotency-Key (HAL-482) by kofi · Pull Request #1291 · halyard-dev/ledger · GitHub - Google Chrome",
+    "kind": "web",
+    "page": "github_pr_1291.html",
+    "host": "github.com"
+  },
+  {
+    "id": "linear_issue",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "HAL-482 Duplicate ledger entries on retry - Halyard - Google Chrome",
+    "kind": "web",
+    "page": "linear_issue.html",
+    "host": "linear.app"
+  },
+  {
+    "id": "linear_new",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Active issues - Halyard - Google Chrome",
+    "kind": "web",
+    "page": "linear_new.html",
+    "host": "linear.app"
+  },
+  {
+    "id": "sentry_issue",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "IntegrityError: (psycopg2.errors.UniqueViolation) duplicate key value | ledger-api — Sentry - Google Chrome",
+    "kind": "web",
+    "page": "sentry_issue.html",
+    "host": "halyard.sentry.io"
+  },
+  {
+    "id": "aws_device",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "AWS access portal - Google Chrome",
+    "kind": "web",
+    "page": "aws_device.html",
+    "host": "device.sso.us-west-2.amazonaws.com"
+  },
+  {
+    "id": "github_sudo",
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "window": "Confirm access · GitHub - Google Chrome",
+    "kind": "web",
+    "page": "github_sudo.html",
+    "host": "github.com"
+  },
+  {
+    "id": "slack_eng_backend",
+    "app": "Slack",
+    "bundle": "com.tinyspeck.slackmacgap",
+    "window": "eng-backend (Channel) - Halyard - Slack",
+    "kind": "web",
+    "page": "slack_eng_backend.html",
+    "host": "app.slack.com"
+  },
+  {
+    "id": "slack_inc_ledger",
+    "app": "Slack",
+    "bundle": "com.tinyspeck.slackmacgap",
+    "window": "inc-ledger-dupes (Channel) - Halyard - Slack",
+    "kind": "web",
+    "page": "slack_inc_ledger.html",
+    "host": "app.slack.com"
+  },
+  {
+    "id": "slack_dm_nadia",
+    "app": "Slack",
+    "bundle": "com.tinyspeck.slackmacgap",
+    "window": "Nadia Voss (DM) - Halyard - Slack",
+    "kind": "web",
+    "page": "slack_dm_nadia.html",
+    "host": "app.slack.com"
+  },
+  {
+    "id": "term_ledger",
+    "app": "Terminal",
+    "bundle": "com.apple.Terminal",
+    "window": "ledger — -zsh — 132×40",
+    "kind": "native-text",
+    "field": {
+      "role": "AXTextArea",
+      "label": "",
+      "placeholder": ""
+    }
+  },
+  {
+    "id": "term_logs",
+    "app": "Terminal",
+    "bundle": "com.apple.Terminal",
+    "window": "logs — -zsh — 132×40",
+    "kind": "native-text",
+    "field": {
+      "role": "AXTextArea",
+      "label": "",
+      "placeholder": ""
+    }
+  },
+  {
+    "id": "vscode_editor",
+    "app": "Code",
+    "bundle": "com.microsoft.VSCode",
+    "window": "transfers.py — ledger",
+    "kind": "native-text",
+    "field": {
+      "role": "AXTextArea",
+      "label": "The editor is not accessible at this time. Press Option+F1 for more options.",
+      "placeholder": ""
+    }
+  },
+  {
+    "id": "vscode_scm",
+    "app": "Code",
+    "bundle": "com.microsoft.VSCode",
+    "window": "transfers.py — ledger",
+    "kind": "native-field",
+    "field": {
+      "role": "AXTextArea",
+      "label": "Source Control Input",
+      "placeholder": ""
+    }
+  },
+  {
+    "id": "vscode_search",
+    "app": "Code",
+    "bundle": "com.microsoft.VSCode",
+    "window": "transfers.py — ledger",
+    "kind": "native-field",
+    "field": {
+      "role": "AXTextArea",
+      "label": "Search: Type Search Term and press Enter to search",
+      "placeholder": "Search"
+    }
+  },
+  {
+    "id": "gmail_inbox_f",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Inbox (6) - ines@brindle.example - Gmail",
+    "kind": "web",
+    "page": "gmail_inbox_f.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_compose_f",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Inbox (6) - ines@brindle.example - Gmail",
+    "kind": "web",
+    "page": "gmail_compose_f.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_marcus",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Re: Brindle seed - wire and signature page - ines@brindle.example - Gmail",
+    "kind": "web",
+    "page": "gmail_reply_marcus.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_elena",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Brindle SAFE for signature - ines@brindle.example - Gmail",
+    "kind": "web",
+    "page": "gmail_reply_elena.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_sunil",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Intro from Marcus - ines@brindle.example - Gmail",
+    "kind": "web",
+    "page": "gmail_reply_sunil.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "gmail_reply_dana",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Re: Brindle update - ines@brindle.example - Gmail",
+    "kind": "web",
+    "page": "gmail_reply_dana.html",
+    "host": "mail.google.com"
+  },
+  {
+    "id": "crm_person_new",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "New person - Investors - Attio",
+    "kind": "web",
+    "page": "crm_person_new.html",
+    "host": "app.attio.com"
+  },
+  {
+    "id": "dataroom_share",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Brindle Seed Data Room - DocSend",
+    "kind": "web",
+    "page": "dataroom_share.html",
+    "host": "app.docsend.com"
+  },
+  {
+    "id": "bank_onboarding",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Business details - Northbridge Business Bank",
+    "kind": "web",
+    "page": "bank_onboarding.html",
+    "host": "app.northbridgebank.example"
+  },
+  {
+    "id": "bank_login",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Sign in - Northbridge Business Bank",
+    "kind": "web",
+    "page": "bank_login.html",
+    "host": "app.northbridgebank.example"
+  },
+  {
+    "id": "payroll_signup",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Create your account - Gusto",
+    "kind": "web",
+    "page": "payroll_signup.html",
+    "host": "app.gusto.com"
+  },
+  {
+    "id": "notion_update",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Q3 2026 investor update | Notion",
+    "kind": "web",
+    "page": "notion_update.html",
+    "host": "www.notion.so"
+  },
+  {
+    "id": "stripe_dashboard",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Home - Brindle - Stripe",
+    "kind": "web",
+    "page": "stripe_dashboard.html",
+    "host": "dashboard.stripe.com"
+  },
+  {
+    "id": "calendly_settings",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Event Types - Calendly",
+    "kind": "web",
+    "page": "calendly_settings.html",
+    "host": "calendly.com"
+  },
+  {
+    "id": "linkedin_investor",
+    "app": "Safari",
+    "bundle": "com.apple.Safari",
+    "window": "Marcus Webb | LinkedIn",
+    "kind": "web",
+    "page": "linkedin_investor.html",
+    "host": "www.linkedin.com"
+  },
+  {
+    "id": "slack_dm_tavi",
+    "app": "Slack",
+    "bundle": "com.tinyspeck.slackmacgap",
+    "window": "Tavi Ruiz (DM) - Brindle - Slack",
+    "kind": "web",
+    "page": "slack_dm_tavi.html",
+    "host": "app.slack.com"
+  },
+  {
+    "id": "notes_company",
+    "app": "Notes",
+    "bundle": "com.apple.Notes",
+    "window": "Notes",
+    "kind": "native-text",
+    "field": {
+      "role": "AXTextArea",
+      "label": "",
+      "placeholder": ""
+    }
+  },
+  {
+    "id": "messages_rhea",
+    "app": "Messages",
+    "bundle": "com.apple.MobileSMS",
+    "window": "Rhea Kapoor",
+    "kind": "native-field",
+    "field": {
+      "role": "AXTextArea",
+      "label": "Message",
+      "placeholder": "iMessage"
+    }
+  }
+]

@@ -71,7 +71,7 @@ public enum SelfCheck {
         guard field.currentEditor() != nil else {
             return "FAIL — field never took focus (key=\(win.isKeyWindow))"
         }
-        model.controller.smartPaste()
+        model.controller.smartPaste(intercepted: false)
 
         // Wait for the decision + synthesized paste to land. The budget
         // exceeds the 10s Jev timeout so a hanging request can't fake a FAIL.
