@@ -50,15 +50,16 @@ def build(app):
 
 def capture(app, step, appearance, out, burst, env, wait):
     tag = app.removesuffix(".app")
-    proc = f"{app}/Contents/MacOS/Cue"
+    # Bracketed first letter: the pattern must not match the ssh shell whose command line carries this script.
+    proc = f"[{app[0]}]{app[1:]}/Contents/MacOS/Cue"
     envs = " ".join(f"--env {shlex.quote(e)}" for e in [f"OB_STEP={step}", f"OB_APPEARANCE={appearance}", *env])
     frames = max(burst, 1)
     script = f"""
 until mkdir {LOCK} 2>/dev/null; do sleep 1; done
-trap 'rmdir {LOCK}; pkill -f {proc}' EXIT
-pkill -f CueDebug; sleep 0.5
+trap 'rmdir {LOCK}; pkill -f "{proc}"' EXIT
+pkill -f '[C]ueDebug[^ ]*/Contents/MacOS/Cue'; sleep 0.5
 open -n {envs} ~/cue-live/{app} --args -onboardingDone NO -ApplePersistenceIgnoreState YES
-for i in $(seq 1 40); do P=$(pgrep -f {proc}) && {DRIVER} call list_windows "{{\\"pid\\":$P}}" | grep -q Welcome && break; sleep 0.25; done
+for i in $(seq 1 40); do P=$(pgrep -f '{proc}') && {DRIVER} call list_windows "{{\\"pid\\":$P}}" | grep -q Welcome && break; sleep 0.25; done
 {'sleep ' + str(wait) if burst <= 1 else ''}
 {DRIVER} call list_windows "{{\\"pid\\":$P}}" > /tmp/obwin-{tag}.json
 for i in $(seq 1 {frames}); do {DRIVER} call get_desktop_state "{{\\"screenshot_out_file\\":\\"/tmp/obcap-{tag}-$i.png\\"}}" >/dev/null; done
