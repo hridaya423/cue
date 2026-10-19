@@ -301,6 +301,11 @@ public enum ChooserRows {
         let hits = q.isEmpty ? all : own + all.filter {
             !$0.option.text.localizedCaseInsensitiveContains(q) && $0.option.clip.text.localizedCaseInsensitiveContains(q)
         }
-        return Array(hits.prefix(q.isEmpty ? ranked.count : visible))
+        guard q.isEmpty else { return Array(hits.prefix(visible)) }
+        let picks = Array(all.prefix(ranked.count))
+        // The current clipboard always closes the list, so a plain paste is a visible row, not only Esc.
+        guard let latest = history.first, !picks.contains(where: { $0.option.text == latest.text }),
+              let row = rest.first(where: { $0.option.text == latest.text }) else { return picks }
+        return Array(picks.prefix(visible - 1)) + [row]
     }
 }

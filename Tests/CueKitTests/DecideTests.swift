@@ -716,6 +716,17 @@ struct ChooserRowsTests {
         let rows = ChooserRows.rows(ranked: [], history: [curl], query: "curl")
         #expect(rows.first?.option.text == curl.text)
     }
+
+    @Test func currentClipboardClosesTheList() {
+        let history = (0..<12).map { Clip(text: "note \($0)", kind: .text) }
+        let ranked = OptionBuilder.options(from: Array(history.dropFirst()))
+            .map { ScoredOption(option: $0, probability: 0.1, confidence: 0.1) }
+        let rows = ChooserRows.rows(ranked: Array(ranked.prefix(3)), history: history, query: "")
+        #expect(rows.map(\.option.text) == ["note 1", "note 2", "note 3", "note 0"])
+        let full = ChooserRows.rows(ranked: Array(ranked.prefix(9)), history: history, query: "")
+        #expect(full.count == ChooserRows.visible)
+        #expect(full.last?.option.text == "note 0")
+    }
 }
 
 struct CodeSpanTests {

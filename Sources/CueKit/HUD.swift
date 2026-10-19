@@ -417,6 +417,7 @@ struct ChooserView: View {
     /// back to the snippet when a span needs its surrounding line.
     private func contextLine(for o: PasteOption) -> String {
         var parts: [String] = []
+        if o.clip.id == state.history.first?.id, o.text == o.clip.text { parts.append("Clipboard") }
         if !o.clip.sourceApp.isEmpty { parts.append(o.clip.sourceApp) }
         parts.append(o.clip.copiedAt.relativeAge)
         if o.kind != .text, o.snippet != o.text, !o.snippet.isEmpty {
