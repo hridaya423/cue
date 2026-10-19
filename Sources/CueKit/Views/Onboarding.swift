@@ -44,9 +44,16 @@ public struct OnboardingView: View {
     @State private var openedPermissionSettings = false
     /// Which way the last step change went: content slides in from the side it's travelling to.
     @State private var forward = true
+    @State private var lean: CGFloat = 0
+    @State private var markReplay = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(model: AppModel) { self.model = model }
+
+    private var practiceSucceeded: Bool {
+        if let p = practice, case .succeeded = p.phase { return true }
+        return false
+    }
 
     private var settings: AppSettings { model.settings }
 
@@ -55,10 +62,9 @@ public struct OnboardingView: View {
             OBTheme.canvas.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Text("Cue")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(OBTheme.textPrimary)
-                    .padding(.top, 24)
+                Wordmark(height: step == .welcome ? 54 : 22, lean: lean, loops: step == .welcome, replay: markReplay)
+                    .padding(.top, step == .welcome ? 34 : 24)
+                    .padding(.bottom, step == .welcome ? 4 : 2)
 
                 VStack(spacing: 0) {
                     Text(title)
@@ -108,6 +114,11 @@ public struct OnboardingView: View {
         }
         .frame(width: 760, height: 580)
         .ignoresSafeArea()
+        .onContinuousHover { phase in
+            guard !reduceMotion, case .active(let at) = phase else { return }
+            withAnimation(.spring(duration: 0.6, bounce: 0)) { lean = max(-1, min(1, (at.x - 380) / 380)) }
+        }
+        .onChange(of: practiceSucceeded) { _, done in if done { markReplay += 1 } }
         .animation(.timingCurve(0.23, 1, 0.32, 1, duration: reduceMotion ? 0.15 : 0.28), value: step)
         .onAppear {
             trusted = ContextCaptor.isTrusted
@@ -157,7 +168,7 @@ public struct OnboardingView: View {
 
     private var title: String {
         switch step {
-        case .welcome: "Copy it all. Paste just what fits."
+        case .welcome: "A better instinct for paste."
         case .accessibility: "Allow Accessibility access"
         case .trigger: "Make it your shortcut."
         case .models: "Choose your model."
@@ -173,7 +184,7 @@ public struct OnboardingView: View {
 
     private var support: String {
         switch step {
-        case .welcome: "Cue finds the right detail in your copied text."
+        case .welcome: "Copy it all. Cue pastes just the part that fits the field."
         case .accessibility: "Cue needs permission to read field labels and paste into your apps."
         case .trigger: "Choose when Cue steps in."
         case .models: "Run a model on your Mac or connect a hosted service."
