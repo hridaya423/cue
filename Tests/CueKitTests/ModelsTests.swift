@@ -97,8 +97,7 @@ struct ModelRolesTests {
     @Test func wrongPastesWeighDouble() {
         // 88% right with 10% wrong loses accuracy to 84% with 1% wrong.
         let r = ModelRoles.roles(from: [b("bold", 0.88, 0.10, 200), b("careful", 0.84, 0.01, 250)])
-        #expect(r.first?.role == .mostAccurate)
-        #expect(r.first?.bench.model == "careful")
+        #expect(r.contains { $0.role == .mostAccurate && $0.bench.model == "careful" })
         #expect(r.contains { $0.role == .smallest && $0.bench.model == "bold" })
     }
 
@@ -107,19 +106,13 @@ struct ModelRolesTests {
         // best fill the later roles.
         let r = ModelRoles.roles(from: [b("a", 0.95, 0, 100, disk: 0.4), b("b", 0.85, 0.02, 200),
                                         b("c", 0.82, 0.02, 300, disk: 0.5)])
-        #expect(r.map(\.role) == [.mostAccurate, .smallest])
-        #expect(r.map(\.bench.model) == ["a", "c"])
-    }
-
-    @Test func smallestLeadsOnAnEightGigabyteMac() {
-        let data = [b("accurate", 0.92, 0.01, 250, disk: 3), b("light", 0.89, 0.04, 350, disk: 0.7)]
-        #expect(ModelRoles.roles(from: data, ramGB: 16).map(\.bench.model) == ["accurate", "light"])
-        #expect(ModelRoles.roles(from: data, ramGB: 8).map(\.role) == [.smallest, .mostAccurate])
+        #expect(r.map(\.role) == [.smallest, .mostAccurate])
+        #expect(r.map(\.bench.model) == ["c", "a"])
     }
 
     @Test func tieOnQualityGoesToFewerWrong() {
         let r = ModelRoles.roles(from: [b("x", 0.90, 0.05, 300), b("y", 0.84, 0.02, 300)])
-        #expect(r.first?.bench.model == "y")
+        #expect(r.first { $0.role == .mostAccurate }?.bench.model == "y")
     }
 
     @Test func overBudgetModelsGetNoRole() {

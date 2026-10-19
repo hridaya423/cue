@@ -208,7 +208,7 @@ public enum ModelCatalog {
 
     /// Runs on Metal through mlx-lm (`decider_mlx_server.py`): decider's own prompt building and readout,
     /// fp16 weights, padded batches split when that's faster. Parity with decider's torch path: max |Δp|
-    /// 0.0099, no argmax flips. The default local model: it meets the chooser gate kev doesn't.
+    /// 0.0099, no argmax flips. The most accurate local model (1% wrong).
     public static let decider = ModelSpec(
         id: "decider", title: "Decider", rank: 15, reason: "Full fine-tunes", defaultPort: 8790,
         blurb: "Picks the right clip most often in Cue’s tests (1% wrong), about 250 ms at worst on Apple silicon.",
