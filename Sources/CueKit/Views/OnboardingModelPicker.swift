@@ -380,10 +380,23 @@ struct OnboardingModels: View {
 
     /// The footer button mirrors the real model/connection state.
     private func syncPrimary() {
+        ModelsStageChoice.shared.pick = stagePick
         if hosted {
             primary = hostedPrimary
         } else {
             primary = localPrimary
+        }
+    }
+
+    /// What the right-hand stage demonstrates: the picker's live choice, not the not-yet-saved setting.
+    private var stagePick: ModelsStageScene.Pick {
+        if !hosted {
+            return .init(name: selectedSpec?.title ?? "On-device model", detail: "On this Mac · private", symbol: "lock.fill")
+        }
+        switch settings.provider {
+        case .jevDirect, .jevGateway: return .init(name: settings.provider.title, detail: "Hosted", symbol: "cloud.fill")
+        case .custom: return .init(name: "Custom endpoint", detail: "Your server", symbol: "network")
+        default: return .init(name: "Hosted model", detail: "Pick a provider", symbol: "cloud.fill")
         }
     }
 
