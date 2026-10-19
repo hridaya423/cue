@@ -152,9 +152,10 @@ public enum OptionBuilder {
     /// grows with every option line, and typing in the chooser reaches the rest.
     public static let recentWindow = 20
     public static let maxOptions = 20
-    /// The model is offered the clipboard plus what you copied in the last 15 minutes (and pins). Choices
-    /// make sense for a burst of copies; anything older is something you'd search for, not a guess Cue makes.
-    public static let freshFor: TimeInterval = 15 * 60
+    /// The model is offered the clipboard plus what you copied in the last 2 hours (and pins); older is a search.
+    /// 15 minutes cost 92% → 87% right and 1% → 4% wrong on CueEval: the right address copied an hour ago
+    /// fell out, and the one email left pasted with no model call.
+    public static let freshFor: TimeInterval = 2 * 3600
 
     /// Newest first. Each clip contributes every detected email/phone/URL
     /// span plus the clip itself (skipped when the clip IS one span —

@@ -133,7 +133,7 @@ struct MenuPanel: View {
     private var navClips: [Clip] { Array(matches.prefix(30)) }
     private var clipboard: Clip? { filter.isEmpty ? clips.first : nil }
     private var listed: [Clip] { clipboard == nil ? navClips : Array(navClips.dropFirst()) }
-    /// Pinned first, then by age: the last 15 minutes (what smart paste draws from), the rest of today, older.
+    /// Pinned first, then by age: the last 2 hours (what smart paste draws from), the rest of today, older.
     private var sections: [(title: String, rows: [Clip])] {
         guard filter.isEmpty else { return [("", listed)] }
         let unpinned = listed.filter { !$0.pinned }

@@ -2,12 +2,11 @@
 """Laya behind TypeSafe's System One contract, for Cue.
 
     pip install laya
-    python3 Scripts/laya_server.py          # POST http://127.0.0.1:8765/v1/systemone
+    python3 Scripts/laya_server.py 8765 <hfRepo> <variant>   # POST http://127.0.0.1:8765/v1/systemone
 
-The app sends {"state": ..., "model": "laya"|"multilingual"|"typed-decisions",
-"questions": {id: {type, instructions, criteria}}} and gets the standard
-{model, usage, answers} shape back. "laya" (or anything unrecognized) lets the
-Router auto-pick the checkpoint; the other two pin it.
+The app launches it with the chosen variant ("laya" | "multilingual" | "typed-decisions") and only
+that checkpoint is loaded: preloading all three cost 6.3 GB, one costs about a third of that.
+Every request is answered by that checkpoint. With no variant given, the Router auto-picks per request.
 """
 import json
 import os
@@ -17,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import laya  # noqa: F401  — a clear ImportError here means: pip install laya
 from laya import Router
 
-MODELS = {"multilingual": "multilingual", "typed-decisions": "typed-decisions"}
+MODELS = {"laya": "english", "multilingual": "multilingual", "typed-decisions": "typed-decisions"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -31,7 +30,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"detail": "not found"})
         try:
             req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-            model = MODELS.get(req.get("model") or "")
+            model = pinned or MODELS.get(req.get("model") or "")
             if model:
                 res = router.predict(req["state"], req["questions"], model=model)
             else:
@@ -62,7 +61,12 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("LAYA_PORT", sys.argv[1] if len(sys.argv) > 1 else "8765"))
-    print("loading laya checkpoints…", flush=True)
-    router = Router(preload=True)
+    pinned = MODELS.get(sys.argv[3]) if len(sys.argv) > 3 else None
+    print(f"loading laya checkpoint {pinned or 'all'}…", flush=True)
+    if pinned:
+        router = Router(max_loaded=1)
+        router.preload([pinned])
+    else:
+        router = Router(preload=True)
     print(f"laya serving on http://127.0.0.1:{port}/v1/systemone", flush=True)
     HTTPServer(("127.0.0.1", port), Handler).serve_forever()
