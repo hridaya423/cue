@@ -22,17 +22,42 @@ struct OnboardingModels: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var onAdvance: () -> Void = {}
+    /// In Settings there is no footer and nothing to advance to: the action sits under the picker and appears only
+    /// when the choice still needs one (download, start, test).
+    var inSettings = false
 
     private var settings: AppSettings { model.settings }
 
-    init(model: AppModel, primary: Binding<OBPrimary?>, onAdvance: @escaping () -> Void) {
+    init(model: AppModel, primary: Binding<OBPrimary?>, inSettings: Bool = false, onAdvance: @escaping () -> Void = {}) {
         self.model = model
         self._primary = primary
+        self.inSettings = inSettings
         self.onAdvance = onAdvance
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            options
+            if inSettings, let primary, !primary.title.isEmpty {
+                HStack {
+                    Spacer()
+                    Button(primary.title, action: primary.action).disabled(!primary.enabled)
+                }
+                .padding(.top, 6)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear(perform: seedSelection)
+        .onChange(of: choice) { _, _ in syncPrimary() }
+        .onChange(of: settings.localVariantID) { _, _ in syncPrimary() }
+        .onChange(of: model.models.states) { _, _ in syncPrimary() }
+        .onChange(of: testResult) { _, _ in syncPrimary() }
+        .onChange(of: testing) { _, _ in syncPrimary() }
+        .onChange(of: settings.provider.rawValue) { _, _ in syncPrimary() }
+    }
+
+    @ViewBuilder private var options: some View {
+        Group {
             if browsing {
                 browser
             } else if expanded {
@@ -63,13 +88,6 @@ struct OnboardingModels: View {
                 .buttonStyle(.plain)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear(perform: seedSelection)
-        .onChange(of: choice) { _, _ in syncPrimary() }
-        .onChange(of: settings.localVariantID) { _, _ in syncPrimary() }
-        .onChange(of: model.models.states) { _, _ in syncPrimary() }
-        .onChange(of: testResult) { _, _ in syncPrimary() }
-        .onChange(of: testing) { _, _ in syncPrimary() }
     }
 
     // MARK: - Rows
@@ -399,8 +417,8 @@ struct OnboardingModels: View {
     private func syncPrimary() {
         ModelsStageChoice.shared.pick = stagePick
         switch choice {
-        case .local: primary = localPrimary
-        case .off: primary = OBPrimary(title: "Continue") { onAdvance() }
+        case .local: primary = inSettings ? settingsLocalPrimary : localPrimary
+        case .off: primary = inSettings ? nil : OBPrimary(title: "Continue") { onAdvance() }
         case .hosted, .gateway, .custom: primary = hostedPrimary
         }
     }
@@ -424,14 +442,29 @@ struct OnboardingModels: View {
         }
     }
 
-    private var hostedPrimary: OBPrimary {
+    /// What the chosen local model still needs before it can answer; nothing once it is running.
+    private var settingsLocalPrimary: OBPrimary? {
+        guard let spec = selectedSpec, !spec.support.isUnsupported,
+              let r = ModelCatalog.variant(modelID: spec.id, variantID: settings.localVariantID) else { return nil }
+        let wanted = model.models.installedVariant(of: spec.id) == r.variant.id
+        switch model.models.status(of: spec.id) {
+        case .installing, .starting: return nil
+        case .running where wanted && settings.provider == .local: return nil
+        case .installed where wanted, .failed where wanted, .running where wanted:
+            return OBPrimary(title: "Start \(spec.title)") { prepare(spec) }
+        default:
+            return OBPrimary(title: "Download \(spec.title)") { prepare(spec) }
+        }
+    }
+
+    private var hostedPrimary: OBPrimary? {
         if settings.provider.needsAPIKey,
            (settings.provider == .jevGateway ? settings.gatewayKey : settings.apiKey)?.isEmpty != false {
             return OBPrimary(title: "Test connection", enabled: false)
         }
         if testing { return OBPrimary(title: "Testing…", enabled: false) }
         if case .connected = testResult {
-            return OBPrimary(title: "Continue") { onAdvance() }
+            return inSettings ? nil : OBPrimary(title: "Continue") { onAdvance() }
         }
         return OBPrimary(title: "Test connection") { runTest() }
     }
@@ -444,10 +477,11 @@ struct OnboardingModels: View {
         case .jevDirect: choice = .hosted
         case .jevGateway: choice = .gateway
         case .custom: choice = .custom
+        case .off where inSettings: choice = .off
         // A first run arrives with no provider: show the recommended model, saved only on Continue.
         case .local, .off: choice = .local(ModelCatalog.model(settings.localModelID)?.id ?? recommended)
         }
-        advancedExpanded = [.gateway, .custom].contains(choice)
+        advancedExpanded = [.gateway, .custom, .off].contains(choice)
         #if DEBUG
         if let open = ProcessInfo.processInfo.environment["OB_MODELS_OPEN"] {
             expanded = true

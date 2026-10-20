@@ -55,6 +55,33 @@ struct MenuPanelTests {
         }
     }
 
+    /// `PANEL_SHOT=<dir> swift test --filter MenuPanelTests/renderWindows` draws History and every Settings tab.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["PANEL_SHOT"] != nil))
+    func renderWindows() throws {
+        let env = ProcessInfo.processInfo.environment
+        let dir = URL(fileURLWithPath: env["PANEL_SHOT"]!)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let clips: [Clip] = try env["PANEL_CLIPS"].map {
+            let d = JSONDecoder()
+            d.dateDecodingStrategy = .secondsSince1970
+            return try d.decode([Clip].self, from: Data(contentsOf: URL(fileURLWithPath: $0)))
+        } ?? []
+        let actions = MenuPanelActions(paste: { _ in }, togglePin: { _ in }, remove: { _ in },
+                                       openHistory: {}, openSettings: {})
+        _ = NSApplication.shared
+        let model = AppModel(live: false)
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            try snapshot(HistoryPanel(clips: clips, queued: nil, smartPasteKeys: "⌘V", actions: actions)
+                            .frame(width: 760, height: 500),
+                         material: .windowBackground, appearance: appearance,
+                         to: dir.appendingPathComponent("history-\(name).png"))
+            for tab in SettingsTab.allCases {
+                try snapshot(SettingsView(model: model, tab: tab), material: .windowBackground, appearance: appearance,
+                             to: dir.appendingPathComponent("settings-\(tab.rawValue.lowercased())-\(name).png"))
+            }
+        }
+    }
+
     private func snapshot(_ view: some View, material: NSVisualEffectView.Material, appearance: NSAppearance.Name,
                           to url: URL) throws {
         let host = NSHostingView(rootView: view)

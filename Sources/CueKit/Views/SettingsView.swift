@@ -97,7 +97,7 @@ struct HotkeyRecorder: NSViewRepresentable {
 
         override func accessibilityRole() -> NSAccessibility.Role? { .button }
         override func accessibilityTitle() -> String? {
-            recording ? "Recording shortcut — press keys, Escape cancels" : "Shortcut: \(label)"
+            recording ? "Recording shortcut. Press keys, or Escape to cancel." : "Shortcut: \(label)"
         }
         override func accessibilityPerformPress() -> Bool {
             recording = true
@@ -126,6 +126,7 @@ public struct SettingsView: View {
     var tab: SettingsTab
     @State private var loginError: String?
     @State private var confirmClear = false
+    @State private var modelAction: OBPrimary?
 
     public var body: some View {
         Form {
@@ -138,8 +139,8 @@ public struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 520)
-        // The model list is long: a fixed pane that scrolls, not a window taller than the screen.
-        .frame(height: tab == .model ? 560 : nil)
+        // Room for the model list opened in place, so opening it never scrolls a pane the window didn't grow for.
+        .frame(height: tab == .model ? 500 : nil)
         .fixedSize(horizontal: false, vertical: tab != .model)
     }
 
@@ -209,12 +210,15 @@ public struct SettingsView: View {
 
     @ViewBuilder private var modelPane: some View {
         Section {
-            ProviderPicker(model: model)
+            OnboardingModels(model: model, primary: $modelAction, inSettings: true)
+        } footer: {
             if model.providerStatus.state == .unreachable {
-                Label("Can’t reach the model. Pastes work normally until it’s back.",
-                      systemImage: "exclamationmark.triangle")
+                Label("Can’t reach the model. Pastes stay plain until it’s back.", systemImage: "exclamationmark.triangle")
                     .font(.callout)
                     .foregroundStyle(.orange)
+            } else {
+                Text("Models on this Mac keep your clips private. Hosted models need a key.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
         }
     }
@@ -303,11 +307,11 @@ public struct SettingsView: View {
             }
         case .ready:
             LabeledContent("Redaction model") {
-                Text("downloaded").foregroundStyle(.secondary)
+                Text("Downloaded").foregroundStyle(.secondary)
             }
         case .failed(let msg):
             LabeledContent("Redaction model") {
-                Text("failed — \(msg)").foregroundStyle(.red).lineLimit(1)
+                Text("Couldn’t download. \(msg)").foregroundStyle(.red).lineLimit(1)
             }
         }
     }

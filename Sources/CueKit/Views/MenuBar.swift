@@ -456,6 +456,20 @@ enum ClipLook: Equatable {
         }
     }
 
+    var label: String {
+        switch self {
+        case .link: "Link"
+        case .email: "Email"
+        case .number: "Number"
+        case .code: "ID"
+        case .secret: "Key"
+        case .color: "Color"
+        case .snippet: "Code"
+        case .multiline: "Note"
+        case .text: "Text"
+        }
+    }
+
     var isMono: Bool { [.number, .code, .secret, .snippet, .color].contains(self) }
 
     /// A secret shows its first and last few characters, enough to tell two keys apart.

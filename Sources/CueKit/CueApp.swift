@@ -28,8 +28,11 @@ public final class AppModel {
 
     private var windows: [String: NSWindow] = [:]
 
-    public init() {
-        store = ClipStore(capacity: self.settings.historyCap)
+    /// `live: false` builds the graph without side effects (no hotkeys, clipboard monitor, model servers or saved
+    /// history) so windows can be drawn off-screen.
+    public init(live: Bool = true) {
+        store = live ? ClipStore(capacity: self.settings.historyCap)
+            : ClipStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("cue-preview-\(UUID().uuidString).json"))
         monitor = ClipboardMonitor(store: store, settings: settings)
         hotkeys = HotkeyManager(settings: settings)
         executor = PasteExecutor(monitor: monitor, hotkeys: hotkeys)
@@ -50,6 +53,7 @@ public final class AppModel {
             store: store, settings: settings, prefetch: prefetch
         ) { [ctl] in ctl.makeEngine() }
 
+        guard live else { return }
         hotkeys.interceptCmdV = settings.triggerMode == .intercept
         hotkeys.reregister()
         hotkeys.on(.smartPaste) { [weak self] in
@@ -281,7 +285,7 @@ public final class AppModel {
         }
         win.title = id == "history" ? "Clipboard History" : "Welcome to Cue"
         win.isReleasedWhenClosed = false
-        let size = id == "history" ? NSSize(width: 480, height: 420) : OBLayout.window
+        let size = id == "history" ? NSSize(width: 760, height: 500) : OBLayout.window
         if id == "onboarding" {
             win.setFrame(NSRect(origin: win.frame.origin, size: size), display: false)
         } else {
