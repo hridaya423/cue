@@ -3,7 +3,7 @@ build/
 *.xcuserdata
 .DS_Store
 .devin/
-Scripts/__pycache__/
+__pycache__/
 output/
 Evals/results/*.log
 Evals/results/*.err
@@ -20,3 +20,8 @@ web/public/downloads/
 reports/
 research_notes/
 launch/
+docs/design/
+docs/plans/
+docs/models/
+Evals/results/hill/
+web/progress.md
