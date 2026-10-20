@@ -9,7 +9,7 @@ const jsonLd = {
   operatingSystem: "macOS 15 or later",
   applicationCategory: "UtilitiesApplication",
   description: "A clipboard for Mac that pastes the part of what you copied that fits the focused field.",
-  downloadUrl: "https://cue.app/downloads/Cue.dmg",
+  downloadUrl: "https://cue.hridya.tech/downloads/Cue.dmg",
 };
 
 const tape = (placeholder: string, text: string) => (

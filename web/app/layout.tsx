@@ -2,11 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://cue.app"),
+  metadataBase: new URL("https://cue.hridya.tech"),
   title: "Cue: smart paste for Mac | A better instinct for paste",
   description:
     "Cue is a clipboard for Mac that reads the field you're in and pastes the part of what you copied that fits. On-device models, plain paste when unsure.",
-  robots: { index: false, follow: false },
   alternates: { canonical: "/" },
   icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.png" },
   openGraph: {
