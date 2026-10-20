@@ -12,7 +12,6 @@ Evals/results/v3-raw*.jsonl
 Evals/results/*-raw.jsonl
 .jury/
 .archive/
-web/public/downloads/
 .bar/
 .critic/
 .lab-shots/

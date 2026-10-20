@@ -9,7 +9,7 @@ const jsonLd = {
   operatingSystem: "macOS 15 or later",
   applicationCategory: "UtilitiesApplication",
   description: "A clipboard for Mac that pastes the part of what you copied that fits the focused field.",
-  downloadUrl: "https://cue.hridya.tech/downloads/Cue.dmg",
+  downloadUrl: "https://github.com/hridaya423/cue/releases/latest/download/Cue.dmg",
 };
 
 const tape = (placeholder: string, text: string) => (
@@ -36,7 +36,7 @@ export default function Home() {
           <div className="lead__copy">
             <h1 id="hero-title" className="lead__title">A better instinct for&nbsp;paste.</h1>
             <p className="lead__lede">Cue reads the field you&apos;re in and pastes the part of your clipboard that fits.</p>
-            <a className="button button--large button--paper" href="/downloads/Cue.dmg" download>Download for Mac</a>
+            <a className="button button--large button--paper" href="https://github.com/hridaya423/cue/releases/latest/download/Cue.dmg">Download for Mac</a>
           </div>
 
           <figure className="desk" aria-label="In a chat channel, Nadia writes: Can you loop in Priya on the brief? Her email is priya.shah@kiln.studio and her number is 020 7946 0321. The message is copied. In the To field of a new email, only the address priya.shah@kiln.studio is pasted.">
@@ -146,7 +146,7 @@ export default function Home() {
       <footer className="close" aria-labelledby="close-title">
         <div className="close__copy">
           <h2 id="close-title" className="close__title">Paste the part that fits.</h2>
-          <a className="button button--large" href="/downloads/Cue.dmg" download>Download for Mac</a>
+          <a className="button button--large" href="https://github.com/hridaya423/cue/releases/latest/download/Cue.dmg">Download for Mac</a>
         </div>
         <Mark className="close__mark" />
         <div className="close__bar">
