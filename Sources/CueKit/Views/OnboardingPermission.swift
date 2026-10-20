@@ -31,7 +31,7 @@ extension OnboardingView {
 
     var permissionStage: some View {
         PermissionScene(granted: trusted)
-            .frame(width: 372, height: 504, alignment: .topLeading)
+            .frame(width: 372, height: 504)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("System Settings, Privacy & Security, Accessibility: the switch next to Cue turns on")
     }
@@ -57,165 +57,61 @@ extension OnboardingView {
     }
 }
 
-/// System Settings › Privacy & Security › Accessibility, drawn large enough to bleed off the stage's
-/// bottom edge. The switch next to Cue plays a calm loop (cursor glides in, clicks, switch lights up) and
-/// sleeps between loops; with Reduce Motion, or once access is granted, it shows the finished state.
+/// The Accessibility list in System Settings, cropped to four apps with Cue in focus. One loop: the cursor
+/// glides to Cue's switch, clicks, the switch turns on and glows, the result holds, then the pane fades
+/// out and back in with the switch already off. With Reduce Motion, or once access is granted, it shows
+/// the finished state.
 struct PermissionScene: View {
     var granted: Bool
     @State private var cueOn = false
+    @State private var shown = true
     @Environment(\.colorScheme) private var scheme
 
-    private static let sidebar: [(String, Color, String)] = [
-        ("wifi", .blue, "Wi\u{2011}Fi"), ("bell.badge.fill", .red, "Notifications"), ("speaker.wave.2.fill", .pink, "Sound"),
-        ("moon.fill", .indigo, "Focus"), ("gearshape.fill", .gray, "General"), ("circle.lefthalf.filled", .blue, "Appearance"),
-        ("figure.arms.open", .blue, "Accessibility"), ("hand.raised.fill", .blue, "Privacy & Security"),
+    private static let apps: [(name: String, bundleID: String?, on: Bool)] = [
+        ("Automator", "com.apple.Automator", false), ("Cue", nil, false),
+        ("Safari", "com.apple.Safari", true), ("Terminal", "com.apple.Terminal", true),
     ]
-    private static let apps: [(String?, Bool)] = [
-        ("com.apple.Automator", false), (nil, false), ("com.apple.Notes", false), ("com.apple.Preview", false),
-        ("com.apple.reminders", false), ("com.apple.Safari", true), ("com.apple.ScriptEditor2", false),
-        ("com.apple.shortcuts", true), ("com.apple.Terminal", true), ("com.apple.TextEdit", false),
-    ]
-    private static let names = ["Automator", "Cue", "Notes", "Preview", "Reminders", "Safari", "Script Editor", "Shortcuts", "Terminal", "TextEdit"]
+    private static let ink = Color(red: 0.01, green: 0.05, blue: 0.25)
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            window
-                .frame(width: 424, height: 620)
-                .background(Color(nsColor: .windowBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0.76), .init(color: .black.opacity(0.1), location: 0.95)],
-                                     startPoint: .top, endPoint: .bottom))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(.white.opacity(scheme == .dark ? 0.16 : 0.7), lineWidth: 0.75))
-                .shadow(color: Color(red: 0.01, green: 0.05, blue: 0.25).opacity(0.5), radius: 34, y: 20)
-                .shadow(color: Color(red: 0.01, green: 0.05, blue: 0.25).opacity(0.3), radius: 4, y: 2)
-                .offset(x: -22, y: 30)
-            appIcon(NSApp.applicationIconImage, size: 88)
-                .rotationEffect(.degrees(-7))
-                .shadow(color: Color(red: 0.01, green: 0.05, blue: 0.25).opacity(0.45), radius: 16, y: 10)
-                .offset(x: 296, y: -26)
-            toast
-                .offset(x: -8, y: -6)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Accessibility").font(.system(size: 17, weight: .semibold))
+            VStack(spacing: 0) {
+                ForEach(Array(Self.apps.enumerated()), id: \.offset) { i, app in
+                    if i > 0 { Divider().padding(.leading, 58) }
+                    appRow(app)
+                }
+            }
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
         }
+        .padding(20)
+        .frame(width: 340)
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(.white.opacity(scheme == .dark ? 0.16 : 0.7), lineWidth: 0.75))
+        .shadow(color: Self.ink.opacity(0.5), radius: 34, y: 20)
+        .shadow(color: Self.ink.opacity(0.3), radius: 4, y: 2)
+        .opacity(shown ? 1 : 0)
+        .animation(shown ? OBMotion.moderate : OBMotion.exit, value: shown)
         .allowsHitTesting(false)
     }
 
-    private var toast: some View {
-        let shown = cueOn || granted
-        return HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 22))
-                .foregroundStyle(.green)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Accessibility is on").font(.system(size: 13, weight: .semibold))
-                Text("Cue can read field labels").font(.system(size: 11.5)).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.leading, 12)
-        .padding(.trailing, 16)
-        .frame(height: 48)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(scheme == .dark ? 0.14 : 0.6), lineWidth: 0.75))
-        .shadow(color: Color(red: 0.01, green: 0.05, blue: 0.25).opacity(0.35), radius: 14, y: 8)
-        .opacity(shown ? 1 : 0)
-        .offset(y: shown ? 0 : 8)
-        .scaleEffect(shown ? 1 : 0.96, anchor: .bottomLeading)
-        .animation(.spring(duration: 0.5, bounce: 0.12), value: shown)
-    }
-
-    private var window: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    ForEach([Color.red, .yellow, .green], id: \.self) { Circle().fill($0.opacity(0.9)).frame(width: 12, height: 12) }
-                }
-                .padding(.bottom, 10)
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                    Text("Search")
-                    Spacer()
-                }
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .frame(height: 26)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .padding(.bottom, 8)
-                ForEach(Self.sidebar, id: \.2) { symbol, tint, title in
-                    let selected = title == "Privacy & Security"
-                    HStack(spacing: 7) {
-                        Image(systemName: symbol)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 20, height: 20)
-                            .background(tint.gradient, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                        Text(title).font(.system(size: 12)).lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(selected ? Color.white : Color.primary)
-                    .padding(.horizontal, 6)
-                    .frame(height: 30)
-                    .background(selected ? OBTheme.action : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 14)
-            .frame(width: 172)
-            .background(.black.opacity(0.04))
-            .overlay(alignment: .trailing) { Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: 0.5) }
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 12) {
-                    Image(systemName: "chevron.left")
-                    Image(systemName: "chevron.right").opacity(0.35)
-                    Text("Accessibility").font(.system(size: 14, weight: .semibold))
-                    Spacer()
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.primary.opacity(0.75))
-                .frame(height: 46)
-                Text("Allow the applications below to control your computer.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 10)
-                VStack(spacing: 0) {
-                    ForEach(Array(Self.names.enumerated()), id: \.offset) { i, name in
-                        if i > 0 { Divider().padding(.leading, 46) }
-                        appRow(i, name)
-                    }
-                }
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity)
-            .background(Color(nsColor: .windowBackgroundColor))
-        }
-    }
-
-    @ViewBuilder private func appRow(_ i: Int, _ name: String) -> some View {
-        let isCue = i == 1
-        let on = isCue ? cueOn || granted : Self.apps[i].1
-        HStack(spacing: 10) {
-            if isCue {
-                appIcon(NSApp.applicationIconImage, size: 28)
-            } else {
-                appIcon(Self.icon(Self.apps[i].0), size: 28)
-            }
-            Text(name).font(.system(size: 13, weight: isCue ? .semibold : .regular))
+    @ViewBuilder private func appRow(_ app: (name: String, bundleID: String?, on: Bool)) -> some View {
+        let isCue = app.name == "Cue"
+        HStack(spacing: 12) {
+            appIcon(isCue ? NSApp.applicationIconImage : Self.icon(app.bundleID), size: 36)
+            Text(app.name).font(.system(size: 16, weight: isCue ? .semibold : .regular))
             Spacer()
             if isCue {
-                PermissionSwitchDemo(granted: granted, isOn: $cueOn)
+                PermissionSwitchDemo(granted: granted, isOn: $cueOn, shown: $shown)
             } else {
-                SettingsSwitch(on: on)
+                SettingsSwitch(on: app.on)
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: 50)
-        .background(isCue ? OBTheme.action.opacity(cueOn || granted ? 0.1 : 0) : .clear)
-        .animation(.easeOut(duration: 0.4), value: cueOn)
+        .padding(.horizontal, 14)
+        .frame(height: 60)
+        .opacity(isCue ? 1 : 0.55)
         .zIndex(isCue ? 1 : 0)
     }
 
@@ -232,56 +128,48 @@ struct PermissionScene: View {
     }
 }
 
-/// A macOS switch; the knob slides with a spring and the track fills with the accent.
+/// A macOS switch; the knob slides and the track fills with the accent.
 struct SettingsSwitch: View {
     var on: Bool
 
     var body: some View {
         Capsule()
             .fill(on ? OBTheme.action : Color.primary.opacity(0.16))
-            .frame(width: 38, height: 22)
+            .frame(width: 46, height: 26)
             .overlay {
                 Circle()
                     .fill(.white)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 22, height: 22)
                     .shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
-                    .offset(x: on ? 8 : -8)
+                    .offset(x: on ? 10 : -10)
             }
             .animation(OBMotion.moderate, value: on)
     }
 }
 
-/// Cue's switch: a cursor glides in, clicks, the switch lights up with a ring and a soft glow, the scene
-/// holds, then resets. Every pause is a sleep, so nothing redraws between steps.
+/// Cue's switch and the loop that drives the pane. Every pause is a sleep, so nothing redraws between steps.
 struct PermissionSwitchDemo: View {
     var granted: Bool
     @Binding var isOn: Bool
+    @Binding var shown: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var arrived = false
     @State private var visible = false
     @State private var pressing = false
-    @State private var ring = false
 
-    private static let away = CGSize(width: -150, height: 120)
+    private static let away = CGSize(width: -120, height: 96)
 
     var body: some View {
         let lit = isOn || granted
         ZStack {
             Circle()
                 .fill(OBTheme.action)
-                .frame(width: 64, height: 64)
-                .blur(radius: 16)
-                .opacity(lit ? 0.55 : 0)
-                .scaleEffect(lit ? 1 : 0.4)
-            Capsule()
-                .strokeBorder(OBTheme.action.opacity(0.7), lineWidth: 2)
-                .frame(width: 38, height: 22)
-                .scaleEffect(ring ? 2.1 : 1)
-                .opacity(ring ? 0 : (lit && !reduceMotion ? 0.8 : 0))
+                .frame(width: 44, height: 44)
+                .blur(radius: 12)
+                .opacity(lit ? 0.4 : 0)
             SettingsSwitch(on: lit)
-                .shadow(color: OBTheme.action.opacity(lit ? 0.55 : 0), radius: 8)
         }
-        .animation(.easeOut(duration: 0.5), value: lit)
+        .animation(OBMotion.slow, value: lit)
         .overlay(alignment: .topLeading) {
             if !reduceMotion && !granted {
                 Image(nsImage: NSCursor.arrow.image)
@@ -289,28 +177,30 @@ struct PermissionSwitchDemo: View {
                     .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
                     .scaleEffect(pressing ? 0.86 : 1, anchor: .topLeading)
                     .opacity(visible ? 1 : 0)
-                    .offset(arrived ? CGSize(width: 12, height: 12) : Self.away)
+                    .offset(arrived ? CGSize(width: 16, height: 14) : Self.away)
             }
         }
-        .frame(width: 38, height: 22)
+        .frame(width: 46, height: 26)
         .task(id: granted || reduceMotion) {
-            guard !granted && !reduceMotion else { isOn = true; return }
+            guard !granted && !reduceMotion else { isOn = true; shown = true; return }
             while !Task.isCancelled {
-                isOn = false; ring = false; arrived = false
-                guard await pause(0.5) else { return }
-                withAnimation(.easeOut(duration: 0.3)) { visible = true }
-                withAnimation(.timingCurve(0.16, 1, 0.3, 1, duration: 1.3)) { arrived = true }
-                guard await pause(1.5) else { return }
-                withAnimation(.easeOut(duration: 0.1)) { pressing = true }
-                guard await pause(0.14) else { return }
-                withAnimation(.easeOut(duration: 0.14)) { pressing = false }
-                isOn = true
-                withAnimation(.easeOut(duration: 0.9)) { ring = true }
-                guard await pause(1.4) else { return }
-                withAnimation(.easeIn(duration: 0.4)) { visible = false }
-                guard await pause(3.0) else { return }
-                isOn = false
+                guard await pause(1.2) else { return }
+                withAnimation(OBMotion.moderate) { visible = true }
+                withAnimation(OBMotion.slow) { arrived = true }
                 guard await pause(1.0) else { return }
+                withAnimation(OBMotion.fast) { pressing = true }
+                guard await pause(0.12) else { return }
+                withAnimation(OBMotion.fast) { pressing = false }
+                isOn = true
+                guard await pause(0.7) else { return }
+                withAnimation(OBMotion.exit) { visible = false }
+                guard await pause(2.8) else { return }
+                shown = false
+                guard await pause(0.3) else { return }
+                isOn = false; arrived = false
+                guard await pause(0.7) else { return }
+                shown = true
+                guard await pause(0.35) else { return }
             }
         }
     }
