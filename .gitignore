@@ -10,3 +10,13 @@ Evals/results/*.err
 Evals/results/raw-*.jsonl
 Evals/results/v3-raw*.jsonl
 Evals/results/*-raw.jsonl
+.jury/
+.archive/
+web/public/downloads/
+.bar/
+.critic/
+.lab-shots/
+.vscode/
+reports/
+research_notes/
+launch/
