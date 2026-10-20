@@ -231,18 +231,24 @@ private struct TriggerCardStyle: ButtonStyle {
 
 // MARK: - Stage
 
-/// The chosen trigger doing its job: the keys land and just the email arrives in the field.
-/// Event-driven: it sleeps between steps, so nothing runs while it waits. Reduce Motion shows the arrived state.
+/// The chosen trigger doing its job: the keys go down, the email in the message is selected, and just
+/// that email travels into the field. Event-driven: it sleeps between steps, so nothing runs while it
+/// waits. Reduce Motion shows the arrived state.
 struct TriggerStage: View {
     let keys: [String]
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var ns
     @State private var modsDown = false
     @State private var keyDown = false
+    @State private var selected = false
+    @State private var lifted = false
     @State private var arrived = false
-    @State private var chip = false
+    @State private var settled = false
+    @State private var rect: CGRect?
 
     private let email = OnboardingSample.Target.email.expected
+    private let message = "Reach Mira at mira@example.com or +44 7700 900123."
 
     var body: some View {
         VStack(spacing: 22) {
@@ -251,23 +257,34 @@ struct TriggerStage: View {
                     Text("Copied message")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(OBTheme.textTertiary)
-                    HighlightedParagraph(
-                        text: "Reach Mira at mira@example.com or +44 7700 900123.",
-                        highlights: [email],
-                        fontSize: 15, width: 336)
-                }
-            }
-            VStack(spacing: 14) {
-                HStack(spacing: 8) {
-                    ForEach(Array(keys.enumerated()), id: \.offset) { i, key in
-                        TriggerKey(label: key, size: 72, pressed: i == keys.count - 1 ? keyDown : modsDown, onStage: true)
+                    ZStack(alignment: .topLeading) {
+                        HighlightedParagraph(text: message, highlights: [], fontSize: 15, width: 336)
+                        HighlightedParagraph(text: message, highlights: [email], fontSize: 15, width: 336) { rects in
+                            if rects.count == 1, rect != rects[0] { rect = rects[0] }
+                        }
+                        .opacity(selected ? 1 : 0)
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if let rect, !arrived {
+                            chip(shaded: true)
+                                .matchedGeometryEffect(id: "email", in: ns)
+                                .padding(.leading, rect.minX)
+                                .padding(.top, rect.minY)
+                                .opacity(lifted ? 1 : 0)
+                                .transition(.identity)
+                        }
                     }
                 }
-                Text("Press \(keys.joined()) in the Email field")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .contentTransition(.opacity)
             }
+            HStack(spacing: 6) {
+                ForEach(Array(keys.enumerated()), id: \.offset) { i, key in
+                    let down = i == keys.count - 1 ? keyDown : modsDown
+                    TriggerKey(label: key, size: 44, pressed: down, onStage: true)
+                        .scaleEffect(down ? 0.94 : 1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.trailing, 18)
             OBStageCard {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Email")
@@ -275,14 +292,12 @@ struct TriggerStage: View {
                         .foregroundStyle(OBTheme.textTertiary)
                     ZStack(alignment: .leading) {
                         Capsule().fill(OBTheme.action).frame(width: 1.5, height: 18)
-                            .opacity(arrived ? 0 : 1)
+                            .opacity(arrived && lifted ? 0 : 1)
                         if arrived {
-                            Text(email)
-                                .font(.system(size: 15))
-                                .foregroundStyle(OBTheme.highlightText)
-                                .padding(.horizontal, 2)
-                                .background(OBTheme.highlight.opacity(chip ? 1 : 0), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                .transition(.opacity.combined(with: .offset(y: -10)).combined(with: .scale(scale: 0.96, anchor: .leading)))
+                            chip(shaded: !settled)
+                                .matchedGeometryEffect(id: "email", in: ns)
+                                .opacity(lifted ? 1 : 0)
+                                .transition(.identity)
                         }
                     }
                     .frame(height: 22, alignment: .leading)
@@ -294,23 +309,45 @@ struct TriggerStage: View {
         .task(id: keys) { await play() }
     }
 
+    private func chip(shaded: Bool) -> some View {
+        Text(email)
+            .font(.system(size: 15))
+            .foregroundStyle(OBTheme.highlightText)
+            .fixedSize()
+            .frame(width: rect?.width ?? 134, height: rect?.height ?? 22)
+            .background(OBTheme.highlight.opacity(shaded ? 1 : 0), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+
+    @MainActor private func reset() {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            modsDown = false; keyDown = false; selected = false; lifted = false; arrived = false; settled = false
+        }
+    }
+
     @MainActor private func play() async {
-        modsDown = false; keyDown = false; arrived = false; chip = false
+        reset()
         guard !reduceMotion else {
-            withAnimation(.easeOut(duration: 0.15)) { arrived = true }
+            selected = true; lifted = true; arrived = true; settled = true
             return
         }
-        while await wait(900) {
-            withAnimation(.easeOut(duration: 0.07)) { modsDown = true }
+        while await wait(1200) {
+            withAnimation(.easeOut(duration: 0.08)) { modsDown = true }
             guard await wait(70) else { return }
-            withAnimation(.easeOut(duration: 0.07)) { keyDown = true }
-            guard await wait(150) else { return }
+            withAnimation(.easeOut(duration: 0.08)) { keyDown = true }
+            withAnimation(OBMotion.moderate) { selected = true }
+            guard await wait(450) else { return }
             withAnimation(OBMotion.fast) { modsDown = false; keyDown = false }
-            withAnimation(OBMotion.land) { arrived = true; chip = true }
-            guard await wait(700) else { return }
-            withAnimation(.easeOut(duration: 0.9)) { chip = false }
-            guard await wait(2600) else { return }
-            withAnimation(.easeIn(duration: 0.25)) { arrived = false }
+            guard await wait(300) else { return }
+            lifted = true
+            guard await wait(40) else { return }
+            withAnimation(OBMotion.land) { arrived = true }
+            guard await wait(800) else { return }
+            withAnimation(OBMotion.moderate) { settled = true }
+            guard await wait(3000) else { return }
+            withAnimation(OBMotion.exit) { selected = false; lifted = false }
+            guard await wait(300) else { return }
+            reset()
         }
     }
 
