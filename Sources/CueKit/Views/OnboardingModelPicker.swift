@@ -15,7 +15,7 @@ struct OnboardingModels: View {
 
     @State private var choice: Choice = .off
     @State private var expanded = false
-    @State private var moreExpanded = false
+    @State private var browsing = false
     @State private var advancedExpanded = false
     @State private var testing = false
     @State private var testResult: AppModel.ProviderConnectionResult?
@@ -33,13 +33,12 @@ struct OnboardingModels: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if expanded {
+            if browsing {
+                browser
+            } else if expanded {
                 ForEach(headline) { localRow($0) }
-                if !rest.isEmpty {
-                    disclosure("More models", isExpanded: $moreExpanded) {
-                        ForEach(rest) { localRow($0) }
-                    }
-                }
+                if let spec = selectedSpec, !headline.contains(where: { $0.id == spec.id }) { localRow(spec) }
+                if !rest.isEmpty { moreButton }
                 hostedRow
                 disclosure("Advanced", isExpanded: $advancedExpanded) {
                     gatewayRow
@@ -77,9 +76,74 @@ struct OnboardingModels: View {
 
     /// Catalog order: the role holders first, everything else behind "More models".
     private var headline: [ModelSpec] { ModelCatalog.featured }
+    /// Everything that can run here: supported before experimental, each in catalog order.
     private var rest: [ModelSpec] {
         let head = Set(headline.map(\.id))
-        return ModelCatalog.all.sorted { $0.rank < $1.rank }.filter { !head.contains($0.id) }
+        let usable = ModelCatalog.all.sorted { $0.rank < $1.rank }
+            .filter { !head.contains($0.id) && !$0.support.isUnsupported }
+        return usable.filter { $0.support == .supported } + usable.filter { $0.support != .supported }
+    }
+
+    private var moreButton: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : OBMotion.moderate) { browsing = true }
+        } label: {
+            HStack(spacing: 4) {
+                Text("More models")
+                Text("\(rest.count)").foregroundStyle(OBTheme.textTertiary).monospacedDigit()
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(OBTheme.textSecondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The long tail as one bounded, scrolling panel: measured numbers where Cue has them, nothing invented.
+    private var browser: some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(reduceMotion ? nil : OBMotion.moderate) { browsing = false }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
+                    Text("More models")
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(OBTheme.textSecondary)
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            ScrollView {
+                VStack(spacing: 2) {
+                    ForEach(rest) { spec in
+                        BrowseRow(spec: spec, facts: browseFacts(spec), selected: selectedSpec?.id == spec.id) {
+                            select(.local(spec.id))
+                        }
+                    }
+                }
+                .padding(4)
+            }
+            .scrollIndicators(.automatic)
+            .frame(height: 252)
+            .background(OBTheme.sheet, in: shape)
+            .overlay(shape.stroke(OBTheme.separator, lineWidth: 0.5))
+        }
+        .transition(.opacity)
+    }
+
+    private func browseFacts(_ spec: ModelSpec) -> String {
+        let size = resolvedVariant(spec)?.diskLabel
+        guard let b = ModelRoles.benchmark(of: spec.id) else {
+            return ["Not measured yet", size].compactMap { $0 }.joined(separator: " · ")
+        }
+        return ["\(Int((b.resolved * 100).rounded()))% right", "\(Int(b.p95)) ms", size]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 
     private var selectedSpec: ModelSpec? {
@@ -383,10 +447,12 @@ struct OnboardingModels: View {
         // A first run arrives with no provider: show the recommended model, saved only on Continue.
         case .local, .off: choice = .local(ModelCatalog.model(settings.localModelID)?.id ?? recommended)
         }
-        if case .local(let id) = choice { moreExpanded = rest.contains { $0.id == id } }
         advancedExpanded = [.gateway, .custom].contains(choice)
         #if DEBUG
-        if ProcessInfo.processInfo.environment["OB_MODELS_OPEN"] != nil { expanded = true }
+        if let open = ProcessInfo.processInfo.environment["OB_MODELS_OPEN"] {
+            expanded = true
+            browsing = open == "more"
+        }
         #endif
         syncPrimary()
     }
@@ -576,5 +642,50 @@ struct OBModelProgress: View {
                 EmptyView()
             }
         }
+    }
+}
+
+private struct BrowseRow: View {
+    var spec: ModelSpec
+    var facts: String
+    var selected: Bool
+    var action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(spec.title)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(OBTheme.textPrimary)
+                        if case .experimental = spec.support {
+                            Text("Experimental")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    Text(facts)
+                        .font(.system(size: 12))
+                        .monospacedDigit()
+                        .foregroundStyle(OBTheme.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OBTheme.action)
+                    .opacity(selected ? 1 : 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(minHeight: 40)
+            .background(selected ? OBTheme.selectionFill : hover ? OBTheme.textTertiary.opacity(0.08) : .clear,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
