@@ -58,6 +58,7 @@ public final class HotkeyManager {
     /// would otherwise eat our own repost before the target app sees it.
     private var interceptRef: EventHotKeyRef?
     private var interceptRegistered: Bool { interceptRef != nil }
+    private var interceptSuspended = false
     private var trustTimer: Timer?
     private let settings: AppSettings
 
@@ -80,13 +81,16 @@ public final class HotkeyManager {
         bodies.removeAll()
         nextID = 1
         for action in Action.allCases {
-            let hk = settings.hotkey(for: action.rawValue) ?? action.default
+            let hk = settings.hotkey(for: action)
             register(hk) { [weak self] in self?.fire(action) }
         }
-        if interceptCmdV && ContextCaptor.isTrusted {
-            interceptRef = register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
-                self?.fireIntercept()
-            }
+        registerIntercept()
+    }
+
+    private func registerIntercept() {
+        guard interceptCmdV, ContextCaptor.isTrusted, !interceptSuspended, interceptRef == nil else { return }
+        interceptRef = register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
+            self?.fireIntercept()
         }
     }
 
@@ -95,16 +99,15 @@ public final class HotkeyManager {
     /// synthetic event itself — isSynthesizing only stops our handler, the
     /// keystroke is already gone. resumeIntercept() restores it.
     public func suspendIntercept() {
+        interceptSuspended = true
         guard let ref = interceptRef else { return }
         UnregisterEventHotKey(ref)
         interceptRef = nil
     }
 
     public func resumeIntercept() {
-        guard interceptCmdV, ContextCaptor.isTrusted, interceptRef == nil else { return }
-        interceptRef = register(.init(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey))) { [weak self] in
-            self?.fireIntercept()
-        }
+        interceptSuspended = false
+        registerIntercept()
     }
 
     /// Trust can flip after grant or revoke; poll while interception is
@@ -123,7 +126,7 @@ public final class HotkeyManager {
     }
 
     private func syncInterceptRegistration() {
-        let should = interceptCmdV && ContextCaptor.isTrusted
+        let should = interceptCmdV && ContextCaptor.isTrusted && !interceptSuspended
         if should != interceptRegistered { reregister() }
     }
 

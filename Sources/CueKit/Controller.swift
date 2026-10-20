@@ -66,19 +66,16 @@ public final class SmartPasteController {
         }
         let ctx = ContextCaptor.capture()
 
-        // Image/file on the pasteboard → the user wants that, not a text pick.
         if PasteboardGate.shouldPassThrough() {
             lastAction = "plain paste · image/file on clipboard"
             pasteLatest()
             return
         }
-        // Never think about password fields: plain paste, no API call.
         if ctx.field.isSecure {
             lastAction = "plain paste · secure field"
             pasteLatest()
             return
         }
-        // Queue mode: deterministic FIFO, no model call.
         if settings.queueMode, let clip = store.popQueue() {
             lastAction = "queued paste" // never log clip contents
             paste(clip.text, clip: clip)
@@ -96,7 +93,7 @@ public final class SmartPasteController {
             let indicator = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled, let self, self.busy else { return }
-                self.hud.showDeciding(near: HUDController.anchor(caret: ctx.caretRect, field: ctx.fieldRect))
+                self.hud.showDeciding(near: HUDController.anchor(ctx))
             }
             defer {
                 indicator.cancel()
@@ -129,22 +126,20 @@ public final class SmartPasteController {
 
     /// Manual picker hotkey — always shows the picker, no model call.
     public func showPicker() {
-        let candidates = store.candidates().map {
-            ScoredCandidate(clip: $0, probability: 0, confidence: 0)
-        }
+        let candidates = store.candidates()
         guard !candidates.isEmpty else { return }
         let ctx = ContextCaptor.capture()
-        hud.showPicker(candidates: candidates, near: HUDController.anchor(caret: ctx.caretRect, field: ctx.fieldRect)) { [weak self] pick in
+        hud.showPicker(candidates: candidates, near: HUDController.anchor(ctx)) { [weak self] pick in
             guard let self else { return }
             guard let pick else { self.pasteLatest(); return }
-            self.paste(pick.clip.text, clip: pick.clip)
+            self.paste(pick.text, clip: pick)
         }
     }
 
     private func handle(_ outcome: PasteOutcome, ctx: ContextSnapshot,
                         since startedAt: ContinuousClock.Instant, intercepted: Bool) async {
-        let e = startedAt.duration(to: .now).components
-        let ms = " · \(Int(e.seconds * 1000 + e.attoseconds / 1_000_000_000_000_000)) ms"
+        let e = startedAt.duration(to: .now)
+        let ms = " · \(Int(e.milliseconds)) ms"
         // lastAction is a status line: action + kind + latency, never content.
         switch outcome {
         case .paste(let d):
@@ -155,7 +150,7 @@ public final class SmartPasteController {
             if d.isForm { await formFiller?.run() }
         case .choose(let opts):
             lastAction = "showed chooser" + ms
-            hud.showChooser(options: opts, history: store.clips, near: HUDController.anchor(caret: ctx.caretRect, field: ctx.fieldRect),
+            hud.showChooser(options: opts, history: store.clips, near: HUDController.anchor(ctx),
                             fieldLabel: ctx.field.label) { [weak self] pick in
                 guard let self else { return }
                 // Esc/⌘V means "plain paste" — the chooser promises it.
@@ -205,7 +200,7 @@ public final class SmartPasteController {
         let kind = d.detail.map { $0 == "url" ? "link" : $0 }
         let what = ["Pasted", kind].compactMap { $0 }.joined(separator: " ")
         let note = d.clip.sourceApp.isEmpty ? what : "\(what) from \(d.clip.sourceApp)"
-        hud.showStatus(note, near: HUDController.anchor(caret: ctx.caretRect, field: ctx.fieldRect))
+        hud.showStatus(note, near: HUDController.anchor(ctx))
     }
 
     /// Internal: the practice session builds its engine through the same path.

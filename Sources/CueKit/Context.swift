@@ -117,7 +117,7 @@ public enum ContextCaptor {
         var ctx = base
         AXUIElementSetMessagingTimeout(el, 0.05)
         ctx.field.role = axString(el, kAXRoleAttribute) ?? ""
-        ctx.field.isSecure = ctx.field.role == "AXSecureTextField"
+        ctx.field.isSecure = axString(el, kAXSubroleAttribute) == kAXSecureTextFieldSubrole
         if ctx.field.isSecure {
             // Never read or transmit secure contents — bail immediately.
             ctx.fieldRect = axRect(el)
@@ -207,14 +207,6 @@ public enum ContextCaptor {
         return CGRect(x: rect.minX, y: screenH - rect.maxY, width: rect.width, height: rect.height)
     }
 
-    private static func axElement(_ el: AXUIElement, _ attr: String) -> AXUIElement? {
-        var v: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success,
-              let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
-        // CF type verified above — the bridged cast is safe.
-        return unsafeDowncast(v, to: AXUIElement.self)
-    }
-
     private static func windowTitle(of app: NSRunningApplication?) -> String? {
         guard let pid = app?.processIdentifier else { return nil }
         let axApp = AXUIElementCreateApplication(pid)
@@ -222,12 +214,6 @@ public enum ContextCaptor {
         guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &winRef) == .success,
               let winRef, CFGetTypeID(winRef) == AXUIElementGetTypeID() else { return nil }
         return axString(winRef as! AXUIElement, kAXTitleAttribute)
-    }
-
-    private static func axString(_ el: AXUIElement, _ attr: String) -> String? {
-        var v: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success else { return nil }
-        return v as? String
     }
 
     /// Element frame, converted from AX (top-left origin) to Cocoa (bottom-left origin).

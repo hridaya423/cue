@@ -153,8 +153,8 @@ func run() async throws -> Int {
                 let t0 = ContinuousClock.now
                 let outcome = await engine.decide(
                     context: c.contextSnapshot, candidates: c.clipList, mode: c.engineMode)
-                let d = t0.duration(to: .now).components
-                let ms = Double(d.seconds) * 1000 + Double(d.attoseconds) / 1e15
+                let d = t0.duration(to: .now)
+                let ms = d.milliseconds
                 if rep == 0 { lastOutcome = normalize(outcome) }
                 latencies.append(ms)
             }

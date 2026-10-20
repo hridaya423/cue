@@ -161,15 +161,21 @@ public enum OptionBuilder {
     /// span plus the clip itself (skipped when the clip IS one span —
     /// identical options would split the model's probability mass).
     /// Exact-text dedupe keeps the newest occurrence.
+    /// The clips options are built from: the newest, pins, and recent clips still fresh.
+    public static func inScope(_ clips: [Clip], recent: Int = recentWindow,
+                               freshFor: TimeInterval = freshFor) -> [Clip] {
+        let cutoff = Date().addingTimeInterval(-freshFor)
+        return clips.prefix(recent).enumerated()
+            .filter { $0.offset == 0 || $0.element.pinned || $0.element.copiedAt >= cutoff }.map(\.element)
+            + clips.dropFirst(recent).filter(\.pinned)
+    }
+
     public static func options(from clips: [Clip],
                              recent: Int = recentWindow,
                              maxOptions: Int = maxOptions,
                              freshFor: TimeInterval = freshFor,
                              naming typed: Set<String> = []) -> [PasteOption] {
-        let cutoff = Date().addingTimeInterval(-freshFor)
-        let scope = clips.prefix(recent).enumerated()
-            .filter { $0.offset == 0 || $0.element.pinned || $0.element.copiedAt >= cutoff }.map(\.element)
-            + clips.dropFirst(recent).filter(\.pinned)
+        let scope = inScope(clips, recent: recent, freshFor: freshFor)
         var seen = Set<String>()
         func options(of clip: Clip) -> [PasteOption] {
             var own: [PasteOption] = []
@@ -203,6 +209,29 @@ public enum OptionBuilder {
         return out
     }
 }
+
+/// Email needs regex: NSDataDetector only catches mailto:-style links, not bare addresses.
+public enum SpanExtractor {
+    static let emailPattern = try! NSRegularExpression(
+        pattern: #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Za-z]{2,}"#, options: .caseInsensitive)
+
+    public static func emails(in text: String) -> [String] {
+        let range = NSRange(text.startIndex..., in: text)
+        return emailPattern.matches(in: text, range: range)
+            .compactMap { Range($0.range, in: text).map { String(text[$0]) } }
+    }
+
+    public static func phones(in text: String) -> [String] {
+        phoneRanges(in: text).map(\.0)
+    }
+
+    /// http(s) links only — skips mailto: and other schemes the detector
+    /// lumps into .link.
+    public static func urls(in text: String) -> [String] {
+        urlRanges(in: text).map(\.0)
+    }
+}
+
 
 extension SpanExtractor {
     /// A detected span plus the raw text around it.

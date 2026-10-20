@@ -24,7 +24,7 @@ find -H ".build/$CONFIG" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP/Conte
 
 # The model-server shims — the managed-model installer runs the matching
 # script inside each shim-kind model's venv to speak /v1/systemone.
-cp Scripts/*_server.py "$APP/Contents/Resources/"
+cp Scripts/*_server.py Scripts/s1http.py "$APP/Contents/Resources/"
 
 # App icon (generated: `swift Scripts/make_icon.swift build/Cue.iconset`
 # then `iconutil -c icns` — regenerate if the mark changes).

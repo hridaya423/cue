@@ -130,7 +130,8 @@ public struct JevEndpoint: Sendable {
     /// Loopback endpoints keep payloads on-device — PII redaction is a no-op.
     public var isRemote: Bool {
         guard let h = url.host?.lowercased() else { return true }
-        return !(h == "localhost" || h == "::1" || h.hasPrefix("127.") || h.hasSuffix(".local"))
+        let ipv4Loopback = h.hasPrefix("127.") && h.split(separator: ".").count == 4 && h.allSatisfy { $0.isNumber || $0 == "." }
+        return !(h == "localhost" || h == "::1" || ipv4Loopback)
     }
 }
 

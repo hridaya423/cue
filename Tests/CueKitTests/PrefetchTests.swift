@@ -19,6 +19,16 @@ struct CountingProvider: DecisionProvider {
     }
 }
 
+struct FailFirstProvider: DecisionProvider {
+    var box: PrefetchBox
+    var response: JevResponse
+    func evaluate(state: JSONValue, questions: [String: Question]) async throws -> JevResponse {
+        box.calls += 1
+        if box.calls == 1 { throw JevError.transport("refused") }
+        return response
+    }
+}
+
 @MainActor
 struct PrefetchTests {
     private let clips = [
@@ -185,5 +195,24 @@ struct PrefetchTests {
         // The cancelled Email warm may have reached the provider before the
         // supersede landed; either way nothing serves its result.
         #expect(stub.box.calls <= 2)
+    }
+
+    @Test func clipAgingOutChangesKey() {
+        let stale = Clip(text: "me@example.com", kind: .text, copiedAt: Date().addingTimeInterval(-3 * 3600))
+        let fresh = Clip(text: "me@example.com", kind: .text)
+        let newest = Clip(text: "latest clip", kind: .text)
+        #expect(PrefetchKey(context: ctx(), candidates: [newest, fresh])
+                != PrefetchKey(context: ctx(), candidates: [newest, stale]))
+    }
+
+    @Test func failedWarmIsNotCached() async {
+        let box = PrefetchBox()
+        let stub = FailFirstProvider(box: box, response: decisive)
+        let prefetch = DecisionPrefetch()
+        prefetch.warm(context: ctx(), candidates: clips, engine: DecisionEngine(provider: stub))
+        await prefetch.settle()
+        prefetch.warm(context: ctx(), candidates: clips, engine: DecisionEngine(provider: stub))
+        await prefetch.settle()
+        #expect(box.calls == 2)
     }
 }

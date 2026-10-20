@@ -195,8 +195,8 @@ public struct SettingsView: View {
                     Text(action.title)
                     Spacer()
                     // Unset means the built-in shortcut is live, so show that, not "Record".
-                    HotkeyRecorder(value: settings.hotkey(for: action.rawValue) ?? action.default) { hk in
-                        settings.setHotkey(hk, for: action.rawValue)
+                    HotkeyRecorder(value: settings.hotkey(for: action)) { hk in
+                        settings.setHotkey(hk, for: action)
                         model.hotkeys.reregister()
                     }
                     .frame(width: 110, height: 24)

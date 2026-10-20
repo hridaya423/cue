@@ -20,8 +20,7 @@ public struct HistoryView: View {
 
     private var smartPasteKeys: String {
         if model.settings.triggerMode == .intercept { return "⌘V" }
-        return (model.settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
-            ?? HotkeyManager.Action.smartPaste.default).displayString
+        return model.settings.hotkey(for: .smartPaste).displayString
     }
 }
 

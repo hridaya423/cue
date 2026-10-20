@@ -98,7 +98,7 @@ struct OnboardingModels: View {
     private var rest: [ModelSpec] {
         let head = Set(headline.map(\.id))
         let usable = ModelCatalog.all.sorted { $0.rank < $1.rank }
-            .filter { !head.contains($0.id) && !$0.support.isUnsupported }
+            .filter { !head.contains($0.id) }
         return usable.filter { $0.support == .supported } + usable.filter { $0.support != .supported }
     }
 
@@ -186,14 +186,11 @@ struct OnboardingModels: View {
         let size = state == .notInstalled ? v.map { "\($0.diskLabel) download" } : v.map { "\($0.ramLabel) memory" }
         let facts = [spec.reason, size].compactMap { $0 }.joined(separator: " · ")
         return optionRow(choice: .local(spec.id), title: spec.title, subtitle: facts,
-                         recommended: spec.rank == 1, dimmed: spec.support.isUnsupported) {
+                         recommended: spec.rank == 1) {
             ModelMark(modelID: spec.id)
         } detail: {
             if case .experimental(let why) = spec.support {
                 Text("Experimental · \(why)").font(.system(size: 11)).foregroundStyle(.orange)
-            }
-            if case .unsupported(let why) = spec.support {
-                Text("Unavailable here · \(why)").font(.system(size: 11)).foregroundStyle(OBTheme.textTertiary)
             }
             if state != .notInstalled { setupStatus(spec, variant: v, state: state) }
         }
@@ -245,7 +242,7 @@ struct OnboardingModels: View {
     }
 
     private func optionRow<Mark: View, Detail: View>(
-        choice option: Choice, title: String, subtitle: String, recommended: Bool = false, dimmed: Bool = false,
+        choice option: Choice, title: String, subtitle: String, recommended: Bool = false,
         @ViewBuilder mark: () -> Mark, @ViewBuilder detail: () -> Detail
     ) -> some View {
         let selected = choice == option
@@ -287,7 +284,6 @@ struct OnboardingModels: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(selected ? OBTheme.selectionFill : .clear, in: shape)
         .overlay(shape.stroke(selected ? OBTheme.selectionStroke : .clear, lineWidth: 1))
-        .opacity(dimmed ? 0.5 : 1)
     }
 
     private func disclosure<Content: View>(
@@ -435,7 +431,6 @@ struct OnboardingModels: View {
 
     private var localPrimary: OBPrimary? {
         guard let spec = selectedSpec else { return nil }
-        if spec.support.isUnsupported { return OBPrimary(title: "Choose another model", enabled: false) }
         return OBPrimary(title: "Continue") {
             prepare(spec)
             onAdvance()
@@ -444,7 +439,7 @@ struct OnboardingModels: View {
 
     /// What the chosen local model still needs before it can answer; nothing once it is running.
     private var settingsLocalPrimary: OBPrimary? {
-        guard let spec = selectedSpec, !spec.support.isUnsupported,
+        guard let spec = selectedSpec,
               let r = ModelCatalog.variant(modelID: spec.id, variantID: settings.localVariantID) else { return nil }
         let wanted = model.models.installedVariant(of: spec.id) == r.variant.id
         switch model.models.status(of: spec.id) {
@@ -482,12 +477,6 @@ struct OnboardingModels: View {
         case .local, .off: choice = .local(ModelCatalog.model(settings.localModelID)?.id ?? recommended)
         }
         advancedExpanded = [.gateway, .custom, .off].contains(choice)
-        #if DEBUG
-        if let open = ProcessInfo.processInfo.environment["OB_MODELS_OPEN"] {
-            expanded = true
-            browsing = open == "more"
-        }
-        #endif
         syncPrimary()
     }
 
@@ -566,10 +555,6 @@ struct OnboardingModels: View {
         Binding(get: { settings.customKey ?? "" },
                 set: { settings.customKey = $0.isEmpty ? nil : $0; invalidateTest() })
     }
-}
-
-private extension ModelSpec.Support {
-    var isUnsupported: Bool { if case .unsupported = self { return true }; return false }
 }
 
 private struct ProviderMark: View {

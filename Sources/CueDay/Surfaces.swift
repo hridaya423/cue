@@ -4,36 +4,6 @@ import CueKit
 import Foundation
 import WebKit
 
-func axString(_ el: AXUIElement, _ attr: String) -> String? {
-    var v: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success else { return nil }
-    return v as? String
-}
-
-func axElement(_ el: AXUIElement, _ attr: String) -> AXUIElement? {
-    var v: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success,
-          let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
-    return unsafeDowncast(v, to: AXUIElement.self)
-}
-
-func axChildren(_ el: AXUIElement) -> [AXUIElement] {
-    var v: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &v) == .success,
-          let arr = v as? [AXUIElement] else { return [] }
-    return arr
-}
-
-func axFind(_ root: AXUIElement, depth: Int = 0,
-            where pred: (AXUIElement) -> Bool) -> AXUIElement? {
-    if pred(root) { return root }
-    guard depth < 14 else { return nil }
-    for c in axChildren(root) {
-        if let hit = axFind(c, depth: depth + 1, where: pred) { return hit }
-    }
-    return nil
-}
-
 func jsQuote(_ s: String) -> String {
     guard let d = try? JSONSerialization.data(withJSONObject: [s]),
           var q = String(data: d, encoding: .utf8), q.count > 2 else { return "\"\"" }

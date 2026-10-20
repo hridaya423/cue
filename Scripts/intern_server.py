@@ -6,9 +6,8 @@
 The weight snapshot ships `inference.py` with `DecisionEngine`, whose `predict`
 takes one Jev-style request dict and returns the JSON-serializable response.
 """
-import json
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from s1http import serve
 
 SNAPSHOT = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else None
 if not SNAPSHOT:
@@ -35,37 +34,11 @@ def main():
     port = int(sys.argv[1])
     serve_model = sys.argv[3] if len(sys.argv) > 3 else "intern-decision"
 
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
-            if self.path == "/health":
-                return self._send(200, {"ok": True, "model": serve_model, "device": device})
-            self._send(404, {"detail": "not found"})
+    def answer(req):
+        req.setdefault("model", serve_model)
+        return engine.predict(req)
 
-        def do_POST(self):  # noqa: N802
-            if self.path != "/v1/systemone":
-                return self._send(404, {"detail": "not found"})
-            try:
-                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-                req.setdefault("model", serve_model)
-                self._send(200, engine.predict(req))
-            except (KeyError, ValueError) as exc:
-                self._send(422, {"detail": f"{type(exc).__name__}: {exc}"})
-            except Exception as exc:  # noqa: BLE001
-                self._send(500, {"detail": f"{type(exc).__name__}: {exc}"})
-
-        def _send(self, code, obj):
-            body = json.dumps(obj).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args):
-            pass
-
-    print(f"intern-decision serving on http://127.0.0.1:{port}/v1/systemone", flush=True)
-    HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    serve("intern-decision", port, answer, {"model": serve_model, "device": device})
 
 
 if __name__ == "__main__":

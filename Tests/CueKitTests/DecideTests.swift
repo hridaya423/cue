@@ -2,35 +2,14 @@ import Foundation
 import Testing
 @testable import CueKit
 
-struct TransformsTests {
-    @Test func all() {
-        #expect(Transform.trim.apply("  hello\n") == "hello")
-        #expect(Transform.lowercase.apply("Me@Example.COM") == "me@example.com")
-        #expect(Transform.digitsOnly.apply("+1 (415) 555-0132") == "14155550132")
-        #expect(Transform.stripURLTracking.apply(
-            "https://x.com/p?utm_source=twitter&a=1&fbclid=abc") == "https://x.com/p?a=1")
-        #expect(Transform.asIs.apply("  keep  ") == "  keep  ")
-    }
-
-    @Test func extractEmail() {
-        // The contact-card case: name + email copied together, only the
-        // address belongs in a To: field.
-        #expect(Transform.extractEmail.apply("hridya agrawal hridayahoney@gmail.com")
-            == "hridayahoney@gmail.com")
-        #expect(Transform.extractEmail.apply("Jane Doe <jane@example.com>") == "jane@example.com")
-        // No match → unchanged; extraction never produces nothing.
-        #expect(Transform.extractEmail.apply("no email here") == "no email here")
-    }
-
-    @Test func extractPhoneAndURL() {
-        #expect(Transform.extractPhone.apply("call Jane +1 (415) 555-0132 tomorrow")
-            == "+1 (415) 555-0132")
-        #expect(Transform.extractURL.apply("see https://example.com/a?b=1 for details")
-            == "https://example.com/a?b=1")
-    }
-}
-
 struct SpanExtractorTests {
+    @Test func firstSpanOfEachKind() {
+        #expect(SpanExtractor.emails(in: "hridya agrawal hridayahoney@gmail.com") == ["hridayahoney@gmail.com"])
+        #expect(SpanExtractor.emails(in: "Jane Doe <jane@example.com>") == ["jane@example.com"])
+        #expect(SpanExtractor.phones(in: "call Jane +1 (415) 555-0132 tomorrow").first == "+1 (415) 555-0132")
+        #expect(SpanExtractor.urls(in: "see https://example.com/a?b=1 for details") == ["https://example.com/a?b=1"])
+    }
+
     @Test func emails() {
         #expect(SpanExtractor.emails(in: "a b x@y.co c") == ["x@y.co"])
         #expect(SpanExtractor.emails(in: "none") == [])
@@ -357,7 +336,6 @@ struct DecisionEngineTests {
         let three = clips + [Clip(text: "third thing", kind: .text)]
         var engine = DecisionEngine(provider: StubProvider(response: pickResponse(
             pick: "c2", conf: 0.3, probs: ["c1": 0.4, "c2": 0.35, "c3": 0.25])))
-        engine.lowConfidenceMode = .top3 // must be ignored in formFill
         let outcome = await engine.decide(context: makeContext(), candidates: three, mode: .formFill)
         guard case .pasteLatest = outcome else {
             Issue.record("low confidence mid-form should stop, got \(outcome)"); return
@@ -750,5 +728,20 @@ struct CaretNamingTests {
         let named = OptionBuilder.options(from: history, recent: 30, naming: ["sentry"])
         #expect(named.contains { $0.clip.id == sentry.id })
         #expect(named.prefix(OptionBuilder.maxOptions).allSatisfy { $0.clip.id != sentry.id }) // appended, ids stable
+    }
+}
+
+struct TimeoutTests {
+    @Test func returnsAtTheDeadlineEvenIfWorkIgnoresCancellation() async {
+        let slow = Task { try? await Task.sleep(for: .seconds(3)); return 1 }
+        let start = ContinuousClock.now
+        await #expect(throws: CancellationError.self) {
+            try await DecisionEngine.withTimeout(0.2) { await slow.value }
+        }
+        #expect(ContinuousClock.now - start < .seconds(1))
+    }
+
+    @Test func returnsTheValueWhenWorkIsFast() async throws {
+        #expect(try await DecisionEngine.withTimeout(1) { 7 } == 7)
     }
 }

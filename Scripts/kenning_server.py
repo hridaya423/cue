@@ -9,9 +9,8 @@ reasoning trace on low-confidence structured questions. The stock servers
 bind 0.0.0.0 and never select MPS, so this shim drives the model classes
 directly on a loopback stdlib server with Metal enabled.
 """
-import json
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from s1http import serve
 
 REPO = sys.argv[2] if len(sys.argv) > 2 else "systemonedev/kenning-large-v0.6"
 SERVE_MODEL = sys.argv[3] if len(sys.argv) > 3 else "kenning-large-v0.6"
@@ -40,41 +39,13 @@ def main():
         answer = kn.answer
     port = int(sys.argv[1])
 
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
-            if self.path == "/health":
-                return self._send(200, {"ok": True, "model": SERVE_MODEL,
-                                        "engine": "xl" if XL else "cross-encoder"})
-            self._send(404, {"detail": "not found"})
+    def respond(raw):
+        req = SystemOneRequest.model_validate(raw)
+        body = answer(req).model_dump(exclude_none=True)
+        body["model"] = req.model or SERVE_MODEL
+        return body
 
-        def do_POST(self):  # noqa: N802
-            if self.path != "/v1/systemone":
-                return self._send(404, {"detail": "not found"})
-            try:
-                req = SystemOneRequest.model_validate(
-                    json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)))))
-                resp = answer(req)
-                body = resp.model_dump(exclude_none=True)
-                body["model"] = req.model or SERVE_MODEL
-                self._send(200, body)
-            except (KeyError, ValueError) as exc:
-                self._send(422, {"detail": f"{type(exc).__name__}: {exc}"})
-            except Exception as exc:  # noqa: BLE001
-                self._send(500, {"detail": f"{type(exc).__name__}: {exc}"})
-
-        def _send(self, code, obj):
-            body = json.dumps(obj).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args):
-            pass
-
-    print(f"kenning serving on http://127.0.0.1:{port}/v1/systemone", flush=True)
-    HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    serve("kenning", port, respond, {"model": SERVE_MODEL, "engine": "xl" if XL else "cross-encoder"})
 
 
 if __name__ == "__main__":

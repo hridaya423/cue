@@ -91,18 +91,13 @@ struct JevTests {
         #expect(JevEndpoint.custom(base: "localhost:8765", model: "m")?.isRemote == false)
         #expect(JevEndpoint.custom(base: "10.0.0.5:8009", model: "m")?.isRemote == true)
         #expect(JevEndpoint.custom(base: "https://relay.example.com", model: "m")?.isRemote == true)
+        #expect(JevEndpoint.custom(base: "mybox.local:8009", model: "m")?.isRemote == true)
+        #expect(JevEndpoint.custom(base: "127.evil.com", model: "m")?.isRemote == true)
     }
 
-    @Test func providerMigrationFromLegacyValues() {
-        // First-version settings stored display strings; v2 had dedicated
-        // kev/laya cases that now collapse into .local (the catalog model ID
-        // preserves which one).
-        #expect(AppSettings.Provider(stored: "TypeSafe direct") == .jevDirect)
-        #expect(AppSettings.Provider(stored: "AI Gateway") == .jevGateway)
-        #expect(AppSettings.Provider(stored: "None (offline)") == .off)
-        #expect(AppSettings.Provider(stored: "kev") == .local)
-        #expect(AppSettings.Provider(stored: "laya") == .local)
-        #expect(AppSettings.Provider(stored: "garbage") == .off)
+    @Test func unknownStoredProviderIsOff() {
+        #expect(AppSettings.Provider(rawValue: "jev-direct") == .jevDirect)
+        #expect(AppSettings.Provider(rawValue: "kev") == nil)
     }
 
     @Test func malformedAnswerThrows() throws {

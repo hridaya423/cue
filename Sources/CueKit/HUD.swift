@@ -20,6 +20,8 @@ public final class HUDController {
 
     /// Where a panel points: the caret, else the field. A tall editor with no caret
     /// (Notes, Docs, Slack) points at the pointer inside it, not its far edge.
+    public static func anchor(_ ctx: ContextSnapshot) -> CGRect? { anchor(caret: ctx.caretRect, field: ctx.fieldRect) }
+
     public static func anchor(caret: CGRect?, field: CGRect?) -> CGRect? {
         if let caret { return caret }
         guard let field, field.height > 80 else { return field }
@@ -108,8 +110,8 @@ public final class HUDController {
         }
     }
 
-    public func showPicker(candidates: [ScoredCandidate], near rect: CGRect?,
-                           onPick: @escaping (ScoredCandidate?) -> Void) {
+    public func showPicker(candidates: [Clip], near rect: CGRect?,
+                           onPick: @escaping (Clip?) -> Void) {
         let state = PickerState(candidates: candidates)
         show(view: PickerView(state: state), near: rect, dismissOnResign: true)
         onKey = { [weak self] e in
@@ -280,16 +282,16 @@ final class ChooserState {
 final class PickerState {
     var filter = ""
     var selection = 0
-    let all: [ScoredCandidate]
+    let all: [Clip]
 
-    init(candidates: [ScoredCandidate]) { all = candidates }
+    init(candidates: [Clip]) { all = candidates }
 
-    var visible: [ScoredCandidate] {
+    var visible: [Clip] {
         guard !filter.isEmpty else { return all }
-        return all.filter { $0.clip.preview.localizedCaseInsensitiveContains(filter) }
+        return all.filter { $0.preview.localizedCaseInsensitiveContains(filter) }
     }
 
-    var selected: ScoredCandidate? {
+    var selected: Clip? {
         guard visible.indices.contains(selection) else { return nil }
         return visible[selection]
     }
@@ -513,23 +515,23 @@ struct PickerView: View {
         )
     }
 
-    private func pickerRow(_ i: Int, _ cand: ScoredCandidate) -> some View {
+    private func pickerRow(_ i: Int, _ cand: Clip) -> some View {
         let sel = i == state.selection
         return HStack(spacing: 10) {
-            SourceAppIcon(clip: cand.clip, size: 15)
+            SourceAppIcon(clip: cand, size: 15)
                 .frame(width: 15)
-            Text(cand.clip.preview)
+            Text(cand.preview)
                 .font(.system(size: 13))
                 .foregroundStyle(sel ? .white : .primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
-            if cand.clip.pinned {
+            if cand.pinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(sel ? .white.opacity(0.8) : .secondary)
             }
-            Text(cand.clip.copiedAt.relativeAge)
+            Text(cand.copiedAt.relativeAge)
                 .font(.system(size: 11))
                 .foregroundStyle(sel ? .white.opacity(0.8) : .secondary)
         }

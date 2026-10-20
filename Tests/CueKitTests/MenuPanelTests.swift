@@ -103,25 +103,3 @@ struct MenuPanelTests {
     }
 }
 
-@MainActor
-struct SettingsAdoptionTests {
-    @Test func settingsFromTheOldIdentifierComeAlongOnce() throws {
-        let old = "cue-test-old-\(UUID().uuidString)", new = "cue-test-new-\(UUID().uuidString)"
-        let oldDefaults = try #require(UserDefaults(suiteName: old))
-        let newDefaults = try #require(UserDefaults(suiteName: new))
-        defer { oldDefaults.removePersistentDomain(forName: old); newDefaults.removePersistentDomain(forName: new) }
-        oldDefaults.set("\"local\"", forKey: "provider")
-        oldDefaults.set(true, forKey: "onboardingDone")
-        oldDefaults.set("{0, 0, 10, 10}", forKey: "NSWindow Frame Settings")
-        oldDefaults.synchronize()
-
-        AppSettings.adoptSettings(from: old, into: newDefaults)
-        #expect(newDefaults.string(forKey: "provider") == "\"local\"")
-        #expect(newDefaults.bool(forKey: "onboardingDone"))
-        #expect(newDefaults.object(forKey: "NSWindow Frame Settings") == nil)
-
-        newDefaults.set(false, forKey: "onboardingDone")
-        AppSettings.adoptSettings(from: old, into: newDefaults)
-        #expect(!newDefaults.bool(forKey: "onboardingDone"))
-    }
-}

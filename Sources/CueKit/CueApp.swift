@@ -89,11 +89,8 @@ public final class AppModel {
                 let cands = ["Standup moved to 10", "mira@example.com",
                              "https://typesafe.ai/docs", "call me at +1 415 555 0117",
                              "invoice approved"].enumerated().map { i, t in
-                    ScoredCandidate(clip: Clip(text: t, kind: .text,
-                                               sourceApp: ["Slack", "Mail", "Safari", "Messages", "Notes"][i],
-                                               copiedAt: Date().addingTimeInterval(-300.0 * Double(i + 1)),
-                                               pinned: i == 4),
-                                    probability: 0, confidence: 0)
+                    Clip(text: t, kind: .text, sourceApp: ["Slack", "Mail", "Safari", "Messages", "Notes"][i],
+                         copiedAt: Date().addingTimeInterval(-300.0 * Double(i + 1)), pinned: i == 4)
                 }
                 hud.showPicker(candidates: cands, near: nil) { _ in }
             }
@@ -194,23 +191,6 @@ public final class AppModel {
         Task {
             try? await Task.sleep(for: .milliseconds(300))
             controller.pasteClip(clip)
-        }
-    }
-
-    /// Cheap endpoint reachability check for the endpoint-field status dot.
-    /// A refused connection means nothing is listening; any HTTP response
-    /// (even 404) counts as up.
-    public func endpointReachable(_ base: String) async -> Bool {
-        guard var comps = URLComponents(string: base.contains("://") ? base : "http://" + base),
-              let url = comps.url else { return false }
-        comps.path = "/"
-        var req = URLRequest(url: comps.url ?? url)
-        req.timeoutInterval = 1.5
-        do {
-            _ = try await URLSession.shared.data(for: req)
-            return true
-        } catch {
-            return false
         }
     }
 

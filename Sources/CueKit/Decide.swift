@@ -1,84 +1,7 @@
 import Foundation
+import os
 
 // MARK: - Public types
-
-/// Deterministic, local adjustments to a picked clip. Jev chooses; we execute.
-public enum Transform: String, Sendable, CaseIterable {
-    case asIs = "as_is"
-    case trim
-    case lowercase
-    case digitsOnly = "digits_only"
-    case stripURLTracking = "strip_url_tracking"
-    /// Span extraction: pull just the email/phone/URL out of a clip that
-    /// contains more — the name+email contact-card copy pasting only the
-    /// email into a Recipients field is the canonical case.
-    case extractEmail = "extract_email"
-    case extractPhone = "extract_phone"
-    case extractURL = "extract_url"
-
-    public func apply(_ text: String) -> String {
-        switch self {
-        case .asIs: text
-        case .trim: text.trimmingCharacters(in: .whitespacesAndNewlines)
-        case .lowercase: text.lowercased()
-        case .digitsOnly: String(text.filter(\.isNumber))
-        case .stripURLTracking: Self.stripTracking(from: text)
-        // No match → the clip unchanged; extraction never fails a paste.
-        case .extractEmail: SpanExtractor.emails(in: text).first ?? text
-        case .extractPhone: SpanExtractor.phones(in: text).first ?? text
-        case .extractURL: SpanExtractor.urls(in: text).first ?? text
-        }
-    }
-
-    static func stripTracking(from text: String) -> String {
-        guard var c = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
-              c.queryItems != nil else { return text }
-        let blocked: Set<String> = ["fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "igshid", "ref_src"]
-        c.queryItems = c.queryItems?.filter {
-            let name = $0.name.lowercased()
-            return !name.hasPrefix("utm_") && !blocked.contains(name)
-        }
-        return c.string ?? text
-    }
-}
-
-/// Deterministic span detection shared by the extract transforms and the
-/// "contains:" hints added to pick criteria. Email needs regex —
-/// NSDataDetector only catches mailto:-style links, not bare addresses.
-public enum SpanExtractor {
-    static let emailPattern = try! NSRegularExpression(
-        pattern: #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Za-z]{2,}"#, options: .caseInsensitive)
-
-    public static func emails(in text: String) -> [String] {
-        let range = NSRange(text.startIndex..., in: text)
-        return emailPattern.matches(in: text, range: range)
-            .compactMap { Range($0.range, in: text).map { String(text[$0]) } }
-    }
-
-    public static func phones(in text: String) -> [String] {
-        phoneRanges(in: text).map(\.0)
-    }
-
-    /// http(s) links only — skips mailto: and other schemes the detector
-    /// lumps into .link.
-    public static func urls(in text: String) -> [String] {
-        urlRanges(in: text).map(\.0)
-    }
-
-    /// Every detected span, deduplicated — feeds the criteria hints.
-    public static func spans(in text: String) -> [String] {
-        var seen = Set<String>()
-        return (emails(in: text) + phones(in: text) + urls(in: text))
-            .filter { seen.insert($0).inserted }
-    }
-}
-
-public struct ScoredCandidate: Sendable {
-    public var clip: Clip
-    public var probability: Double
-    /// The pick question's confidence, broadcast onto each candidate.
-    public var confidence: Double
-}
 
 public struct Decision: Sendable {
     public var text: String
@@ -145,8 +68,6 @@ public struct DecisionEngine: Sendable {
     /// Measured on CueEval and the persona days; not a user setting.
     public var confidenceThreshold = 0.7
     public var decisivenessMargin = 0.25
-    /// What undecided cases do — the user's "When unsure" setting.
-    public var lowConfidenceMode: AppSettings.LowConfidenceMode = .top3
     /// Model-call ceiling. Intercepted ⌘V caps harder — a slow ⌘V feels
     /// broken, a fast plain paste doesn't.
     public var timeout: TimeInterval = 2.5
@@ -235,7 +156,7 @@ public struct DecisionEngine: Sendable {
         return DecisionPolicy.outcome(
             ranked: ranked, noneProb: noneProb, isForm: isForm,
             mode: mode, threshold: confidenceThreshold, margin: decisivenessMargin,
-            fallback: lowConfidenceMode, expects: expects,
+            expects: expects,
             // The words just before the caret ("Sentry:", "PR:") are the most specific evidence there is, so
             // they get the first say; a window title like "Issues - Halyard" matches half the history.
             signal: (ContextSignal.uniquePick(options, label: "", window: "",
@@ -248,7 +169,7 @@ public struct DecisionEngine: Sendable {
     /// The model's answer for this field and history, asked the way the hotkey asks (pick + form).
     /// ⌘V and the hotkey differ only in the policy folded over it, so one warmed answer serves both.
     public func fetch(context: ContextSnapshot, candidates: [Clip]) async throws -> JevResponse {
-        guard let provider else { throw ScrubFailed() }
+        guard let provider else { throw NoProvider() }
         let scrub = provider.isRemote ? redactor : nil
         let options = OptionBuilder.options(from: candidates)
         let state = try await Self.stateJSON(context: context, mode: .hotkey, redactor: scrub)
@@ -258,20 +179,25 @@ public struct DecisionEngine: Sendable {
     }
 
     struct ScrubFailed: Error {}
+    struct NoProvider: Error {}
 
-    /// Wrap a provider call in a hard ceiling — a hanging endpoint must never
-    /// stall a paste. Structured-concurrency timeout: the racing task loses.
+    /// A hard ceiling: returns at the deadline even when `work` ignores
+    /// cancellation (a warmed answer awaits another task's value).
     static func withTimeout<T: Sendable>(_ seconds: TimeInterval,
                                          _ work: @escaping @Sendable () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await work() }
-            group.addTask {
-                try await Task.sleep(for: .seconds(seconds))
-                throw CancellationError()
+        let done = OSAllocatedUnfairLock(initialState: false)
+        return try await withCheckedThrowingContinuation { (c: CheckedContinuation<T, Error>) in
+            let finish = { @Sendable (r: Result<T, Error>) in
+                if done.withLock({ was in defer { was = true }; return !was }) { c.resume(with: r) }
             }
-            let v = try await group.next()!
-            group.cancelAll()
-            return v
+            let job = Task {
+                do { finish(.success(try await work())) } catch { finish(.failure(error)) }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                job.cancel()
+                finish(.failure(CancellationError()))
+            }
         }
     }
 
@@ -389,9 +315,7 @@ public enum DecisionPolicy {
         mode: DecisionEngine.Mode,
         threshold: Double,
         margin: Double,
-        fallback: AppSettings.LowConfidenceMode = .top3,
         expects: FieldKind = .generic,
-        noneThreshold: Double = 0.7,
         signal: String? = nil,
         leaderEchoesPage: Bool = false
     ) -> PasteOutcome {
@@ -404,7 +328,7 @@ public enum DecisionPolicy {
         // `none` only ends the paste when it's actually dominant — a
         // plurality "none" beside real candidates deserves the chooser
         // (Esc/⌘V inside it still yields a plain paste).
-        let noneDominant = noneProb >= noneThreshold && noneProb >= (top?.probability ?? 0)
+        let noneDominant = noneProb >= 0.7 && noneProb >= (top?.probability ?? 0)
         // Decisiveness is judged among the real options (their share of the
         // non-`none` mass): "does something fit" and "which one" are separate
         // questions, and small models park mass on `none` even when the
@@ -453,14 +377,7 @@ public enum DecisionPolicy {
             if decisive, let top, fitsKind(top) { return .paste(decision(top, isForm: false)) }
             if let t = typedOutcome(isForm: false) { return t }
             if noneDominant { return .pasteLatest(.nothingFits) }
-            if plausible.count >= 2 {
-                switch fallback {
-                case .pasteBest: return .paste(decision(plausible[0], isForm: false))
-                case .pasteLatest: return .pasteLatest(.lowConfidence)
-                case .picker: return choose(Array(plausible))
-                case .top3: return choose(Array(plausible.prefix(3)))
-                }
-            }
+            if plausible.count >= 2 { return choose(Array(plausible.prefix(3))) }
             return .pasteLatest(.lowConfidence)
 
         case .hotkey:
@@ -472,12 +389,8 @@ public enum DecisionPolicy {
             // near-zero junk is dropped unless the model put nearly everything on "none".
             let confident = ranked.filter { $0.probability >= 0.02 }
             let rows = Array((confident.isEmpty ? ranked : confident).prefix(9))
-            guard let best = rows.first else { return .pasteLatest(noneLeads ? .nothingFits : .noAnswer) }
-            switch fallback {
-            case .pasteBest: return .paste(decision(best, isForm: isForm))
-            case .pasteLatest: return .pasteLatest(.lowConfidence)
-            case .picker, .top3: return choose(rows)
-            }
+            guard !rows.isEmpty else { return .pasteLatest(noneLeads ? .nothingFits : .noAnswer) }
+            return choose(rows)
 
         case .formFill:
             // Mid-form: never pop a chooser — paste confidently or stop.
@@ -502,4 +415,8 @@ extension Date {
         if s < 86400 { return "\(Int(s / 3600))h ago" }
         return "\(Int(s / 86400))d ago"
     }
+}
+
+extension Duration {
+    public var milliseconds: Double { Double(components.seconds) * 1000 + Double(components.attoseconds) / 1e15 }
 }

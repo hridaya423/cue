@@ -329,8 +329,8 @@ func pasteStep(args: Args, caseID: String, persona: String, step: Int, t: Double
             engine: engine)
         let decided = ContinuousClock.now
         await prefetch.settle()
-        let d = t0.duration(to: decided).components
-        decisionMS = Double(d.seconds) * 1000 + Double(d.attoseconds) / 1e15
+        let d = t0.duration(to: decided)
+        decisionMS = d.milliseconds
         if ProcessInfo.processInfo.environment["CUEDAY_DEBUG"] != nil {
             log("  step \(step): label=\(ctx.field.label) ph=\(ctx.field.placeholder) " +
                 "nearby=\(ctx.nearby) expects=\(FieldKind.infer(label: ctx.field.label, placeholder: ctx.field.placeholder, nearby: ctx.nearby).rawValue) outcome=\(outcome)")

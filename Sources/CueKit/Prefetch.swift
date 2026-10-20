@@ -14,8 +14,7 @@ public struct PrefetchKey: Equatable, Sendable {
     public var label = ""
     public var placeholder = ""
     public var webHost = ""
-    public var newestClipID = ""
-    public var clipCount = 0
+    public var clipIDs: [String] = []
 
     public init(context: ContextSnapshot, candidates: [Clip]) {
         bundleID = context.bundleID
@@ -24,8 +23,7 @@ public struct PrefetchKey: Equatable, Sendable {
         label = context.field.label
         placeholder = context.field.placeholder
         webHost = context.webHost
-        newestClipID = candidates.first?.id ?? ""
-        clipCount = candidates.count
+        clipIDs = OptionBuilder.inScope(candidates).map(\.id)
     }
 }
 
@@ -44,7 +42,12 @@ public final class DecisionPrefetch {
         guard k != key else { return }
         task?.cancel()
         key = k
-        task = Task { try await engine.fetch(context: context, candidates: candidates) }
+        task = Task { [weak self] in
+            do { return try await engine.fetch(context: context, candidates: candidates) } catch {
+                if self?.key == k { self?.key = nil }
+                throw error
+            }
+        }
     }
 
     /// Waits for the warm-up to finish, used or not — a benchmark must not let it bleed into the next step.

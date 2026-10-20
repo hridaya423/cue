@@ -9,10 +9,9 @@ prompt/spread/answer helpers give the exact calibration math — only the
 top-logprob fetch differs from their HTTP client, and a softmax over letter
 logits with a renormalised top-k slice is mathematically identical either way.
 """
-import json
 import math
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from s1http import serve
 
 PORT = int(sys.argv[1])
 GGUF_REPO = sys.argv[2] if len(sys.argv) > 2 else "alibiserikbay/JevK5-GGUF"
@@ -99,44 +98,18 @@ def main():
         return {"type": "choice", "choice": choice,
                 "confidence": probs.get(choice, 0.0), "probabilities": probs}
 
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
-            if self.path == "/health":
-                return self._send(200, {"ok": True, "model": GGUF_FILE})
-            self._send(404, {"detail": "not found"})
+    def answer(req):
+        answers = {}
+        usage = 0
+        for qid, q in req["questions"].items():
+            probs, tokens = probabilities(req["state"], q)
+            answers[qid] = to_answer(q, probs, tokens)
+            usage += tokens
+        return {"model": req.get("model") or GGUF_FILE,
+                "usage": {"input_tokens": usage, "output_tokens": 0},
+                "answers": answers}
 
-        def do_POST(self):  # noqa: N802
-            if self.path != "/v1/systemone":
-                return self._send(404, {"detail": "not found"})
-            try:
-                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-                answers = {}
-                usage = 0
-                for qid, q in req["questions"].items():
-                    probs, tokens = probabilities(req["state"], q)
-                    answers[qid] = to_answer(q, probs, tokens)
-                    usage += tokens
-                self._send(200, {"model": req.get("model") or GGUF_FILE,
-                                 "usage": {"input_tokens": usage, "output_tokens": 0},
-                                 "answers": answers})
-            except (KeyError, ValueError) as exc:
-                self._send(422, {"detail": f"{type(exc).__name__}: {exc}"})
-            except Exception as exc:  # noqa: BLE001
-                self._send(500, {"detail": f"{type(exc).__name__}: {exc}"})
-
-        def _send(self, code, obj):
-            body = json.dumps(obj).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args):
-            pass
-
-    print(f"jevk5 serving on http://127.0.0.1:{PORT}/v1/systemone", flush=True)
-    HTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    serve("jevk5", PORT, answer, {"model": GGUF_FILE})
 
 
 if __name__ == "__main__":

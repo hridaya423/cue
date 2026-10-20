@@ -2,8 +2,7 @@ import SwiftUI
 
 extension OnboardingView {
     var triggerControls: some View {
-        let shortcut = settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
-            ?? HotkeyManager.Action.smartPaste.default
+        let shortcut = settings.hotkey(for: .smartPaste)
         return VStack(alignment: .leading, spacing: 12) {
             TriggerCard(
                 title: "Use \u{2318}V",
@@ -35,8 +34,7 @@ extension OnboardingView {
     var triggerStage: some View {
         let keys = settings.triggerMode == .intercept
             ? ["\u{2318}", "V"]
-            : TriggerKeys.split((settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
-                ?? HotkeyManager.Action.smartPaste.default).displayString)
+            : TriggerKeys.split(settings.hotkey(for: .smartPaste).displayString)
         return TriggerStage(keys: keys)
     }
 
@@ -49,14 +47,14 @@ extension OnboardingView {
     /// keeps its prior value when we refuse to persist.
     func recordSmartPaste(_ hk: AppSettings.Hotkey) {
         for action in HotkeyManager.Action.allCases where action != .smartPaste {
-            let other = settings.hotkey(for: action.rawValue) ?? action.default
+            let other = settings.hotkey(for: action)
             if other.keyCode == hk.keyCode && other.modifiers == hk.modifiers {
                 recorderConflict = "That shortcut is already used for “\(action.title)”."
                 return
             }
         }
         recorderConflict = nil
-        settings.setHotkey(hk, for: HotkeyManager.Action.smartPaste.rawValue)
+        settings.setHotkey(hk, for: .smartPaste)
         model.hotkeys.reregister()
     }
 

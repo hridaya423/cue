@@ -29,27 +29,6 @@ public final class AppSettings {
         public var needsAPIKey: Bool { self == .jevDirect || self == .jevGateway }
         /// True when the payload can leave the machine (custom depends on the URL).
         public var mayBeRemote: Bool { self != .local && self != .off }
-
-        /// Decodes current raw values plus both older formats so existing
-        /// installs keep their setting. v2's kev/laya cases collapse into
-        /// `.local` — the caller recovers which model from `localModelID`.
-        init(stored: String) {
-            switch stored {
-            case "TypeSafe direct", "jev-direct": self = .jevDirect
-            case "AI Gateway", "jev-gateway": self = .jevGateway
-            case "kev", "laya", "local": self = .local
-            case "custom": self = .custom
-            case "none", "None (offline)", "off": self = .off
-            default: self = .off
-            }
-        }
-    }
-
-    public enum LowConfidenceMode: String, CaseIterable, Codable, Sendable {
-        case top3 = "Top-3 toast"
-        case picker = "Full picker"
-        case pasteBest = "Paste best pick"
-        case pasteLatest = "Paste latest"
     }
 
     /// mode == .intercept means ⌘V itself is smart.
@@ -75,30 +54,6 @@ public final class AppSettings {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        if defaults === UserDefaults.standard { Self.adoptSettings(from: "com.local.cue", into: defaults) }
-        // v2 → v3 migration: "kev"/"laya" providers collapse into .local and
-        // recover their identity as catalog model IDs.
-        let raw: String = get("provider", "")
-        if raw == "kev" || raw == "laya" {
-            if localModelID.isEmpty { localModelID = raw }
-            provider = .local
-        }
-    }
-
-    /// Settings saved under the identifier Cue used before it shipped come along once, so a renamed build keeps
-    /// the user's model, shortcuts and finished onboarding.
-    static func adoptSettings(from oldDomain: String, into defaults: UserDefaults) {
-        let marker = "adoptedSettingsFrom"
-        guard defaults.object(forKey: marker) == nil, defaults.object(forKey: "provider") == nil,
-              let keys = CFPreferencesCopyKeyList(oldDomain as CFString, kCFPreferencesCurrentUser,
-                                                  kCFPreferencesAnyHost) as? [String], !keys.isEmpty,
-              let values = CFPreferencesCopyMultiple(keys as CFArray, oldDomain as CFString, kCFPreferencesCurrentUser,
-                                                     kCFPreferencesAnyHost) as? [String: Any]
-        else { return }
-        for (key, value) in values where !key.hasPrefix("NS") && !key.hasPrefix("Apple") {
-            defaults.set(value, forKey: key)
-        }
-        defaults.set(oldDomain, forKey: marker)
     }
 
     private func get<T: Codable>(_ key: String, _ fallback: T) -> T {
@@ -113,7 +68,7 @@ public final class AppSettings {
     }
 
     public var provider: Provider {
-        get { Provider(stored: get("provider", "")) }
+        get { Provider(rawValue: get("provider", "")) ?? .off }
         set { set("provider", newValue.rawValue) }
     }
 
@@ -229,12 +184,12 @@ public final class AppSettings {
         }
     }
 
-    public func hotkey(for action: String) -> Hotkey? {
-        get("hotkey.\(action)", Optional<Hotkey>.none)
+    public func hotkey(for action: HotkeyManager.Action) -> Hotkey {
+        get("hotkey.\(action.rawValue)", Optional<Hotkey>.none) ?? action.default
     }
-    public func setHotkey(_ hk: Hotkey?, for action: String) {
-        if let hk { set("hotkey.\(action)", hk) }
-        else { revision += 1; defaults.removeObject(forKey: "hotkey.\(action)") }
+    public func setHotkey(_ hk: Hotkey?, for action: HotkeyManager.Action) {
+        if let hk { set("hotkey.\(action.rawValue)", hk) }
+        else { revision += 1; defaults.removeObject(forKey: "hotkey.\(action.rawValue)") }
     }
 
     // MARK: - Keychain

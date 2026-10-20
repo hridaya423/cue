@@ -4,12 +4,10 @@ import Testing
 
 struct OnboardingSampleTests {
     @Test func expectedIsARealExtraction() {
-        // The practice pass/fail bar must be what the deterministic
-        // transforms actually produce — never a hand-written literal.
         #expect(OnboardingSample.Target.email.expected
-                == Transform.extractEmail.apply(OnboardingSample.message))
+                == SpanExtractor.emails(in: OnboardingSample.message).first)
         #expect(OnboardingSample.Target.website.expected
-                == Transform.extractURL.apply(OnboardingSample.message))
+                == SpanExtractor.urls(in: OnboardingSample.message).first)
     }
 
     @Test func expectedIsASubstringOfTheSample() {

@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 @testable import CueKit
 
@@ -27,6 +27,12 @@ struct FieldTests {
     }
 
     @Test func secureIsNeverTextual() {
-        #expect(!field(role: "AXSecureTextField", secure: true).isTextual)
+        #expect(!field(role: "AXTextField", secure: true).isTextual)
+    }
+
+    @MainActor @Test func passwordFieldsAreFoundBySubrole() {
+        let cell = NSSecureTextField().cell
+        #expect(cell?.accessibilityRole()?.rawValue == kAXTextFieldRole)
+        #expect(cell?.accessibilitySubrole()?.rawValue == kAXSecureTextFieldSubrole)
     }
 }

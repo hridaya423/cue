@@ -47,11 +47,7 @@ struct ModelCatalogTests {
     @Test func recommendedVariants() {
         for spec in ModelCatalog.all {
             let count = spec.variants.filter(\.recommended).count
-            // Installable models (supported or experimental) need exactly one
-            // recommended default for the variant picker; unsupported ones
-            // are greyed out and never install.
-            let installable = if case .unsupported = spec.support { false } else { true }
-            #expect(count == (installable ? 1 : 0),
+            #expect(count == 1,
                     "\(spec.id) has \(count) recommended variants")
         }
     }
@@ -210,15 +206,6 @@ struct SettingsMigrationTests {
     private func freshDefaults() -> UserDefaults {
         let name = "cue-test-\(UUID().uuidString)"
         return UserDefaults(suiteName: name)!
-    }
-
-    @Test func v2KevProviderBecomesLocalWithModelID() {
-        let defaults = freshDefaults()
-        // Provider strings persist JSON-encoded via `set` — write it that way.
-        defaults.set(try! JSONEncoder().encode("kev"), forKey: "provider")
-        let s = AppSettings(defaults: defaults)
-        #expect(s.provider == .local)
-        #expect(s.localModelID == "kev")
     }
 
     @Test func triStatePIIDefaultsToProviderRemote() {

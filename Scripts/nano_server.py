@@ -9,7 +9,7 @@ Recipe exactly as the model card documents.
 """
 import json
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from s1http import serve
 
 REPO = sys.argv[2] if len(sys.argv) > 2 else "tasksource/tasksource-jev-nano-v1"
 SERVE_MODEL = sys.argv[3] if len(sys.argv) > 3 else "tasksource-jev-nano-v1"
@@ -70,41 +70,14 @@ def main():
                 "legend": dict(zip(levels, question["criteria"])),
                 "probabilities": {k: round(p, 4) for k, p in probs.items()}}
 
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
-            if self.path == "/health":
-                return self._send(200, {"ok": True, "model": SERVE_MODEL})
-            self._send(404, {"detail": "not found"})
+    def respond(req):
+        state = render_state(req["state"])
+        answers = {qid: answer(q, decide(state, q)) for qid, q in req["questions"].items()}
+        return {"model": req.get("model") or SERVE_MODEL,
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "answers": answers}
 
-        def do_POST(self):  # noqa: N802
-            if self.path != "/v1/systemone":
-                return self._send(404, {"detail": "not found"})
-            try:
-                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-                state = render_state(req["state"])
-                answers = {qid: answer(q, decide(state, q))
-                           for qid, q in req["questions"].items()}
-                self._send(200, {"model": req.get("model") or SERVE_MODEL,
-                                 "usage": {"input_tokens": 0, "output_tokens": 0},
-                                 "answers": answers})
-            except (KeyError, ValueError) as exc:
-                self._send(422, {"detail": f"{type(exc).__name__}: {exc}"})
-            except Exception as exc:  # noqa: BLE001
-                self._send(500, {"detail": f"{type(exc).__name__}: {exc}"})
-
-        def _send(self, code, obj):
-            body = json.dumps(obj).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args):
-            pass
-
-    print(f"jev-nano serving on http://127.0.0.1:{port}/v1/systemone", flush=True)
-    HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    serve("jev-nano", port, respond, {"model": SERVE_MODEL})
 
 
 if __name__ == "__main__":

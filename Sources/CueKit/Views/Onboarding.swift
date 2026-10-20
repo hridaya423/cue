@@ -333,15 +333,6 @@ public struct OnboardingView: View {
         if ProcessInfo.processInfo.environment["OB_PRACTICE"] == "another" {
             practice?.tryAnother()
         }
-        // `OB_PRACTICE_E2E=1` self-drives one real trigger once the window is key: real engine
-        // decision + editor delivery, exactly what a physical ⌘V would start.
-        if ProcessInfo.processInfo.environment["OB_PRACTICE_E2E"] != nil {
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(800))
-                practice?.focus()
-                _ = practice?.handleTrigger()
-            }
-        }
     }
     #endif
 }

@@ -27,16 +27,15 @@ public enum OnboardingSample {
         case email = "Email"
         case website = "Website"
 
-        /// What the deterministic transform should produce for this field —
-        /// the practice pass/fail bar, computed from the real extractor.
+        /// The practice pass/fail bar, computed from the real extractor.
         public var expected: String {
             expected(in: message)
         }
 
         public func expected(in text: String) -> String {
             switch self {
-            case .email: Transform.extractEmail.apply(text)
-            case .website: Transform.extractURL.apply(text)
+            case .email: SpanExtractor.emails(in: text).first ?? text
+            case .website: SpanExtractor.urls(in: text).first ?? text
             }
         }
     }
@@ -107,8 +106,7 @@ public final class OnboardingPractice {
     /// The trigger hint shown in "Now press …" — the user's real binding.
     public var triggerHint: String {
         if model.settings.triggerMode == .intercept { return "⌘V" }
-        return (model.settings.hotkey(for: HotkeyManager.Action.smartPaste.rawValue)
-            ?? HotkeyManager.Action.smartPaste.default).displayString
+        return model.settings.hotkey(for: .smartPaste).displayString
     }
 
     /// "Copy sample" — a real pasteboard write (labeled as such in the UI), marked transient so
@@ -275,8 +273,8 @@ public final class OnboardingPractice {
     private func classifyField() {
         let observed = field?.stringValue ?? fieldText
         if let startedAt {
-            let elapsed = startedAt.duration(to: .now).components
-            elapsedMilliseconds = Int(elapsed.seconds * 1000 + elapsed.attoseconds / 1_000_000_000_000_000)
+            let elapsed = startedAt.duration(to: .now)
+            elapsedMilliseconds = Int(elapsed.milliseconds)
         }
         phase = Self.classify(observed: observed, expected: expected,
                               origin: lastOrigin,
