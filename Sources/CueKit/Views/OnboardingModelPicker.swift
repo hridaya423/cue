@@ -1,22 +1,24 @@
 import AppKit
 import SwiftUI
 
-/// Screen 4's content: "On this Mac" / "Hosted" tabs over a compact,
-/// catalog-ranked picker. Presentation is deliberately separate from
-/// Settings' ProviderPicker — all metadata and readiness come from
-/// ModelCatalog/ModelManager, never invented.
+/// Screen 4's content: the one recommended model, with every other choice behind "Other options".
+/// All metadata and readiness come from ModelCatalog/ModelManager, never invented. A local model
+/// downloads in the background: Continue never waits on it, and until it is ready a paste stays plain.
 struct OnboardingModels: View {
     var model: AppModel
-    /// The screen's footer primary is stateful (Set up / Start / Continue /
-    /// Test connection…) — the picker publishes it up to the shell.
+    /// The screen's footer primary is stateful (Continue / Test connection…) — the picker publishes it up to the shell.
     @Binding var primary: OBPrimary?
 
-    @State private var hosted = true
+    enum Choice: Equatable {
+        case local(String), hosted, gateway, custom, off
+    }
+
+    @State private var choice: Choice = .off
+    @State private var expanded = false
     @State private var moreExpanded = false
     @State private var advancedExpanded = false
     @State private var testing = false
     @State private var testResult: AppModel.ProviderConnectionResult?
-    @State private var selectedID: String = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var onAdvance: () -> Void = {}
@@ -30,107 +32,158 @@ struct OnboardingModels: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            activeFold
+        VStack(alignment: .leading, spacing: 6) {
+            if expanded {
+                ForEach(headline) { localRow($0) }
+                if !rest.isEmpty {
+                    disclosure("More models", isExpanded: $moreExpanded) {
+                        ForEach(rest) { localRow($0) }
+                    }
+                }
+                hostedRow
+                disclosure("Advanced", isExpanded: $advancedExpanded) {
+                    gatewayRow
+                    customRow
+                    offRow
+                }
+            } else {
+                selectedRow
+                Button {
+                    withAnimation(reduceMotion ? nil : OBMotion.moderate) { expanded = true }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Other options")
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    }
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(OBTheme.textSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear(perform: seedSelection)
-        .onChange(of: hosted) { _, _ in syncPrimary() }
-        .onChange(of: selectedID) { _, _ in syncPrimary() }
-        .onChange(of: settings.provider.rawValue) { _, _ in syncPrimary() }
+        .onChange(of: choice) { _, _ in syncPrimary() }
         .onChange(of: settings.localVariantID) { _, _ in syncPrimary() }
         .onChange(of: model.models.states) { _, _ in syncPrimary() }
         .onChange(of: testResult) { _, _ in syncPrimary() }
         .onChange(of: testing) { _, _ in syncPrimary() }
     }
 
-    // MARK: - Local tab
+    // MARK: - Rows
 
-    /// Catalog order: supported models first by rank for the visible list,
-    /// the rest (experimental + unsupported) behind "More models".
-    private var ranked: [ModelSpec] { ModelCatalog.all.sorted { $0.rank < $1.rank } }
-    /// The role holders (Most accurate, Smallest); everything else sits behind "More models".
+    /// Catalog order: the role holders first, everything else behind "More models".
     private var headline: [ModelSpec] { ModelCatalog.featured }
     private var rest: [ModelSpec] {
         let head = Set(headline.map(\.id))
-        return ranked.filter { !head.contains($0.id) }
-    }
-
-    /// One card: the tabs, the choices, and the selected choice's detail inside its own row.
-    private var activeFold: some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-        return VStack(alignment: .leading, spacing: 14) {
-            OBSegmented(items: [(true, "Hosted"), (false, "On this Mac")],
-                        selection: $hosted)
-                .frame(width: 240)
-                .frame(maxWidth: .infinity)
-            if hosted {
-                hostedUpper
-                Divider()
-                hostedLower
-            } else {
-                localUpper
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OBTheme.sheet, in: shape)
-        .overlay(shape.stroke(OBTheme.separator, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-        .shadow(color: .black.opacity(0.1), radius: 12, y: 6)
+        return ModelCatalog.all.sorted { $0.rank < $1.rank }.filter { !head.contains($0.id) }
     }
 
     private var selectedSpec: ModelSpec? {
-        ModelCatalog.model(selectedID) ?? headline.first
+        if case .local(let id) = choice { return ModelCatalog.model(id) ?? headline.first }
+        return nil
     }
 
-    private var localUpper: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(headline) { spec in modelRow(spec) }
-            if !rest.isEmpty {
-                DisclosureGroup(isExpanded: $moreExpanded) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(rest) { spec in modelRow(spec) }
-                    }
-                    .padding(.top, 4)
-                } label: {
-                    Text("More models")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(OBTheme.textSecondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+    @ViewBuilder private var selectedRow: some View {
+        switch choice {
+        case .local:
+            if let spec = selectedSpec { localRow(spec) }
+        case .hosted: hostedRow
+        case .gateway: gatewayRow
+        case .custom: customRow
+        case .off: offRow
+        }
+    }
+
+    private func localRow(_ spec: ModelSpec) -> some View {
+        let v = resolvedVariant(spec)
+        let state = model.models.status(of: spec.id)
+        let size = state == .notInstalled ? v.map { "\($0.diskLabel) download" } : v.map { "\($0.ramLabel) memory" }
+        let facts = [spec.reason, size].compactMap { $0 }.joined(separator: " · ")
+        return optionRow(choice: .local(spec.id), title: spec.title, subtitle: facts,
+                         recommended: spec.rank == 1, dimmed: spec.support.isUnsupported) {
+            ModelMark(modelID: spec.id)
+        } detail: {
+            if case .experimental(let why) = spec.support {
+                Text("Experimental · \(why)").font(.system(size: 11)).foregroundStyle(.orange)
+            }
+            if case .unsupported(let why) = spec.support {
+                Text("Unavailable here · \(why)").font(.system(size: 11)).foregroundStyle(OBTheme.textTertiary)
+            }
+            if state != .notInstalled { setupStatus(spec, variant: v, state: state) }
+        }
+    }
+
+    private var hostedRow: some View {
+        optionRow(choice: .hosted, title: "Hosted", subtitle: "No download · needs a TypeSafe key") {
+            ProviderMark(asset: "typesafe", size: 32)
+        } detail: {
+            keyField
+        }
+    }
+
+    private var gatewayRow: some View {
+        optionRow(choice: .gateway, title: "Vercel AI Gateway", subtitle: "The hosted model through your Vercel key") {
+            ProviderMark(asset: "vercel", size: 32)
+        } detail: {
+            keyField
+        }
+    }
+
+    private var customRow: some View {
+        optionRow(choice: .custom, title: "Custom endpoint", subtitle: "Your own System One server") {
+            ProviderMark(asset: "", size: 32)
+        } detail: {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("https://host:port", text: customURLBinding).textFieldStyle(.roundedBorder)
+                TextField("Model", text: customModelBinding).textFieldStyle(.roundedBorder)
+                SecureField("Bearer key (optional)", text: customKeyBinding).textFieldStyle(.roundedBorder)
+                testStatusLine
             }
         }
     }
 
-    private func modelRow(_ spec: ModelSpec) -> some View {
-        let selected = selectedID == spec.id
-        return Button {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { selectedID = spec.id }
-            // Selecting is confirming: persist through the real bindings.
-            settings.provider = .local
-            settings.localModelID = spec.id
-            if spec.variants.allSatisfy({ $0.id != settings.localVariantID }),
-               let def = ModelCatalog.defaultVariant(of: spec) {
-                settings.localVariantID = def.id
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
+    private var offRow: some View {
+        optionRow(choice: .off, title: "No model", subtitle: "Every paste stays plain until you choose one") {
+            ProviderMark(asset: "", size: 32, fallback: "nosign")
+        } detail: {
+            EmptyView()
+        }
+    }
+
+    private var keyField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SecureField(choice == .gateway ? "Gateway key" : "API key", text: keyBinding)
+                .textFieldStyle(.roundedBorder)
+            testStatusLine
+        }
+    }
+
+    private func optionRow<Mark: View, Detail: View>(
+        choice option: Choice, title: String, subtitle: String, recommended: Bool = false, dimmed: Bool = false,
+        @ViewBuilder mark: () -> Mark, @ViewBuilder detail: () -> Detail
+    ) -> some View {
+        let selected = choice == option
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return VStack(alignment: .leading, spacing: 10) {
+            Button { select(option) } label: {
                 HStack(spacing: 12) {
-                    OBRadio(selected: selected)
-                    ModelMark(modelID: spec.id)
+                    mark()
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(spec.title)
+                        Text(title)
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(OBTheme.textPrimary)
-                        Text(spec.reason)
+                        Text(subtitle)
                             .font(.system(size: 13))
                             .foregroundStyle(OBTheme.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                     Spacer(minLength: 6)
-                    if spec.rank == 1 {
+                    if recommended {
                         Text("Recommended")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(OBTheme.action)
@@ -141,60 +194,52 @@ struct OnboardingModels: View {
                     }
                 }
                 .frame(minHeight: 32)
-                if selected { rowDetail(spec).padding(.leading, 32) }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? OBTheme.selectionFill : .clear,
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(selected ? OBTheme.selectionStroke : .clear, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            if selected { detail().padding(.leading, 44) }
         }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .opacity(spec.support.isUnsupported ? 0.5 : 1)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(selected ? OBTheme.selectionFill : .clear, in: shape)
+        .overlay(shape.stroke(selected ? OBTheme.selectionStroke : .clear, lineWidth: 1))
+        .opacity(dimmed ? 0.5 : 1)
     }
 
-    /// The selected model's real detail: what it is, what it costs, the live manager status.
-    private func rowDetail(_ spec: ModelSpec) -> some View {
-        let v = resolvedVariant(spec)
-        let state = model.models.status(of: spec.id)
-        let notInstalled = state == .notInstalled
-        return VStack(alignment: .leading, spacing: 8) {
-            Text(spec.blurb)
-                .font(.system(size: 12))
+    private func disclosure<Content: View>(
+        _ title: String, isExpanded: Binding<Bool>, @ViewBuilder content: () -> Content
+    ) -> some View {
+        let rows = content()
+        return DisclosureGroup(isExpanded: isExpanded) {
+            VStack(alignment: .leading, spacing: 6) { rows }.padding(.top, 6)
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OBTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                if let v { chip("memorychip", "\(v.ramLabel) memory") }
-                if notInstalled { chip("arrow.down.to.line", "\(v?.diskLabel ?? "Weights") download") }
-            }
-            if case .experimental(let why) = spec.support {
-                Text("Experimental · \(why)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
-            }
-            if case .unsupported(let why) = spec.support {
-                Text("Unavailable here · \(why)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(OBTheme.textTertiary)
-            }
-            if !notInstalled { setupStatus(spec, variant: v, state: state) }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
-    private func chip(_ symbol: String, _ text: String) -> some View {
-        Label(text, systemImage: symbol)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(OBTheme.textSecondary)
-            .padding(.horizontal, 8)
-            .frame(height: 22)
-            .fixedSize()
-            .background(OBTheme.canvas, in: Capsule())
-            .overlay(Capsule().stroke(OBTheme.selectionStroke.opacity(0.7), lineWidth: 0.5))
+    /// Selecting is confirming: hosted choices persist at once so the key field and the test read them.
+    private func select(_ option: Choice) {
+        withAnimation(reduceMotion ? nil : OBMotion.fast) { choice = option }
+        switch option {
+        case .local(let id):
+            settings.provider = .local
+            settings.localModelID = id
+            if let spec = ModelCatalog.model(id), spec.variants.allSatisfy({ $0.id != settings.localVariantID }),
+               let def = ModelCatalog.defaultVariant(of: spec) {
+                settings.localVariantID = def.id
+            }
+        case .hosted: settings.provider = .jevDirect
+        case .gateway: settings.provider = .jevGateway
+        case .custom: settings.provider = .custom
+        case .off: settings.provider = .off
+        }
+        testResult = nil
     }
 
     @ViewBuilder
@@ -269,117 +314,12 @@ struct OnboardingModels: View {
         }
     }
 
-    // MARK: - Hosted tab
-
-    private var hostedUpper: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            hostedRow(.jevDirect, title: "TypeSafe direct",
-                      detail: "TypeSafe · jev-latest")
-            Divider().padding(.leading, 68)
-            hostedRow(.jevGateway, title: "AI Gateway",
-                      detail: "Vercel AI Gateway · typesafe-ai/jev")
-        }
-    }
-
-    private func hostedRow(_ p: AppSettings.Provider, title: String, detail: String) -> some View {
-        let selected = settings.provider == p
-        return Button {
-            settings.provider = p
-            invalidateTest()
-        } label: {
-            HStack(spacing: 12) {
-                OBRadio(selected: selected)
-                ProviderMark(asset: p == .jevDirect ? "typesafe" : "vercel", size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(OBTheme.textPrimary)
-                    Text(detail)
-                        .font(.system(size: 13))
-                        .foregroundStyle(OBTheme.textSecondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 48)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private var hostedLower: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if settings.provider == .jevDirect || settings.provider == .jevGateway {
-                LabeledContent {
-                    SecureField("API key", text: keyBinding)
-                        .textFieldStyle(.roundedBorder)
-                } label: {
-                    Text(settings.provider == .jevGateway ? "Gateway key" : "API key")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(OBTheme.textSecondary)
-                }
-                testStatusLine
-            } else {
-                Text("Pick a hosted provider above.")
-                    .font(.system(size: 13)).foregroundStyle(OBTheme.textTertiary)
-            }
-
-            DisclosureGroup(isExpanded: $advancedExpanded) {
-                VStack(alignment: .leading, spacing: 10) {
-                    advancedRow(.custom, "Custom endpoint",
-                                "Any server answering POST {base}/v1/systemone")
-                    if settings.provider == .custom {
-                        LabeledContent("Endpoint") {
-                            TextField("https://host:port", text: customURLBinding)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        LabeledContent("Model") {
-                            TextField("model", text: customModelBinding)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 180)
-                        }
-                        SecureField("Bearer key (optional)", text: customKeyBinding)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    advancedRow(.off, "No model",
-                                "Smart paste will use ordinary paste until you choose a model.")
-                }
-                .padding(.top, 8)
-            } label: {
-                Text("Advanced — custom endpoint or no model")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(OBTheme.textSecondary)
-            }
-        }
-    }
-
-    private func advancedRow(_ p: AppSettings.Provider, _ title: String, _ detail: String) -> some View {
-        let selected = settings.provider == p
-        return Button {
-            settings.provider = p
-            invalidateTest()
-        } label: {
-            HStack(spacing: 12) {
-                OBRadio(selected: selected)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(OBTheme.textPrimary)
-                    Text(detail).font(.system(size: 12))
-                        .foregroundStyle(OBTheme.textSecondary)
-                }
-                Spacer()
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
 
     @ViewBuilder
     private var testStatusLine: some View {
         switch testResult {
         case .connected(let m):
-            Label("Connected — \(m)", systemImage: "checkmark.circle.fill")
+            Label("Connected to \(m)", systemImage: "checkmark.circle.fill")
                 .font(.system(size: 12)).foregroundStyle(.green)
         case .failed(let msg):
             Label(msg, systemImage: "xmark.circle")
@@ -394,87 +334,60 @@ struct OnboardingModels: View {
     /// The footer button mirrors the real model/connection state.
     private func syncPrimary() {
         ModelsStageChoice.shared.pick = stagePick
-        if hosted {
-            primary = hostedPrimary
-        } else {
-            primary = localPrimary
+        switch choice {
+        case .local: primary = localPrimary
+        case .off: primary = OBPrimary(title: "Continue") { onAdvance() }
+        case .hosted, .gateway, .custom: primary = hostedPrimary
         }
     }
 
-    /// What the right-hand stage demonstrates: the picker's live choice, not the not-yet-saved setting.
+    /// What the right-hand stage demonstrates: the picker's live choice.
     private var stagePick: ModelsStageScene.Pick {
-        if !hosted {
-            return .init(name: selectedSpec?.title ?? "On-device model", detail: "On this Mac · private", symbol: "lock.fill")
-        }
-        switch settings.provider {
-        case .jevDirect, .jevGateway: return .init(name: settings.provider.title, detail: "Hosted", symbol: "cloud.fill")
-        case .custom: return .init(name: "Custom endpoint", detail: "Your server", symbol: "network")
-        default: return .init(name: "Hosted model", detail: "Pick a provider", symbol: "cloud.fill")
+        switch choice {
+        case .local: .init(name: selectedSpec?.title ?? "On-device model", detail: "On this Mac · private", symbol: "lock.fill")
+        case .hosted, .gateway: .init(name: settings.provider.title, detail: "Hosted", symbol: "cloud.fill")
+        case .custom: .init(name: "Custom endpoint", detail: "Your server", symbol: "network")
+        case .off: .init(name: "No model", detail: "Plain paste", symbol: "nosign")
         }
     }
 
     private var localPrimary: OBPrimary? {
         guard let spec = selectedSpec else { return nil }
-        if case .unsupported = spec.support {
-            return OBPrimary(title: "Choose another model", enabled: false)
-        }
-        let state = model.models.status(of: spec.id)
-        switch state {
-        case .notInstalled:
-            return OBPrimary(title: "Set up model") { setupSelected(spec) }
-        case .installing:
-            return OBPrimary(title: "Setting up…", enabled: false)
-        case .installed:
-            if let v = resolvedVariant(spec), model.models.installedVariant(of: spec.id) != v.id {
-                return OBPrimary(title: "Set up selected variant") { setupSelected(spec) }
-            }
-            return OBPrimary(title: "Start model") { startSelected(spec) }
-        case .starting:
-            return OBPrimary(title: "Starting model…", enabled: false)
-        case .running:
-            if selectedIsRunning {
-                return OBPrimary(title: "Continue") { advanceFromModels() }
-            }
-            return OBPrimary(title: "Set up selected size") { setupSelected(spec) }
-        case .failed:
-            if let variant = resolvedVariant(spec),
-               model.models.installedVariant(of: spec.id) == variant.id {
-                return OBPrimary(title: "Retry start") { startSelected(spec) }
-            }
-            return OBPrimary(title: "Retry setup") { setupSelected(spec) }
+        if spec.support.isUnsupported { return OBPrimary(title: "Choose another model", enabled: false) }
+        return OBPrimary(title: "Continue") {
+            prepare(spec)
+            onAdvance()
         }
     }
 
     private var hostedPrimary: OBPrimary {
-        switch settings.provider {
-        case .off:
-            // Primary stays the forward action; the quiet Finish-later link
-            // sits in the footer corner.
-            return OBPrimary(title: "Continue") { advanceFromModels() }
-        case .jevDirect, .jevGateway, .custom:
-            if settings.provider.needsAPIKey,
-               (settings.provider == .jevGateway ? settings.gatewayKey : settings.apiKey)?.isEmpty != false {
-                return OBPrimary(title: "Test connection", enabled: false)
-            }
-            if testing { return OBPrimary(title: "Testing…", enabled: false) }
-            if case .connected = testResult {
-                return OBPrimary(title: "Continue") { advanceFromModels() }
-            }
-            return OBPrimary(title: "Test connection") { runTest() }
-        case .local:
-            // Local selection while on the hosted tab → treat as Continue.
-            return OBPrimary(title: "Continue") { advanceFromModels() }
+        if settings.provider.needsAPIKey,
+           (settings.provider == .jevGateway ? settings.gatewayKey : settings.apiKey)?.isEmpty != false {
+            return OBPrimary(title: "Test connection", enabled: false)
         }
+        if testing { return OBPrimary(title: "Testing…", enabled: false) }
+        if case .connected = testResult {
+            return OBPrimary(title: "Continue") { onAdvance() }
+        }
+        return OBPrimary(title: "Test connection") { runTest() }
     }
 
     // MARK: - Actions
 
     private func seedSelection() {
-        // On-device is the default: nothing to sign up for, nothing leaves the Mac. Hosted opens first
-        // only for someone who already chose it.
-        hosted = settings.provider == .jevDirect || settings.provider == .jevGateway
-        selectedID = ModelCatalog.model(settings.localModelID)?.id ?? headline.first?.id ?? ""
-        moreExpanded = rest.contains { $0.id == selectedID }
+        let recommended = headline.first?.id ?? ""
+        switch settings.provider {
+        case .jevDirect: choice = .hosted
+        case .jevGateway: choice = .gateway
+        case .custom: choice = .custom
+        // A first run arrives with no provider: show the recommended model, saved only on Continue.
+        case .local, .off: choice = .local(ModelCatalog.model(settings.localModelID)?.id ?? recommended)
+        }
+        if case .local(let id) = choice { moreExpanded = rest.contains { $0.id == id } }
+        advancedExpanded = [.gateway, .custom].contains(choice)
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["OB_MODELS_OPEN"] != nil { expanded = true }
+        #endif
         syncPrimary()
     }
 
@@ -483,33 +396,27 @@ struct OnboardingModels: View {
             ?? ModelCatalog.defaultVariant(of: spec)
     }
 
-    private func setupSelected(_ spec: ModelSpec) {
-        settings.provider = .local
-        settings.localModelID = spec.id
+    /// Saves the choice and gets the model ready without waiting on it: install if needed, then start.
+    private func prepare(_ spec: ModelSpec) {
+        select(.local(spec.id))
         guard let r = ModelCatalog.variant(modelID: spec.id, variantID: settings.localVariantID) else { return }
-        Task {
-            model.models.stop()
-            await model.models.install(r)
-            guard case .installed = model.models.status(of: spec.id) else { return }
-            await model.models.start(r)
+        let models = model.models
+        let wanted = models.installedVariant(of: spec.id) == r.variant.id
+        switch models.status(of: spec.id) {
+        case .installing, .starting: return
+        case .running where wanted: return
+        case .installed where wanted, .failed where wanted:
+            Task { await models.start(r) }
+        default:
+            Task {
+                models.stop()
+                await models.install(r)
+                guard case .installed = models.status(of: spec.id) else { return }
+                await models.start(r)
+            }
         }
     }
 
-    private func startSelected(_ spec: ModelSpec) {
-        settings.provider = .local
-        settings.localModelID = spec.id
-        guard let r = ModelCatalog.variant(modelID: spec.id, variantID: settings.localVariantID) else { return }
-        Task { await model.models.start(r) }
-    }
-
-    /// The running server must be *this* model+variant to enable Continue.
-    private var selectedIsRunning: Bool {
-        guard let spec = selectedSpec, model.models.status(of: spec.id) == .running,
-              let v = resolvedVariant(spec) else { return false }
-        return model.models.installedVariant(of: spec.id) == v.id
-    }
-
-    private func advanceFromModels() { onAdvance() }
     private func configFingerprint() -> [String] {
         [settings.provider.rawValue, settings.model, settings.customURL,
          settings.apiKey ?? "", settings.gatewayKey ?? "", settings.customKey ?? ""]
@@ -568,9 +475,10 @@ private extension ModelSpec.Support {
 private struct ProviderMark: View {
     var asset: String
     var size: CGFloat
+    var fallback = "network"
 
     private var image: NSImage? {
-        guard let url = Bundle.module.url(forResource: asset, withExtension: "png") else { return nil }
+        guard !asset.isEmpty, let url = Bundle.module.url(forResource: asset, withExtension: "png") else { return nil }
         return NSImage(contentsOf: url)
     }
 
@@ -584,7 +492,7 @@ private struct ProviderMark: View {
                     .frame(width: size, height: size)
                     .background(.white, in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
             } else {
-                Image(systemName: "network")
+                Image(systemName: fallback)
                     .font(.system(size: size * 0.48, weight: .medium))
                     .foregroundStyle(OBTheme.textSecondary)
                     .frame(width: size, height: size)
@@ -640,5 +548,33 @@ private struct ModelMark: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+}
+
+/// The background setup's one line in the footer, so a model downloading after Continue is never silent.
+struct OBModelProgress: View {
+    var model: AppModel
+
+    var body: some View {
+        if model.settings.provider == .local, let spec = ModelCatalog.model(model.settings.localModelID) {
+            let transfer = model.models.transfers[spec.id]
+            let percent = transfer.map { " \(Int($0.fraction * 100))%" } ?? ""
+            switch model.models.status(of: spec.id) {
+            case .installing, .starting:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small).tint(.white)
+                    Text(transfer == nil ? "Setting up \(spec.title)" : "Downloading \(spec.title)\(percent)")
+                        .monospacedDigit()
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.8))
+            case .failed:
+                Text("\(spec.title) didn\u{2019}t set up. Retry in Settings.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+            default:
+                EmptyView()
+            }
+        }
     }
 }

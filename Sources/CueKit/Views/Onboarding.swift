@@ -192,6 +192,7 @@ public struct OnboardingView: View {
             }
             OBProgress(count: route.count, index: route.firstIndex(of: step) ?? 0, onStage: isHero)
             Spacer()
+            if step != .welcome && step != .models { OBModelProgress(model: model) }
             if showsFinishLater {
                 Button("Finish later") { finishLater() }
                     .buttonStyle(.plain)
@@ -238,7 +239,7 @@ public struct OnboardingView: View {
         case .welcome: "Copy it all. Cue pastes just the part that fits the field."
         case .accessibility: "Cue reads a field\u{2019}s label to know what belongs there. Turn it on once in System Settings."
         case .trigger: "Choose when Cue steps in."
-        case .models: "Run a model on your Mac or connect a hosted service."
+        case .models: "Cue runs best with a model on your Mac. It downloads while you finish setup."
         case .privacy: "Mask personal details before Cue sends text to a hosted model."
         case .practice:
             if practiceSucceeded {
@@ -277,7 +278,7 @@ public struct OnboardingView: View {
     private var showsFinishLater: Bool {
         if primarySpec.title == "Finish setup later" { return false }
         switch step {
-        case .models: return settings.provider == .off || settings.provider == .custom
+        case .models: return settings.provider == .custom
         case .practice: return true
         default: return false
         }

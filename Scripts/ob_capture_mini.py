@@ -48,7 +48,7 @@ def build(app):
     sh(f"rsync -az --delete {tmp}/ {HOST}:cue-live/{app}/")
 
 
-def capture(app, step, appearance, out, burst, env, wait):
+def capture(app, step, appearance, out, burst, env, wait, args=()):
     tag = app.removesuffix(".app")
     # Bracketed first letter: the pattern must not match the ssh shell whose command line carries this script.
     proc = f"[{app[0]}]{app[1:]}/Contents/MacOS/Cue"
@@ -58,7 +58,7 @@ def capture(app, step, appearance, out, burst, env, wait):
 until mkdir {LOCK} 2>/dev/null; do sleep 1; done
 trap 'rmdir {LOCK}; pkill -f "{proc}"' EXIT
 pkill -f '[C]ueDebug[^ ]*/Contents/MacOS/Cue'; sleep 0.5
-open -n {envs} ~/cue-live/{app} --args -onboardingDone NO -ApplePersistenceIgnoreState YES
+open -n {envs} ~/cue-live/{app} --args -onboardingDone NO -ApplePersistenceIgnoreState YES {' '.join(shlex.quote(a) for a in args)}
 for i in $(seq 1 40); do P=$(pgrep -f '{proc}') && {DRIVER} call list_windows "{{\\"pid\\":$P}}" | grep -q Welcome && break; sleep 0.25; done
 {'sleep ' + str(wait) if burst <= 1 else ''}
 {DRIVER} call list_windows "{{\\"pid\\":$P}}" > /tmp/obwin-{tag}.json
@@ -93,13 +93,15 @@ def main():
     ap.add_argument("--wait", type=float, default=2.5)
     ap.add_argument("--env", action="append", default=[])
     ap.add_argument("--tag", default="")
+    ap.add_argument("--default", action="append", default=[], help="a user default for the launch, as key=value")
     a = ap.parse_args()
     app = f"CueDebug-{a.tag}.app" if a.tag else "CueDebug.app"
     if a.build:
         build(app)
     for st in a.steps.split(","):
         for ap_ in a.appearances.split(","):
-            capture(app, st, ap_, a.out, a.burst, a.env, a.wait)
+            capture(app, st, ap_, a.out, a.burst, a.env, a.wait,
+                    [x for d in a.default for x in (f"-{d.split('=', 1)[0]}", d.split('=', 1)[1])])
 
 
 if __name__ == "__main__":
