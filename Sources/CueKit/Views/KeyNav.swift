@@ -15,6 +15,9 @@ struct KeyNavHelper: NSViewRepresentable {
     /// Return true if Escape was handled (consumed); false lets it
     /// propagate (e.g. MenuBarExtra's own dismissal).
     var onEscape: () -> Bool = { false }
+    /// Return true if Space was handled; false types it into the search field.
+    var onSpace: () -> Bool = { false }
+    var onCommand: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> KeyNavView {
         let v = KeyNavView()
@@ -29,6 +32,8 @@ struct KeyNavHelper: NSViewRepresentable {
         v.onReturn = onReturn
         v.hasSelection = hasSelection
         v.onEscape = onEscape
+        v.onSpace = onSpace
+        v.onCommand = onCommand
     }
 
     final class KeyNavView: NSView {
@@ -36,18 +41,27 @@ struct KeyNavHelper: NSViewRepresentable {
         var onReturn: () -> Void = {}
         var hasSelection: () -> Bool = { false }
         var onEscape: () -> Bool = { false }
+        var onSpace: () -> Bool = { false }
+        var onCommand: (Bool) -> Void = { _ in }
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             if window != nil, monitor == nil {
-                monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-                    guard let self, self.handle(e) else { return e }
-                    return nil
+                monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] e in
+                    guard let self else { return e }
+                    if e.type == .flagsChanged {
+                        if e.window == self.window {
+                            self.onCommand(e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command)
+                        }
+                        return e
+                    }
+                    return self.handle(e) ? nil : e
                 }
             } else if window == nil, let monitor {
                 NSEvent.removeMonitor(monitor)
                 self.monitor = nil
+                onCommand(false)
             }
         }
 
@@ -60,6 +74,7 @@ struct KeyNavHelper: NSViewRepresentable {
             case kVK_UpArrow: onArrow(-1); return true
             case kVK_Return where hasSelection(): onReturn(); return true
             case kVK_Escape: return onEscape()
+            case kVK_Space where e.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty: return onSpace()
             default: return false
             }
         }
