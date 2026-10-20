@@ -27,12 +27,12 @@ DMG="build/Cue-$VERSION.dmg"
 codesign --force --options runtime --timestamp --sign "$IDENTITY" --identifier com.local.cue "$APP"
 codesign --verify --strict --deep --verbose=2 "$APP"
 
-stage="$(mktemp -d)"
-trap 'rm -rf "$stage"' EXIT
-ditto "$APP" "$stage/Cue.app"
-ln -s /Applications "$stage/Applications"
+# The installer window: Cue on the left, Applications on the right, the arrow and caption in the background
+# (Resources/dmg/background.tiff, drawn by Scripts/make_dmg_background.py). dmgbuild writes the window layout
+# directly, without scripting Finder.
 rm -f "$DMG"
-hdiutil create -quiet -volname "Cue" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 "$DMG"
+uvx --quiet dmgbuild -s Scripts/dmg_settings.py -D app="$APP" -D background=Resources/dmg/background.tiff \
+    -D icon=Resources/AppIcon.icns "Cue" "$DMG"
 codesign --force --timestamp --sign "$IDENTITY" "$DMG"
 
 if [ "${SKIP_NOTARIZE:-}" = 1 ]; then

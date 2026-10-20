@@ -1,0 +1,19 @@
+# dmgbuild settings for Cue's installer window (Scripts/release.sh passes app, background and icon via -D).
+format = "UDZO"
+compression_level = 9
+filesystem = "HFS+"
+files = [defines["app"]]
+symlinks = {"Applications": "/Applications"}
+icon = defines["icon"]
+background = defines["background"]
+window_rect = ((240, 160), (660, 400))
+default_view = "icon-view"
+show_status_bar = False
+show_tab_view = False
+show_toolbar = False
+show_pathbar = False
+show_sidebar = False
+icon_size = 100
+text_size = 13
+arrange_by = None
+icon_locations = {"Cue.app": (170, 200), "Applications": (490, 200)}
