@@ -198,7 +198,7 @@ public struct OnboardingView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.8))
             }
-            if !primarySpec.title.isEmpty && !isHero {
+            if !primarySpec.title.isEmpty {
                 OBStagePrimary(title: primarySpec.title, enabled: primarySpec.enabled, action: primarySpec.action)
             }
         }

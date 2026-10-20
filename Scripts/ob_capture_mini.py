@@ -63,13 +63,14 @@ for i in $(seq 1 40); do P=$(pgrep -f '{proc}') && {DRIVER} call list_windows "{
 {'sleep ' + str(wait) if burst <= 1 else ''}
 {DRIVER} call list_windows "{{\\"pid\\":$P}}" > /tmp/obwin-{tag}.json
 for i in $(seq 1 {frames}); do {DRIVER} call get_desktop_state "{{\\"screenshot_out_file\\":\\"/tmp/obcap-{tag}-$i.png\\"}}" >/dev/null; done
+for i in $(seq 1 {frames}); do sips -s format jpeg -s formatOptions 92 /tmp/obcap-{tag}-$i.png --out /tmp/obcap-{tag}-$i.jpg >/dev/null && rm /tmp/obcap-{tag}-$i.png; done
 """
     remote(script)
     win = next(w for w in json.loads(remote(f"cat /tmp/obwin-{tag}.json"))["windows"] if w["title"] == "Welcome to Cue")
     b = win["bounds"]
     out.mkdir(parents=True, exist_ok=True)
     for i in range(1, frames + 1):
-        local = Path(f"/tmp/obcap-{tag}-{i}.png")
+        local = Path(f"/tmp/obcap-{tag}-{i}.jpg")
         sh(f"scp -q {HOST}:{local} {local}")
         im = Image.open(local)
         s = im.width / 1920
@@ -79,7 +80,7 @@ for i in $(seq 1 {frames}); do {DRIVER} call get_desktop_state "{{\\"screenshot_
         c.save(out / name)
         local.unlink()
         print(out / name)
-    remote(f"rm -f /tmp/obcap-{tag}-*.png /tmp/obwin-{tag}.json")
+    remote(f"find /tmp -maxdepth 1 -name 'obcap-{tag}-*' -delete; rm -f /tmp/obwin-{tag}.json")
 
 
 def main():
