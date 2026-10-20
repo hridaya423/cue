@@ -15,11 +15,11 @@
   <a href="https://cue.hridya.tech">cue.hridya.tech</a>
 </p>
 
-<p align="center"><img src="docs/demo.gif" alt="A chat message with an email address and a phone number is copied. In the To field of a new email, ⌘V pastes only the address." width="720"></p>
-
-Cue is a clipboard for macOS. It keeps your clipboard history. When you paste, Cue reads the focused field and asks a decision model which clip fits. In the demo, the To field asks for an email, so Cue pastes only the address from the copied message.
+Cue is a clipboard for macOS. It keeps your clipboard history. When you paste, Cue reads the focused field and asks a decision model which clip fits. In the demo below, the To field asks for an email, so Cue pastes only the address from the copied message.
 
 The model only chooses among your real clips. It never writes text. If no model runs, or the endpoint does not answer, the paste is a plain ⌘V.
+
+<p align="center"><img src="docs/demo.gif" alt="A chat message with an email address and a phone number is copied. In the To field of a new email, ⌘V pastes only the address." width="812"></p>
 
 Inspired by [@marcus_lowe's demo](https://x.com/marcus_lowe/status/2101476399488160013), rebuilt as a real background app.
 
