@@ -7,8 +7,8 @@ extension OnboardingView {
         }
     }
 
-    /// The chosen model at work: one copied message, three empty fields, the chooser ranking the clips
-    /// for each and the decision landing. The badge follows the picker's live selection.
+    /// The chosen model at work: one copied message, and the phone number in it landing in the Phone
+    /// field. The pill follows the picker's live selection.
     var modelsStage: some View {
         ModelsStageScene(pick: ModelsStageChoice.shared.pick)
     }
@@ -29,60 +29,14 @@ struct ModelsStageScene: View {
         var symbol: String
     }
 
-    private enum Phase { case idle, asking, ranked }
+    private enum Phase { case rest, asking, landed }
 
-    private struct Row: Identifiable {
-        let id: Int
-        let app: App
-        let text: String
-        let age: String
-    }
-
-    private enum App {
-        case messages, mail, notes
-        var symbol: String { switch self { case .messages: "message.fill"; case .mail: "envelope.fill"; case .notes: "note.text" } }
-        var tint: Color {
-            switch self {
-            case .messages: Color(red: 0.19, green: 0.78, blue: 0.35)
-            case .mail: Color(red: 0.16, green: 0.50, blue: 1.0)
-            case .notes: Color(red: 0.98, green: 0.76, blue: 0.16)
-            }
-        }
-    }
-
-    private struct Beat {
-        let label: String
-        let value: String
-        let hit: Int
-        let rows: [Row]
-    }
-
-    private static let whole = "Reach Mira at mira@northwind.co or +44 7700 900123 …"
-    private static let beats: [Beat] = [
-        Beat(label: "Email", value: "mira@northwind.co", hit: 2, rows: [
-            Row(id: 0, app: .messages, text: whole, age: "Messages · 2m"),
-            Row(id: 1, app: .mail, text: "j.okafor@lumen.io", age: "Mail · 1h"),
-            Row(id: 2, app: .messages, text: "mira@northwind.co", age: "Messages · 2m"),
-        ]),
-        Beat(label: "Phone", value: "+44 7700 900123", hit: 1, rows: [
-            Row(id: 0, app: .notes, text: "Order #A-20417 · shipped Tue", age: "Notes · 1d"),
-            Row(id: 1, app: .messages, text: "+44 7700 900123", age: "Messages · 2m"),
-            Row(id: 2, app: .messages, text: whole, age: "Messages · 2m"),
-        ]),
-        Beat(label: "Website", value: "northwind.co/mira", hit: 2, rows: [
-            Row(id: 0, app: .mail, text: "j.okafor@lumen.io", age: "Mail · 1h"),
-            Row(id: 1, app: .notes, text: "Order #A-20417 · shipped Tue", age: "Notes · 1d"),
-            Row(id: 2, app: .messages, text: "northwind.co/mira", age: "Messages · 2m"),
-        ]),
-    ]
+    private static let phone = "+44 7700 900123"
+    private static let phoneInMessage = phone.replacingOccurrences(of: " ", with: "\u{00A0}")
 
     let pick: Pick
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var focus: Int? = 1
-    @State private var filled = 1
-    @State private var phase: Phase = .ranked
-
-    private static let rowHeight: CGFloat = 38
+    @State private var phase: Phase = .landed
 
     private var still: Bool {
         #if DEBUG
@@ -92,72 +46,63 @@ struct ModelsStageScene: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        VStack(spacing: 18) {
             source
-            badge.frame(width: 372).offset(y: 108)
-            window.offset(y: 148)
-            if let i = focus, phase != .idle {
-                chooser(i)
-                    .id(i)
-                    .offset(x: 14, y: 236 + CGFloat(i) * 44)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96, anchor: .top).combined(with: .offset(y: -6)).combined(with: .opacity),
-                        removal: .opacity))
-            }
+            badge
+            window
         }
-        .frame(width: 372, height: 504, alignment: .topLeading)
+        .frame(width: 372)
+        .offset(y: -24)
         .accessibilityHidden(true)
         .task(id: still) {
-            guard !still else {
-                (focus, filled, phase) = (1, 1, .ranked)
-                return
-            }
-            (focus, filled, phase) = (0, 0, .idle)
+            guard !still else { phase = .landed; return }
+            phase = .rest
             while !Task.isCancelled {
-                for i in Self.beats.indices {
-                    await go(450) { focus = i }
-                    await go(800) { phase = .asking }
-                    await go(1500) { phase = .ranked }
-                    await go(400) { phase = .idle; filled = i + 1 }
-                }
-                await go(1400) { focus = nil }
-                await go(350) { filled = 0 }
+                try? await Task.sleep(for: .milliseconds(1300))
+                await go(OBMotion.moderate, 800) { phase = .asking }
+                await go(OBMotion.land, 3200) { phase = .landed }
+                await go(OBMotion.exit, 0) { phase = .rest }
             }
         }
     }
 
-    private func go(_ ms: Int, _ change: () -> Void) async {
-        withAnimation(.spring(duration: 0.3, bounce: 0.08), change)
+    private func go(_ animation: Animation, _ ms: Int, _ change: () -> Void) async {
+        withAnimation(animation, change)
         try? await Task.sleep(for: .milliseconds(ms))
     }
 
     private static let ink = Color(red: 0.01, green: 0.05, blue: 0.3)
 
     /// A solid white card on the cobalt, lifted by the stage ink: the same card the other steps use.
-    private func lifted<S: Shape>(_ shape: S, deep: Double = 0.32) -> some View {
+    private func lifted<S: Shape>(_ shape: S) -> some View {
         shape.fill(.white)
             .shadow(color: Self.ink.opacity(0.28), radius: 3, y: 2)
-            .shadow(color: Self.ink.opacity(deep), radius: 28, y: 16)
+            .shadow(color: Self.ink.opacity(0.32), radius: 28, y: 16)
     }
 
     // MARK: Source clip
 
     private var source: some View {
-        let active = phase == .ranked ? focus : nil
-        return VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 8) {
-                tile(.messages, 20)
+                Image(systemName: "message.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+                    .background(Color(red: 0.19, green: 0.78, blue: 0.35).gradient,
+                                in: RoundedRectangle(cornerRadius: 5.2, style: .continuous))
                 Text("Mira Okonkwo")
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
-                Label("Copied 2m ago", systemImage: "checkmark")
+                Text("Copied 2m ago")
                     .font(.system(size: 11))
                     .foregroundStyle(OBTheme.textTertiary)
             }
-            Text(message(active: active))
+            Text(message)
                 .font(.system(size: 13.5))
                 .foregroundStyle(OBTheme.textPrimary)
                 .lineSpacing(3)
+                .contentTransition(.opacity)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
@@ -166,21 +111,14 @@ struct ModelsStageScene: View {
         .environment(\.colorScheme, .light)
     }
 
-    private func message(active: Int?) -> AttributedString {
-        let parts: [(String, Int?)] = [
-            ("Reach Mira at ", nil), ("mira@northwind.co", 0), (" or call ", nil),
-            ("+44 7700 900123", 1), (" — site: ", nil), ("northwind.co/mira", 2),
-        ]
-        var out = AttributedString()
-        for (s, span) in parts {
-            var a = AttributedString(s)
-            if let span, span == active {
-                a.backgroundColor = OBTheme.highlight
-                a.foregroundColor = OBTheme.highlightText
-            }
-            out += a
+    private var message: AttributedString {
+        let lead = AttributedString("Reach Mira at mira@northwind.co or call ")
+        var number = AttributedString(Self.phoneInMessage)
+        if phase != .rest {
+            number.backgroundColor = OBTheme.highlight
+            number.foregroundColor = OBTheme.highlightText
         }
-        return out
+        return lead + number + AttributedString(". Site: northwind.co/mira")
     }
 
     // MARK: Target window
@@ -201,29 +139,28 @@ struct ModelsStageScene: View {
             .padding(.horizontal, 14)
             .frame(height: 34)
             VStack(spacing: 8) {
-                ForEach(Array(Self.beats.enumerated()), id: \.offset) { i, beat in field(i, beat) }
+                field("Email", value: "mira@northwind.co", focused: false)
+                field("Phone", value: phase == .landed ? Self.phone : nil, focused: true)
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
             Spacer(minLength: 0)
         }
-        .frame(width: 372, height: 186)
+        .frame(width: 372, height: 146)
         .background { lifted(RoundedRectangle(cornerRadius: 16, style: .continuous)) }
         .environment(\.colorScheme, .light)
     }
 
-    private func field(_ i: Int, _ beat: Beat) -> some View {
-        let focused = focus == i
-        let done = i < filled
+    private func field(_ label: String, value: String?, focused: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
         return HStack(spacing: 10) {
-            Text(beat.label)
+            Text(label)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(OBTheme.textTertiary)
                 .frame(width: 58, alignment: .leading)
             ZStack(alignment: .leading) {
-                if done {
-                    Text(beat.value)
+                if let value {
+                    Text(value)
                         .font(.system(size: 13.5))
                         .foregroundStyle(OBTheme.textPrimary)
                         .transition(.opacity.combined(with: .offset(y: 5)))
@@ -232,12 +169,6 @@ struct ModelsStageScene: View {
                 }
             }
             Spacer(minLength: 0)
-            if done {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(red: 0.19, green: 0.7, blue: 0.4))
-                    .transition(.scale(scale: 0.5).combined(with: .opacity))
-            }
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
@@ -246,65 +177,7 @@ struct ModelsStageScene: View {
         .shadow(color: OBTheme.action.opacity(focused ? 0.3 : 0), radius: 6)
     }
 
-    // MARK: The chooser, as the HUD draws it
-
-    private func chooser(_ i: Int) -> some View {
-        let beat = Self.beats[i]
-        let ranked = phase == .ranked
-        let rows = ranked ? [beat.rows[beat.hit]] + beat.rows.filter { $0.id != beat.hit } : beat.rows
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        return VStack(alignment: .leading, spacing: 0) {
-            Text("Paste into \(beat.label)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(OBTheme.textTertiary)
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
-            VStack(spacing: 2) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { n, r in row(n, r, selected: ranked && n == 0) }
-            }
-            .padding(.horizontal, 6)
-            Divider().padding(.top, 4)
-            HStack(spacing: 4) {
-                keycap("↩"); Text("paste")
-                keycap("esc").padding(.leading, 6); Text("plain paste")
-                Spacer()
-            }
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(OBTheme.textTertiary)
-            .padding(.horizontal, 14)
-            .frame(height: 30)
-        }
-        .frame(width: 344)
-        .background { lifted(shape, deep: 0.5) }
-        .overlay(shape.strokeBorder(Self.ink.opacity(0.12), lineWidth: 0.5))
-        .environment(\.colorScheme, .light)
-    }
-
-    private func row(_ n: Int, _ r: Row, selected: Bool) -> some View {
-        HStack(spacing: 9) {
-            tile(r.app, 18)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(r.text)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(selected ? .white : OBTheme.textPrimary)
-                    .lineLimit(1)
-                Text(r.age)
-                    .font(.system(size: 11))
-                    .foregroundStyle(selected ? .white.opacity(0.8) : OBTheme.textSecondary)
-            }
-            Spacer(minLength: 8)
-            Text("\(n + 1)")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(selected ? .white : OBTheme.textSecondary)
-                .frame(width: 18, height: 18)
-                .background(selected ? .white.opacity(0.22) : OBTheme.textPrimary.opacity(0.07),
-                            in: RoundedRectangle(cornerRadius: 4.5, style: .continuous))
-        }
-        .padding(.horizontal, 10)
-        .frame(height: Self.rowHeight)
-        .background(selected ? OBTheme.action : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-    }
+    // MARK: Model pill
 
     private var badge: some View {
         HStack(spacing: 7) {
@@ -312,11 +185,12 @@ struct ModelsStageScene: View {
             Text(pick.name).font(.system(size: 12, weight: .semibold))
             Text(pick.detail).font(.system(size: 11)).opacity(0.75)
             Group {
-                if phase == .ranked {
-                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
-                } else if phase == .asking {
+                switch phase {
+                case .rest: Color.clear
+                case .asking:
                     Image(systemName: "ellipsis").font(.system(size: 11, weight: .bold))
-                        .symbolEffect(.variableColor.iterative, isActive: phase == .asking)
+                        .symbolEffect(.variableColor.iterative)
+                case .landed: Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
                 }
             }
             .frame(width: 14)
@@ -326,23 +200,5 @@ struct ModelsStageScene: View {
         .frame(height: 26)
         .background(.white.opacity(0.2), in: Capsule())
         .overlay(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 0.5))
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: Pieces
-
-    private func tile(_ app: App, _ size: CGFloat) -> some View {
-        Image(systemName: app.symbol)
-            .font(.system(size: size * 0.5, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(app.tint.gradient, in: RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
-    }
-
-    private func keycap(_ s: String) -> some View {
-        Text(s)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1.5)
-            .background(OBTheme.textPrimary.opacity(0.07), in: RoundedRectangle(cornerRadius: 3.5, style: .continuous))
     }
 }
