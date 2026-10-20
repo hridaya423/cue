@@ -24,7 +24,7 @@ difference is only `(url, model, key)`:
 - `swift build -c release --product CueEval` then `CueEval --cases Evals/cases.jsonl --endpoint name=base,model --repeats 3 --json <out>` — the smart-paste benchmark (110 synthetic cases: extraction, ambiguity→chooser, no-fit→plain). Each case is triggered the way a person would: ⌘V when the wanted text is the latest clip or a plain paste, the hotkey otherwise (same rule as CueDay); on the hotkey a no-fit chooser counts as resolved. Offline: `--replay <raw.jsonl>` re-scores recorded answers through the current engine for instant threshold/policy sweeps; `--diag` adds a per-case model-leader vs ContextSignal line. Run live sweeps under `launchctl submit` if the invoking shell might go away.
 - `Scripts/ob_compare.py <0-5|all> --appearance light|dark --launch` — captures native onboarding windows and builds reference/app/blend comparisons into `output/onboarding/compare/`
 - `open build/Cue.app` — run it
-- `tccutil reset Accessibility com.local.cue` — clears the grant (cert-signed builds keep it across rebuilds; only needed after ad-hoc rebuilds or to re-test onboarding)
+- `tccutil reset Accessibility com.hridyaagrawal.cue` — clears the grant (cert-signed builds keep it across rebuilds; only needed after ad-hoc rebuilds or to re-test onboarding)
 
 ## Layout
 

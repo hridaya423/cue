@@ -24,7 +24,7 @@ APP="build/Cue.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 DMG="build/Cue-$VERSION.dmg"
 
-codesign --force --options runtime --timestamp --sign "$IDENTITY" --identifier com.local.cue "$APP"
+codesign --force --options runtime --timestamp --sign "$IDENTITY" --identifier com.hridyaagrawal.cue "$APP"
 codesign --verify --strict --deep --verbose=2 "$APP"
 
 # The installer window: Cue on the left, Applications on the right, the arrow and caption in the background

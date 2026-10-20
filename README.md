@@ -25,7 +25,7 @@ Requires macOS 15+, Xcode 26. One dependency: `desert-ant-core` (on-device
 PII redaction). Grant **Accessibility** when prompted (needed to read the
 focused field and post the paste keystroke). After rebuilding, if the
 permission grant sticks to the old binary:
-`tccutil reset Accessibility com.local.cue`.
+`tccutil reset Accessibility com.hridyaagrawal.cue`.
 
 ## How it works
 

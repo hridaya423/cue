@@ -75,6 +75,7 @@ public final class AppSettings {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        if defaults === UserDefaults.standard { Self.adoptSettings(from: "com.local.cue", into: defaults) }
         // v2 → v3 migration: "kev"/"laya" providers collapse into .local and
         // recover their identity as catalog model IDs.
         let raw: String = get("provider", "")
@@ -82,6 +83,22 @@ public final class AppSettings {
             if localModelID.isEmpty { localModelID = raw }
             provider = .local
         }
+    }
+
+    /// Settings saved under the identifier Cue used before it shipped come along once, so a renamed build keeps
+    /// the user's model, shortcuts and finished onboarding.
+    static func adoptSettings(from oldDomain: String, into defaults: UserDefaults) {
+        let marker = "adoptedSettingsFrom"
+        guard defaults.object(forKey: marker) == nil, defaults.object(forKey: "provider") == nil,
+              let keys = CFPreferencesCopyKeyList(oldDomain as CFString, kCFPreferencesCurrentUser,
+                                                  kCFPreferencesAnyHost) as? [String], !keys.isEmpty,
+              let values = CFPreferencesCopyMultiple(keys as CFArray, oldDomain as CFString, kCFPreferencesCurrentUser,
+                                                     kCFPreferencesAnyHost) as? [String: Any]
+        else { return }
+        for (key, value) in values where !key.hasPrefix("NS") && !key.hasPrefix("Apple") {
+            defaults.set(value, forKey: key)
+        }
+        defaults.set(oldDomain, forKey: marker)
     }
 
     private func get<T: Codable>(_ key: String, _ fallback: T) -> T {

@@ -2,7 +2,7 @@
 # Builds Cue.app into ./build/.
 # Signed with a real identity when available: TCC keys ad-hoc apps by
 # cdhash, which changes every rebuild — granted Accessibility toggles
-# silently go stale. A cert signature keeps com.local.cue's requirement
+# silently go stale. A cert signature keeps com.hridyaagrawal.cue's requirement
 # stable, so the grant persists across rebuilds.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -35,7 +35,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleIdentifier</key><string>com.local.cue</string>
+    <key>CFBundleIdentifier</key><string>com.hridyaagrawal.cue</string>
     <key>CFBundleName</key><string>Cue</string>
     <key>CFBundleExecutable</key><string>Cue</string>
     <key>CFBundlePackageType</key><string>APPL</string>
@@ -51,12 +51,12 @@ PLIST
 
 IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development|Mac Developer/{print $2; exit}')"
 if [ -n "$IDENTITY" ]; then
-    codesign --force --sign "$IDENTITY" --identifier com.local.cue "$APP"
+    codesign --force --sign "$IDENTITY" --identifier com.hridyaagrawal.cue "$APP"
 else
-    codesign --force --sign - --identifier com.local.cue "$APP" 2>/dev/null || true
+    codesign --force --sign - --identifier com.hridyaagrawal.cue "$APP" 2>/dev/null || true
 fi
 
 echo "Built $APP"
 echo "Run it:  open $APP"
 echo "Note:    cert-signed builds keep the Accessibility grant across rebuilds;"
-echo "         if it was ad-hoc signed and stuck, reset once: tccutil reset Accessibility com.local.cue"
+echo "         if it was ad-hoc signed and stuck, reset once: tccutil reset Accessibility com.hridyaagrawal.cue"
