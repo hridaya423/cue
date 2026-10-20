@@ -247,7 +247,7 @@ struct SettingsSwitch: View {
                     .shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
                     .offset(x: on ? 8 : -8)
             }
-            .animation(.spring(duration: 0.3, bounce: 0.18), value: on)
+            .animation(OBMotion.moderate, value: on)
     }
 }
 

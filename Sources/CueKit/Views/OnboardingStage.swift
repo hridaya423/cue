@@ -11,22 +11,25 @@ enum OBLayout {
     static let footerHeight: CGFloat = 76
 }
 
-/// The film's cobalt as a slow, living field: a 3×3 mesh whose inner points drift, with film grain
-/// so the gradient never bands. One field sits behind every screen; only its frame changes.
+/// The film's cobalt as a slow dawn: deep ink overhead so white type holds, light rising from the lower
+/// right with ice at its core and indigo in the shadows. Neighbouring hues, held off full saturation and
+/// blended perceptually so the middle never goes grey. A 4×4 mesh whose inner points drift on unrelated
+/// periods, with film grain so the gradient never bands. One field sits behind every screen.
 struct CobaltField: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var start = Date()
 
     private static let colors: [Color] = [
-        .init(red: 0.02, green: 0.09, blue: 0.42), .init(red: 0.06, green: 0.24, blue: 0.80), .init(red: 0.14, green: 0.44, blue: 0.98),
-        .init(red: 0.04, green: 0.20, blue: 0.72), .init(red: 0.16, green: 0.48, blue: 1.00), .init(red: 0.45, green: 0.68, blue: 1.00),
-        .init(red: 0.01, green: 0.06, blue: 0.30), .init(red: 0.05, green: 0.22, blue: 0.74), .init(red: 0.12, green: 0.40, blue: 0.95),
+        .init(red: 0.05, green: 0.06, blue: 0.27), .init(red: 0.07, green: 0.10, blue: 0.42), .init(red: 0.09, green: 0.17, blue: 0.56), .init(red: 0.13, green: 0.26, blue: 0.68),
+        .init(red: 0.07, green: 0.09, blue: 0.40), .init(red: 0.11, green: 0.21, blue: 0.70), .init(red: 0.17, green: 0.36, blue: 0.88), .init(red: 0.27, green: 0.50, blue: 0.95),
+        .init(red: 0.08, green: 0.12, blue: 0.50), .init(red: 0.15, green: 0.33, blue: 0.88), .init(red: 0.30, green: 0.54, blue: 0.97), .init(red: 0.56, green: 0.74, blue: 0.99),
+        .init(red: 0.06, green: 0.08, blue: 0.38), .init(red: 0.14, green: 0.31, blue: 0.84), .init(red: 0.42, green: 0.65, blue: 0.98), .init(red: 0.84, green: 0.90, blue: 1.00),
     ]
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { tl in
             let t = Float(tl.date.timeIntervalSince(start))
-            MeshGradient(width: 3, height: 3, points: Self.points(t), colors: Self.colors)
+            MeshGradient(width: 4, height: 4, points: Self.points(t), colors: Self.colors, colorSpace: .perceptual)
                 .visualEffect { view, proxy in
                     view.colorEffect(ShaderLibrary.bundle(.module).cobaltGrain(.float2(proxy.size), .float(t)))
                 }
@@ -34,13 +37,27 @@ struct CobaltField: View {
     }
 
     private static func points(_ t: Float) -> [SIMD2<Float>] {
-        let a = 0.08 * sin(t * 0.21), b = 0.07 * cos(t * 0.17), c = 0.06 * sin(t * 0.13 + 1)
+        func w(_ f: Float, _ p: Float, _ a: Float) -> Float { a * sin(t * f + p) }
+        let e: Float = 1 / 3, f: Float = 2 / 3
         return [
-            [0, 0], [0.5 + a, 0], [1, 0],
-            [0, 0.5 + b], [0.5 + c, 0.5 + a], [1, 0.5 - c],
-            [0, 1], [0.5 - b, 1], [1, 1],
+            [0, 0], [e + w(0.11, 0, 0.06), 0], [f + w(0.09, 1, 0.06), 0], [1, 0],
+            [0, e + w(0.10, 2, 0.05)], [e + w(0.13, 0.5, 0.07), e + w(0.08, 1.7, 0.06)],
+            [f + w(0.07, 2.4, 0.08), e + w(0.12, 0.3, 0.06)], [1, e + w(0.09, 1.1, 0.05)],
+            [0, f + w(0.08, 0.9, 0.05)], [e + w(0.10, 3.1, 0.07), f + w(0.11, 2.2, 0.06)],
+            [f + w(0.12, 1.4, 0.07), f + w(0.09, 0.6, 0.06)], [1, f + w(0.11, 2.8, 0.05)],
+            [0, 1], [e + w(0.12, 1.9, 0.06), 1], [f + w(0.10, 0.2, 0.06), 1], [1, 1],
         ]
     }
+}
+
+/// Three spring speeds for the whole flow, no bounce: the bigger the thing that moves, the slower the
+/// spring. `land` is the one settle a scene gets when something arrives.
+enum OBMotion {
+    static let fast = Animation.spring(duration: 0.2, bounce: 0)
+    static let moderate = Animation.spring(duration: 0.35, bounce: 0)
+    static let slow = Animation.spring(duration: 0.6, bounce: 0)
+    static let land = Animation.spring(duration: 0.45, bounce: 0.12)
+    static let exit = Animation.easeIn(duration: 0.2)
 }
 
 /// Footer progress: one segment per screen on this user's route, the current one long.

@@ -208,7 +208,7 @@ private struct PracticeStage: View {
             .frame(width: 26, height: 26)
             .background(succeeded ? .white : .white.opacity(0.18), in: Circle())
             .contentTransition(.symbolEffect(.replace))
-            .animation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.3), value: succeeded)
+            .animation(reduceMotion ? nil : OBMotion.land, value: succeeded)
             .accessibilityHidden(true)
     }
 
@@ -233,7 +233,7 @@ private struct PracticeStage: View {
                                 .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
                         }
                     }
-                    .animation(.spring(duration: 0.4, bounce: 0.3), value: succeeded)
+                    .animation(OBMotion.land, value: succeeded)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("arena")) } action: { fieldFrame = $0 }
             }
         }

@@ -174,7 +174,7 @@ struct TriggerCard: View {
             Task { @MainActor in
                 withAnimation(.easeOut(duration: 0.08)) { pressed = true }
                 try? await Task.sleep(for: .milliseconds(120))
-                withAnimation(.spring(duration: 0.3, bounce: 0.35)) { pressed = false }
+                withAnimation(OBMotion.moderate) { pressed = false }
             }
         }
     }
@@ -305,8 +305,8 @@ struct TriggerStage: View {
             guard await wait(70) else { return }
             withAnimation(.easeOut(duration: 0.07)) { keyDown = true }
             guard await wait(150) else { return }
-            withAnimation(.spring(duration: 0.32, bounce: 0.4)) { modsDown = false; keyDown = false }
-            withAnimation(.spring(duration: 0.5, bounce: 0.2)) { arrived = true; chip = true }
+            withAnimation(OBMotion.fast) { modsDown = false; keyDown = false }
+            withAnimation(OBMotion.land) { arrived = true; chip = true }
             guard await wait(700) else { return }
             withAnimation(.easeOut(duration: 0.9)) { chip = false }
             guard await wait(2600) else { return }

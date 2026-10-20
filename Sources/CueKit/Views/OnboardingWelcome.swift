@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension OnboardingView {
-    /// The hero: the mark, the film's line, one action, and one paste happening on its own.
+    /// The hero: the mark, the film's line, one action, and one paste happening on its own. Nothing else.
     var hero: some View {
         WelcomeHero(lean: lean, markReplay: markReplay, primary: primarySpec)
     }
@@ -31,18 +31,13 @@ struct WelcomeHero: View {
                     .shadow(color: cobaltInk.opacity(0.3), radius: 18, y: 6)
                     .padding(.top, 30)
                     .reveal(shown, delay: 0.15, dy: 14)
-                Text("Copy it all. Cue pastes just the part that fits the field.")
-                    .font(.system(size: 18))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .padding(.top, 12)
-                    .reveal(shown, delay: 0.25, dy: 12)
                 OBStagePrimary(title: primary.title, enabled: primary.enabled, action: primary.action)
-                    .padding(.top, 24)
-                    .reveal(shown, delay: 0.35, dy: 10)
+                    .padding(.top, 28)
+                    .reveal(shown, delay: 0.28, dy: 10)
                 PasteMoment(lean: lean)
                     .frame(width: 600, height: 250, alignment: .top)
-                    .padding(.top, 30)
-                    .reveal(shown, delay: 0.45, dy: 40)
+                    .padding(.top, 40)
+                    .reveal(shown, delay: 0.42, dy: 40)
             }
             .padding(.top, 44)
         }
@@ -54,8 +49,8 @@ struct WelcomeHero: View {
     /// Depth on the field: a bloom behind the mark and a vignette that pulls the corners down.
     private var light: some View {
         ZStack {
-            RadialGradient(colors: [.white.opacity(0.28), .clear], center: .init(x: 0.5, y: 0.2), startRadius: 0, endRadius: 360)
-            RadialGradient(colors: [.clear, cobaltInk.opacity(0.55)], center: .init(x: 0.5, y: 0.45), startRadius: 260, endRadius: 640)
+            RadialGradient(colors: [.white.opacity(0.16), .clear], center: .init(x: 0.5, y: 0.18), startRadius: 0, endRadius: 340)
+            RadialGradient(colors: [.clear, cobaltInk.opacity(0.35)], center: .init(x: 0.5, y: 0.45), startRadius: 300, endRadius: 680)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -81,9 +76,10 @@ private struct Reveal: ViewModifier {
     }
 }
 
-/// A copied message above a contact form. The email lifts out of the message as a chip, flies across
-/// and lands in the Email field. Loops; never touches the clipboard. Idle between steps: the animation
-/// is a handful of state changes, no frame clock.
+/// A copied message beside a contact form. ⌘V goes down, Cue selects the email in the message, a copy
+/// lifts off it, arcs over to the Email field and settles in as the field's own text. Then the field
+/// clears and it plays again. Never touches the clipboard. Idle between beats: a handful of state changes,
+/// no frame clock.
 struct PasteMoment: View {
     var lean: CGFloat = 0
     @State private var phase = Phase.rest
@@ -91,10 +87,14 @@ struct PasteMoment: View {
     @State private var target = CGRect.zero
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private enum Phase: Int { case rest, picked, lifted, flying, landed }
+    private enum Phase: Int, Comparable {
+        case rest, pressed, picked, lifted, flying, landed, clearing
+        static func < (a: Phase, b: Phase) -> Bool { a.rawValue < b.rawValue }
+    }
 
     private static let email = "mira@example.com"
-    private static let chipPad: CGFloat = 4
+    private static let chipPad: CGFloat = 3
+    private static let fieldInset: CGFloat = 11
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -115,7 +115,8 @@ struct PasteMoment: View {
     // MARK: Cards
 
     private var messageCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let selected = phase >= .picked && phase < .landed
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Circle().fill(LinearGradient(colors: [Color(red: 1, green: 0.74, blue: 0.5), Color(red: 0.96, green: 0.48, blue: 0.42)], startPoint: .top, endPoint: .bottom))
                     .frame(width: 22, height: 22)
@@ -133,19 +134,25 @@ struct PasteMoment: View {
                 HStack(spacing: 0) {
                     Text("Reach Mira at ").padding(.trailing, 3)
                     Text(Self.email)
-                        .opacity(phase.rawValue >= Phase.picked.rawValue ? 0 : 1)
+                        .foregroundStyle(selected ? chipInk : Color.black.opacity(0.86))
+                        .background {
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(OBTheme.action.opacity(0.14))
+                                .padding(.horizontal, -Self.chipPad)
+                                .padding(.vertical, -1)
+                                .opacity(selected ? 1 : 0)
+                        }
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(demoSpace)) } action: { source = $0 }
                 }
                 Text("or +44 7700 900123.")
             }
             .font(.system(size: 16, weight: .medium))
-            .foregroundStyle(Color.black.opacity(phase == .landed ? 0.32 : 0.86))
+            .foregroundStyle(Color.black.opacity(0.86))
             .lineLimit(1)
         }
         .padding(.horizontal, 18)
         .frame(width: 336, height: 112, alignment: .leading)
         .cardSurface(radius: 18)
-        .scaleEffect(phase == .landed ? 0.975 : 1, anchor: .bottomLeading)
     }
 
     private var formCard: some View {
@@ -161,86 +168,93 @@ struct PasteMoment: View {
             .frame(height: 34)
             Divider().overlay(Color.black.opacity(0.05))
             VStack(alignment: .leading, spacing: 12) {
-                field("Email", value: nil, focused: true)
-                field("Phone", value: nil, focused: false)
-                field("Company", value: nil, focused: false)
+                field("Email", focused: true)
+                field("Phone", focused: false)
+                field("Company", focused: false)
             }
             .padding(16)
         }
         .frame(width: 294, alignment: .topLeading)
         .cardSurface(radius: 18)
-        .scaleEffect(phase == .landed ? 1.015 : 1, anchor: .center)
     }
 
-    private func field(_ label: String, value: String?, focused: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+    private func field(_ label: String, focused: Bool) -> some View {
+        let filled = focused && phase == .landed
+        return VStack(alignment: .leading, spacing: 5) {
             Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.black.opacity(0.45))
-            Text(value ?? " ")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Color.black.opacity(0.86))
-                .padding(.horizontal, 11)
-                .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            Color.clear
+                .frame(maxWidth: .infinity, minHeight: 36)
                 .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(alignment: .leading) {
+                    if focused {
+                        Capsule().fill(OBTheme.action)
+                            .frame(width: 1.5, height: 18)
+                            .padding(.leading, Self.fieldInset)
+                            .opacity(phase < .flying || phase == .clearing ? 1 : 0)
+                    }
+                }
                 .overlay {
                     if focused {
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .strokeBorder(OBTheme.action.opacity(phase == .landed ? 1 : 0.55), lineWidth: phase == .landed ? 2 : 1.5)
-                            .shadow(color: OBTheme.action.opacity(phase == .landed ? 0.4 : 0), radius: 6)
+                            .strokeBorder(OBTheme.action.opacity(filled ? 1 : 0.55), lineWidth: filled ? 2 : 1.5)
+                            .shadow(color: OBTheme.action.opacity(filled ? 0.4 : 0), radius: 6)
                     }
                 }
                 .overlay(alignment: .trailing) {
-                    if focused, phase == .landed {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(OBTheme.action)
-                            .padding(.trailing, 9)
-                            .transition(.scale(scale: 0.5).combined(with: .opacity))
-                    }
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(OBTheme.action)
+                        .padding(.trailing, 9)
+                        .scaleEffect(filled ? 1 : 0.5)
+                        .opacity(filled ? 1 : 0)
                 }
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(demoSpace)) } action: { if focused { target = $0 } }
         }
     }
 
     private var keycap: some View {
-        HStack(spacing: 4) {
-            key("⌘")
-            key("V")
+        let down = phase == .pressed
+        return HStack(spacing: 4) {
+            key("⌘", down: down)
+            key("V", down: down)
         }
-        .scaleEffect(phase == .flying ? 0.9 : 1)
-        .opacity(phase == .rest ? 0.7 : 1)
+        .opacity(phase == .rest || phase >= .landed ? 0.7 : 1)
     }
 
-    private func key(_ s: String) -> some View {
+    private func key(_ s: String, down: Bool) -> some View {
         Text(s)
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: 26, height: 22)
-            .background(.white.opacity(phase == .flying ? 0.34 : 0.16), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.white.opacity(0.3)))
+            .background(.white.opacity(down ? 0.4 : 0.16), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.white.opacity(down ? 0.6 : 0.3)))
+            .scaleEffect(down ? 0.9 : 1)
+            .offset(y: down ? 1.5 : 0)
     }
 
     // MARK: Chip
 
-    /// The email as a selection pill: it sits over its place in the message, lifts, flies to the field
-    /// and dissolves into the field's own text.
+    /// A copy of the email as a selection pill: it rises off the message, arcs to the field and drops its
+    /// pill to become the field's text.
     private var chip: some View {
-        let pad = Self.chipPad
-        let landed = phase == .landed
-        let flying = phase == .flying
-        let to = CGPoint(x: target.minX + 11 + source.width / 2, y: target.midY)
-        let at = flying || landed ? to : CGPoint(x: source.midX, y: source.midY)
+        let landed = phase >= .landed
+        let airborne = phase == .lifted || phase == .flying
+        let to = CGPoint(x: target.minX + Self.fieldInset + source.width / 2, y: target.midY)
+        let from = CGPoint(x: source.midX, y: source.midY)
         return Text(Self.email)
             .font(.system(size: 16, weight: .medium))
             .foregroundStyle(landed ? Color.black.opacity(0.86) : chipInk)
             .lineLimit(1)
             .fixedSize()
-            .padding(.horizontal, pad)
+            .padding(.horizontal, Self.chipPad)
             .padding(.vertical, 3)
-            .background(.white.opacity(landed ? 0 : 1), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(OBTheme.action.opacity(landed || phase == .rest ? 0 : 0.35)))
-            .shadow(color: cobaltInk.opacity(phase == .lifted || flying ? 0.4 : 0), radius: phase == .lifted || flying ? 16 : 0, y: phase == .lifted || flying ? 10 : 0)
-            .scaleEffect(phase == .lifted ? 1.08 : flying ? 1.04 : 1)
-            .position(at)
-            .opacity(phase == .rest || source == .zero ? 0 : 1)
+            .background(.white.opacity(landed ? 0 : 1), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(OBTheme.action.opacity(landed ? 0 : 0.35)))
+            .shadow(color: cobaltInk.opacity(airborne ? 0.38 : 0), radius: airborne ? 14 : 0, y: airborne ? 9 : 0)
+            .scaleEffect(airborne ? 1.03 : 1)
+            .offset(y: phase == .lifted ? -5 : 0)
+            .position(from)
+            .modifier(Arc(travel: phase >= .flying ? 1 : 0, delta: CGSize(width: to.x - from.x, height: to.y - from.y)))
+            .opacity(phase < .lifted || phase == .clearing || source == .zero ? 0 : 1)
     }
 
     // MARK: Timeline
@@ -249,21 +263,42 @@ struct PasteMoment: View {
 
     private func run() async {
         guard !reduceMotion else { phase = .landed; return }
-        let snap = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.35)
         while !Task.isCancelled {
             phase = .rest
-            try? await Task.sleep(for: .seconds(1.4))
-            step(.picked, snap)
-            try? await Task.sleep(for: .seconds(0.7))
-            step(.lifted, .spring(duration: 0.4, bounce: 0.3))
-            try? await Task.sleep(for: .seconds(0.35))
-            step(.flying, .timingCurve(0.65, 0, 0.2, 1, duration: 0.7))
-            try? await Task.sleep(for: .seconds(0.7))
-            step(.landed, .spring(duration: 0.5, bounce: 0.25))
-            try? await Task.sleep(for: .seconds(3.4))
-            step(.rest, .easeInOut(duration: 0.5))
-            try? await Task.sleep(for: .seconds(0.7))
+            try? await Task.sleep(for: .seconds(1.2))
+            step(.pressed, OBMotion.fast)
+            try? await Task.sleep(for: .seconds(0.18))
+            step(.picked, OBMotion.moderate)
+            try? await Task.sleep(for: .seconds(0.45))
+            step(.lifted, OBMotion.moderate)
+            try? await Task.sleep(for: .seconds(0.3))
+            step(.flying, .timingCurve(0.5, 0, 0.2, 1, duration: 0.7))
+            try? await Task.sleep(for: .seconds(0.62))
+            step(.landed, OBMotion.land)
+            try? await Task.sleep(for: .seconds(2.8))
+            step(.clearing, .easeIn(duration: 0.3))
+            try? await Task.sleep(for: .seconds(0.5))
         }
+    }
+}
+
+/// Moves a view along a quadratic arc that peaks above both ends, so the copy lifts over the cards
+/// instead of sliding across them.
+private struct Arc: GeometryEffect {
+    var travel: CGFloat
+    var delta: CGSize
+
+    var animatableData: CGFloat {
+        get { travel }
+        set { travel = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let t = travel, u = 1 - t
+        let control = CGPoint(x: delta.width * 0.45, y: min(0, delta.height) - 70)
+        let x = 2 * u * t * control.x + t * t * delta.width
+        let y = 2 * u * t * control.y + t * t * delta.height
+        return ProjectionTransform(CGAffineTransform(translationX: x, y: y))
     }
 }
 

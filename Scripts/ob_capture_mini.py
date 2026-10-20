@@ -77,7 +77,9 @@ for i in $(seq 1 {frames}); do {DRIVER} call get_desktop_state "{{\\"screenshot_
         c = c.resize((round(b["width"]), round(b["height"])), Image.LANCZOS)
         name = f"{step}-{appearance}" + (f"-{i}" if burst > 1 else "") + ".png"
         c.save(out / name)
+        local.unlink()
         print(out / name)
+    remote(f"rm -f /tmp/obcap-{tag}-*.png /tmp/obwin-{tag}.json")
 
 
 def main():
