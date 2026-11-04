@@ -2,14 +2,36 @@ import { Header } from "@/components/Header";
 import { Mark, Runs } from "@/components/Mark";
 import Motion from "@/components/Motion";
 
+const person = { "@type": "Person", "@id": "https://www.hridya.tech/#person", name: "Hridya Agrawal", url: "https://www.hridya.tech" };
+
 const jsonLd = {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "Cue",
-  operatingSystem: "macOS 15 or later",
-  applicationCategory: "UtilitiesApplication",
-  description: "A clipboard for Mac that pastes the part of what you copied that fits the focused field.",
-  downloadUrl: "https://github.com/hridaya423/cue/releases/latest/download/Cue.dmg",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://cue.hridya.tech/#app",
+      name: "Cue",
+      url: "https://cue.hridya.tech",
+      applicationCategory: "UtilitiesApplication",
+      operatingSystem: "macOS 15 or later",
+      description: "A clipboard for Mac that reads the focused field and pastes the part of what you copied that fits.",
+      downloadUrl: "https://github.com/hridaya423/cue/releases/latest/download/Cue.dmg",
+      codeRepository: "https://github.com/hridaya423/cue",
+      license: "https://www.apache.org/licenses/LICENSE-2.0",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      author: person,
+      sameAs: ["https://github.com/hridaya423/cue", "https://www.hridya.tech/projects/cue"],
+      subjectOf: { "@type": "WebPage", "@id": "https://www.hridya.tech/projects/cue", url: "https://www.hridya.tech/projects/cue" },
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://cue.hridya.tech/#website",
+      name: "Cue",
+      url: "https://cue.hridya.tech",
+      inLanguage: "en",
+      publisher: person,
+    },
+  ],
 };
 
 const tape = (placeholder: string, text: string) => (
@@ -153,6 +175,7 @@ export default function Home() {
           <a className="logo" href="#top" aria-label="Cue, back to top"><Mark className="logo__svg" /></a>
           <nav className="nav" aria-label="Footer">
             <a className="nav__link" href="#privacy">Privacy</a>
+            <a className="nav__link" href="https://www.hridya.tech/projects/cue">Built by Hridya Agrawal</a>
           </nav>
         </div>
       </footer>

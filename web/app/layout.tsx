@@ -3,19 +3,27 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://cue.hridya.tech"),
-  title: "Cue: smart paste for Mac | A better instinct for paste",
+  title: "Cue: Mac clipboard that pastes the part that fits a field",
   description:
-    "Cue is a clipboard for Mac that reads the field you're in and pastes the part of what you copied that fits. On-device models, plain paste when unsure.",
+    "Cue is a Mac clipboard. It reads the field you are in and pastes only the part of your copy that fits, like the email from a message. Needs macOS 15.",
+  authors: [{ name: "Hridya Agrawal", url: "https://www.hridya.tech" }],
+  creator: "Hridya Agrawal",
   alternates: { canonical: "/" },
   icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.png" },
   openGraph: {
     type: "website",
     url: "/",
-    title: "Cue | A better instinct for paste",
-    description: "A clipboard for Mac that pastes the part that fits the field.",
+    siteName: "Cue",
+    title: "Cue: Mac clipboard that pastes the part that fits a field",
+    description: "A Mac clipboard that reads the field you are in and pastes only the part of your copy that fits.",
     images: "/og.png",
   },
-  twitter: { card: "summary_large_image" },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cue: Mac clipboard that pastes the part that fits a field",
+    description: "A Mac clipboard that reads the field you are in and pastes only the part of your copy that fits.",
+    images: "/og.png",
+  },
 };
 
 export const viewport: Viewport = { colorScheme: "only light", themeColor: "#2040e6" };
